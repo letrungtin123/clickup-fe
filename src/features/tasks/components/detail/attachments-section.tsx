@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { TaskDetail } from "@/contracts/work";
 
 import type { useUploads } from "../../attachments";
-import { useCanDeleteAttachment, useDeleteAttachment } from "../../attachment-actions";
+import { useDeleteAttachment } from "../../attachment-actions";
 import { FileRow, ImageLightbox, ImageThumb, UploadRow } from "./attachment-tiles";
 
 type Uploads = ReturnType<typeof useUploads>;
@@ -22,7 +22,6 @@ export const AttachmentsSection = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
   const remove = useDeleteAttachment(task);
-  const canDelete = useCanDeleteAttachment(task);
   const images = task.attachments.filter((attachment) => attachment.isImage);
   const files = task.attachments.filter((attachment) => !attachment.isImage);
   const pending = uploads.items.filter((item) => item.status !== "done");
@@ -87,7 +86,7 @@ export const AttachmentsSection = ({
               key={attachment.id}
               attachment={attachment}
               onOpen={() => setViewing(index)}
-              onDelete={canDelete(attachment) ? () => void remove(attachment) : undefined}
+              onDelete={attachment.canDelete ? () => void remove(attachment) : undefined}
             />
           ))}
         </div>
@@ -96,7 +95,7 @@ export const AttachmentsSection = ({
       {files.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           {files.map((attachment) => (
-            <FileRow key={attachment.id} attachment={attachment} onDelete={canDelete(attachment) ? () => void remove(attachment) : undefined} />
+            <FileRow key={attachment.id} attachment={attachment} onDelete={attachment.canDelete ? () => void remove(attachment) : undefined} />
           ))}
         </div>
       ) : null}

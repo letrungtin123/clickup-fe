@@ -28,7 +28,10 @@ const vendorChunk = (id: string) => {
 
 export default defineConfig(({ mode }) => {
   /** The API runs on its own port; the SPA talks to it same-origin through this proxy in dev. */
-  const apiTarget = loadEnv(mode, process.cwd(), "").DEV_API_TARGET || "http://127.0.0.1:3890";
+  const env = loadEnv(mode, process.cwd(), "");
+  const apiTarget = env.DEV_API_TARGET || "http://127.0.0.1:3890";
+  /** Signed storage URLs are same-origin paths (/storage/v1/...), so any host name of the app works. */
+  const storageTarget = env.DEV_STORAGE_TARGET || "http://127.0.0.1:56321";
 
   return {
     plugins: [react(), tailwindcss()],
@@ -61,6 +64,17 @@ export default defineConfig(({ mode }) => {
           ws: true,
           changeOrigin: false,
           xfwd: true
+        },
+        // Only the signed object routes; the app's session cookies and CSRF header never reach storage.
+        "^/storage/v1/object/(upload/sign|sign)/": {
+          target: storageTarget,
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on("proxyReq", (proxyReq) => {
+              proxyReq.removeHeader("cookie");
+              proxyReq.removeHeader("x-csrf-token");
+            });
+          }
         }
       }
     },

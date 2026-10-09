@@ -188,15 +188,6 @@ const handleProjectStructure = (event: ServerEventPayload<"project:structure">) 
   }
 };
 
-const handleTaskChanged = (event: ServerEventPayload<"task:changed">) => {
-  scheduleInvalidate(qk.tasks(event.projectId));
-  scheduleInvalidate(qk.myTasks());
-  scheduleInvalidate(qk.task(event.taskId), true);
-  if (event.parentTaskId) {
-    scheduleInvalidate(qk.task(event.parentTaskId), true);
-  }
-};
-
 const handleAccessRevoked = (event: ServerEventPayload<"access:revoked">) => {
   const name = roomName(event.room);
   // The server already removed us from the room; forget it so reconnects do not re-join.
@@ -262,7 +253,7 @@ const wireSocket = (instance: AppSocket) => {
   });
 
   instance.on("project:structure", handleProjectStructure);
-  instance.on("task:changed", handleTaskChanged);
+  // task:changed is applied per task by <TaskRuntime/> (features/tasks/realtime.tsx).
   instance.on("task:timeline", (event) => scheduleInvalidate(qk.timeline(event.taskId)));
   instance.on("access:revoked", handleAccessRevoked);
 

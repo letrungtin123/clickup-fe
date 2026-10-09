@@ -3,7 +3,6 @@ import { toast } from "sonner";
 
 import type { Attachment, TaskDetail } from "@/contracts/work";
 import { useSessionContext } from "@/features/auth/hooks";
-import { useProject } from "@/features/projects/hooks";
 import { qk } from "@/lib/query-keys";
 
 import { tasksApi } from "./api";
@@ -38,12 +37,4 @@ export const useDeleteAttachment = (task: TaskDetail) => {
       toast.error(taskErrorMessage(error, "Không xóa được tệp."));
     }
   };
-};
-
-/** Whether the viewer may delete an attachment (uploader, or project manager). */
-export const useCanDeleteAttachment = (task: TaskDetail) => {
-  const session = useSessionContext();
-  const project = useProject(task.projectId);
-  const manage = project.data?.myAccess === "manage";
-  return (attachment: Attachment) => manage || attachment.uploadedBy?.id === session.user.id;
 };
