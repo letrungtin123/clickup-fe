@@ -48,15 +48,19 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5890,
       strictPort: true,
+      // xfwd appends the real client address, so the API (trusting exactly one proxy hop)
+      // never rate-limits on a client-supplied X-Forwarded-For.
       proxy: {
         "/api": {
           target: apiTarget,
-          changeOrigin: false
+          changeOrigin: false,
+          xfwd: true
         },
         "/socket.io": {
           target: apiTarget,
           ws: true,
-          changeOrigin: false
+          changeOrigin: false,
+          xfwd: true
         }
       }
     },
