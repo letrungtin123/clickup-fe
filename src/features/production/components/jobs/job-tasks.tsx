@@ -26,7 +26,8 @@ export const JobTasks = ({
   timeZone,
   onOpen,
   onMove,
-  busyTaskId
+  busyTaskId,
+  readOnly = false
 }: {
   tasks: ProductionTask[];
   timeZone: string;
@@ -36,6 +37,8 @@ export const JobTasks = ({
     option: ProductionTask["capabilities"]["transitions"][number]
   ) => void;
   busyTaskId: string | null | undefined;
+  /** Archived job: no moves. */
+  readOnly?: boolean;
 }) => {
   const breakpoint = useBreakpoint();
   if (tasks.length === 0) {
@@ -83,11 +86,13 @@ export const JobTasks = ({
                   QC <Person user={task.qc} size="xs" fallback="chưa gán" />
                 </span>
               </div>
-              <TransitionButtons
-                task={task}
-                busy={busyTaskId === task.id}
-                onMove={(option) => onMove(task, option)}
-              />
+              {readOnly ? null : (
+                <TransitionButtons
+                  task={task}
+                  busy={busyTaskId === task.id}
+                  onMove={(option) => onMove(task, option)}
+                />
+              )}
             </div>
           </li>
         ))}
@@ -118,7 +123,7 @@ export const JobTasks = ({
             Trạng thái
           </span>
           <span role="columnheader" className="px-3 text-right whitespace-nowrap">
-            Done / giao
+            Xong / giao
           </span>
           <span role="columnheader" className="px-3">
             Deadline
@@ -169,13 +174,17 @@ export const JobTasks = ({
               {task.isLate ? <LateBadge className="self-start" /> : null}
             </span>
             <span role="cell" className="px-3 py-2">
-              <TransitionButtons
-                task={task}
-                busy={busyTaskId === task.id}
-                onMove={(option) => onMove(task, option)}
-                size="xs"
-                max={2}
-              />
+              {readOnly ? (
+                <span className="text-xs text-foreground-subtle">—</span>
+              ) : (
+                <TransitionButtons
+                  task={task}
+                  busy={busyTaskId === task.id}
+                  onMove={(option) => onMove(task, option)}
+                  size="xs"
+                  max={2}
+                />
+              )}
             </span>
             <span role="cell" className="min-w-0 px-3">
               <Person user={task.qc} size="xs" fallback="Chưa gán" />

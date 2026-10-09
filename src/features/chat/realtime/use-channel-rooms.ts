@@ -10,8 +10,9 @@ import { retainRoom, useRealtimeStore } from "@/lib/realtime/socket";
  * - The gateway allows 300 rooms per socket (projects/tasks need some): we hold at most `max`,
  *   most recently active first.
  * - Joins are paced (the gateway token bucket refills ~15 events/s).
- * - A denied join (rate limited after a reconnect burst, or access revoked and restored) is retried
- *   with backoff while the channel is still in the sidebar.
+ * - Transient join failures (RATE_LIMITED, UNAVAILABLE, ack timeouts) are retried by the socket
+ *   client itself; a real denial (e.g. access revoked, then restored) is retried here with backoff
+ *   while the channel is still in the sidebar.
  */
 const BATCH = 6;
 const BATCH_INTERVAL_MS = 600;
@@ -71,7 +72,7 @@ export const useChannelRooms = (channelIds: readonly string[] | undefined) => {
     // pump only touches refs
   }, [key]);
 
-  // Retry denied joins (e.g. RATE_LIMITED after a reconnect re-joined everything at once).
+  // Retry denied joins (access changed back while the channel stays in the sidebar).
   useEffect(
     () =>
       useRealtimeStore.subscribe((state) => {

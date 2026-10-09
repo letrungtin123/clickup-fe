@@ -15,11 +15,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TaskDetail } from "@/contracts/work";
+import { useSessionContext } from "@/features/auth/hooks";
 import { useRealtimeEvent, useRealtimeRoom } from "@/lib/realtime/hooks";
 import { scheduleInvalidate } from "@/lib/realtime/socket";
 import { qk } from "@/lib/query-keys";
 
 import { useDeleteTask, useTask } from "../hooks";
+import { isLocalTaskEcho } from "../local-mutations";
 import { copyText, taskUrl } from "../use-task-abilities";
 import { TASK_PANEL_PARAM, useTaskPanel } from "../use-task-panel";
 
@@ -36,11 +38,15 @@ const TaskDetailBody = lazy(() => import("./detail/task-detail-body"));
  */
 export const TaskDetailPanel = ({ taskId, mode, onClose }: TaskDetailPanelProps) => {
   const task = useTask(taskId);
+  const selfId = useSessionContext().user.id;
   useRealtimeRoom({ type: "task", id: taskId });
   // The task room also reports field changes (task:timeline accompanies every change), which keeps
-  // the panel fresh even when its project room is not joined (e.g. opened from My tasks).
+  // the panel fresh even when its project room is not joined (e.g. opened from My tasks). This tab's
+  // own changes were already applied from the API response: no refetch for their echo (PERF-07).
   useRealtimeEvent("task:timeline", (event) => {
-    if (event.taskId === taskId) scheduleInvalidate(qk.task(taskId), true);
+    if (event.taskId !== taskId) return;
+    if (event.actorId === selfId && isLocalTaskEcho(taskId)) return;
+    scheduleInvalidate(qk.task(taskId), true);
   });
 
   return (

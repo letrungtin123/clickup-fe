@@ -59,6 +59,9 @@ export const jobsApi = {
     }),
   feedback: (jobId: string, input: FeedbackInput) =>
     api.post(apiPath`/production/jobs/${jobId}/feedbacks`, JobDetailSchema, input),
+  /** "Đóng feedback, không cần làm lại" (Account / Admin, reason required); answers the job. */
+  closeFeedback: (feedbackId: string, note: string) =>
+    api.post(apiPath`/production/feedbacks/${feedbackId}/close`, JobDetailSchema, { note }),
   reassign: (feedbackId: string, input: ReassignInput) =>
     api.post(apiPath`/production/feedbacks/${feedbackId}/reassign`, CreateTasksResultSchema, input),
   chat: (jobId: string) => api.post(apiPath`/production/jobs/${jobId}/chat`, JobChatResultSchema),

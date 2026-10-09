@@ -4,7 +4,7 @@ import { z } from "zod";
 import { apiPath, buildQueryString, createApiClient } from "./client";
 import { ApiError } from "./errors";
 
-type Call = { url: string; method: string; headers: Record<string, string>; body: string | null };
+type Call = { url: string; method: string; headers: Record<string, string>; body: string | null; keepalive: boolean };
 
 const json = (status: number, body: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), {
@@ -28,7 +28,8 @@ const scriptedFetch = (script: Record<string, ((call: Call) => Response)[]>) => 
       url,
       method,
       headers: { ...(init?.headers as Record<string, string> | undefined) },
-      body: typeof init?.body === "string" ? init.body : null
+      body: typeof init?.body === "string" ? init.body : null,
+      keepalive: init?.keepalive === true
     };
     calls.push(call);
     const key = `${method} ${url.replace("http://api.test/v1", "").split("?")[0]}`;
@@ -83,6 +84,21 @@ describe("api client: CSRF", () => {
     expect(calls[2]?.headers["x-csrf-token"]).toBe("token-aaaaaaaaaaaaaaaa");
   });
 
+  it("sends keepalive saves synchronously once the token is cached (unload-time flush)", async () => {
+    const { client, calls } = makeClient({
+      "GET /auth/csrf": [csrf("token-kkkkkkkkkkkkkkkk")],
+      "PATCH /tasks/1": [() => json(200, { ok: true })]
+    });
+    expect(client.hasCsrfToken()).toBe(false);
+    client.warmCsrfToken();
+    await vi.waitFor(() => expect(client.hasCsrfToken()).toBe(true));
+    const pending = client.patch("/tasks/1", Ok, { description: null }, { keepalive: true });
+    // Issued before any await: still inside a pagehide / beforeunload handler.
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", keepalive: true });
+    expect(calls.at(-1)?.headers["x-csrf-token"]).toBe("token-kkkkkkkkkkkkkkkk");
+    await expect(pending).resolves.toEqual({ ok: true });
+  });
+
   it("shares one in-flight token request between concurrent mutations", async () => {
     const { client, calls } = makeClient({
       "GET /auth/csrf": [csrf("token-bbbbbbbbbbbbbbbb")],
@@ -132,8 +148,13 @@ describe("api client: session refresh", () => {
       ]
     });
     client.setUnauthorizedHandler(onUnauthorized);
+    // The realtime client hands every refreshed session to its socket (PERF-02).
+    const refreshed = vi.fn();
+    const stop = client.onSessionRefreshed(refreshed);
 
     await expect(client.get("/me", Ok)).resolves.toEqual({ ok: true });
+    expect(refreshed).toHaveBeenCalledTimes(1);
+    stop();
     expect(
       calls.map((call) => `${call.method} ${call.url.replace("http://api.test/v1", "")}`)
     ).toEqual(["GET /me", "GET /auth/csrf", "POST /auth/refresh", "GET /me"]);

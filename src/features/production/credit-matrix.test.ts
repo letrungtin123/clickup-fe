@@ -11,6 +11,7 @@ import {
   lookupRule,
   matrixCoverage,
   matrixToCsv,
+  nextFreeVersionDay,
   normalizeCreditCsv,
   sourceLine,
   versionAt
@@ -159,5 +160,16 @@ describe("CSV", () => {
   it("returns the raw source line for an error", () => {
     expect(sourceLine("a\nb\r\nc", 2)).toBe("b");
     expect(sourceLine("a", 5)).toBeNull();
+  });
+});
+
+describe("nextFreeVersionDay", () => {
+  it("starts the day after the last priced day named by the API, never in the past", () => {
+    const message =
+      "Đơn giá này đã được dùng để tính điểm đến ngày 12/10/2026 — hãy tạo phiên bản mới bắt đầu sau ngày đó.";
+    expect(nextFreeVersionDay(message, "2026-10-01", "2026-10-10")).toBe("2026-10-13");
+    expect(nextFreeVersionDay(message, "2026-10-01", "2026-10-20")).toBe("2026-10-20");
+    expect(nextFreeVersionDay("Không sửa được.", "2026-10-11", "2026-10-10")).toBe("2026-10-12");
+    expect(nextFreeVersionDay("Không sửa được.", "2026-12-31", "2026-10-10")).toBe("2027-01-01");
   });
 });

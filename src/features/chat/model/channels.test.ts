@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   bumpUnread,
+  channelEventChangesCapabilities,
   channelTitle,
   formatCount,
   markSidebarRead,
@@ -60,5 +61,21 @@ describe("channel helpers", () => {
       mentionCount: 0,
       lastReadSeq: 11
     });
+  });
+});
+
+describe("channelEventChangesCapabilities (BUG-WK-43)", () => {
+  const archived = { archivedAt: "2026-10-01T00:00:00.000Z", kind: "public" as const };
+  const live = { archivedAt: null, kind: "public" as const };
+
+  it("re-reads capabilities when a channel is unarchived (an 'updated' event)", () => {
+    expect(channelEventChangesCapabilities(archived, { kind: "updated", channel: live })).toBe(true);
+  });
+
+  it("re-reads them on archive and kind changes, not on plain metadata edits", () => {
+    expect(channelEventChangesCapabilities(live, { kind: "archived", channel: archived })).toBe(true);
+    expect(channelEventChangesCapabilities(live, { kind: "updated", channel: { ...live, kind: "private" } })).toBe(true);
+    expect(channelEventChangesCapabilities(live, { kind: "updated", channel: live })).toBe(false);
+    expect(channelEventChangesCapabilities(undefined, { kind: "updated", channel: live })).toBe(false);
   });
 });

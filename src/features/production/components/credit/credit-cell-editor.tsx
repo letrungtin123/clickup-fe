@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { BadgeCheck, History, Info, PencilLine, Trash2 } from "lucide-react";
+import { BadgeCheck, CalendarPlus, History, Info, PencilLine, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { CreditRule, Process, ProductionProject } from "@/contracts/production-catalog";
+import { isApiError } from "@/lib/api/errors";
 
-import { versionAt } from "../../credit-matrix";
+import { nextFreeVersionDay, versionAt } from "../../credit-matrix";
 import { productionErrorMessage } from "../../errors";
 import {
   dayInRange,
@@ -70,6 +71,11 @@ export const CreditCellEditor = ({
     {}
   );
   const [formError, setFormError] = useState<string | null>(null);
+  /**
+   * The price in force on that day already priced scores (409 CREDIT_RULE_IN_USE): it cannot be
+   * corrected in place; a new version must start after its last priced day (PR-12).
+   */
+  const [locked, setLocked] = useState<{ from: string; suggest: string } | null>(null);
 
   const versions = history.data?.items ?? [];
   const sameDay = versions.find((version) => version.effectiveFrom === effectiveFrom) ?? null;
@@ -82,7 +88,7 @@ export const CreditCellEditor = ({
       credit: !parsedCredit.ok
         ? parsedCredit.error
         : parsedCredit.value === null
-          ? "Nhập credit mỗi tấm."
+          ? "Nhập điểm mỗi tấm."
           : undefined,
       money: parsedMoney.ok ? undefined : parsedMoney.error
     };
@@ -103,7 +109,20 @@ export const CreditCellEditor = ({
           );
           onDone();
         },
-        onError: (error) => setFormError(productionErrorMessage(error))
+        onError: (error) => {
+          // A version that already priced scores is refused (409): show the API's reason and
+          // offer a new version starting after its last priced day.
+          const inUse = isApiError(error) && error.code === "CREDIT_RULE_IN_USE";
+          setLocked(
+            inUse
+              ? {
+                  from: effectiveFrom,
+                  suggest: nextFreeVersionDay(error.message, effectiveFrom, today)
+                }
+              : null
+          );
+          setFormError(productionErrorMessage(error));
+        }
       }
     );
   };
@@ -126,7 +145,7 @@ export const CreditCellEditor = ({
               <span className="font-medium text-foreground tabular-nums">
                 {formatCredit(rule.creditPerImage)}
               </span>{" "}
-              credit · <span className="tabular-nums">{formatMoney(rule.moneyPerImage)}</span> (
+              điểm · <span className="tabular-nums">{formatMoney(rule.moneyPerImage)}</span> (
               {formatVersionRange(rule.effectiveFrom, rule.effectiveTo).toLocaleLowerCase("vi")})
             </>
           ) : (
@@ -164,7 +183,7 @@ export const CreditCellEditor = ({
         >
           <div className="grid grid-cols-2 gap-3">
             <Field data-invalid={Boolean(errors.credit)}>
-              <FieldLabel htmlFor={`${ids}-credit`}>Credit / tấm</FieldLabel>
+              <FieldLabel htmlFor={`${ids}-credit`}>Điểm / tấm</FieldLabel>
               <Input
                 id={`${ids}-credit`}
                 autoFocus
@@ -202,7 +221,12 @@ export const CreditCellEditor = ({
             <DateField
               aria-labelledby={`${ids}-from`}
               value={effectiveFrom}
-              onChange={(day) => day && setEffectiveFrom(day)}
+              onChange={(day) => {
+                if (!day) return;
+                setEffectiveFrom(day);
+                setLocked(null);
+                setFormError(null);
+              }}
               today={today}
             />
           </Field>
@@ -231,10 +255,26 @@ export const CreditCellEditor = ({
           </p>
           {process.isQc && money.trim() !== "" ? (
             <p className="text-xs text-foreground-muted">
-              Quy trình QC thường chỉ có credit, không có tiền.
+              Quy trình QC thường chỉ có điểm, không có tiền.
             </p>
           ) : null}
           <FormAlert>{formError}</FormAlert>
+          {locked && locked.from === effectiveFrom ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => {
+                setEffectiveFrom(locked.suggest);
+                setLocked(null);
+                setFormError(null);
+              }}
+            >
+              <CalendarPlus />
+              Tạo phiên bản từ ngày {formatDay(locked.suggest)}…
+            </Button>
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onDone}>
               Hủy

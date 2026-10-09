@@ -26,12 +26,13 @@ import {
   type RefObject
 } from "react";
 
-import { EmptyState, ErrorState } from "@/components/shared/states";
+import { EmptyState, ErrorState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { List, Project, TaskStatus, TaskSummary } from "@/contracts/work";
 import { toneClass } from "@/lib/colors";
+import { canAutoLoadNextPage, pagedErrorKind } from "@/lib/paging";
 import { qk, type TaskQueryParams } from "@/lib/query-keys";
 
 import { flattenPages } from "../cache";
@@ -413,12 +414,14 @@ const StatusGroup = memo(function StatusGroup({
   });
   const virtualItems = virtualizer.getVirtualItems();
   const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = pages;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = pages;
+  const autoLoad = canAutoLoadNextPage({ hasNextPage, isFetchingNextPage, isFetchNextPageError });
   useEffect(() => {
-    if (!collapsed && hasNextPage && !isFetchingNextPage && lastIndex >= rows.length - 8) {
+    if (!collapsed && autoLoad && lastIndex >= rows.length - 8) {
       void fetchNextPage();
     }
-  }, [collapsed, hasNextPage, isFetchingNextPage, lastIndex, rows.length, fetchNextPage]);
+  }, [collapsed, autoLoad, lastIndex, rows.length, fetchNextPage]);
+  const errorKind = pagedErrorKind(pages);
 
   useEffect(() => {
     const map = registry.current;
@@ -527,7 +530,7 @@ const StatusGroup = memo(function StatusGroup({
         <div className="flex flex-col">
           {pages.isPending ? (
             <GroupSkeleton />
-          ) : pages.isError ? (
+          ) : errorKind === "initial" ? (
             <div className="flex items-center gap-2 px-3 py-2 text-[13px] text-foreground-muted" role="alert">
               Không tải được nhóm này.
               <Button variant="ghost" size="xs" onClick={() => void pages.refetch()}>
@@ -595,7 +598,9 @@ const StatusGroup = memo(function StatusGroup({
               );
             })}
           </div>
-          {pages.hasNextPage ? (
+          {errorKind === "next" ? (
+            <LoadMoreError className="justify-start px-2" onRetry={() => void fetchNextPage()} retrying={isFetchingNextPage} />
+          ) : pages.hasNextPage ? (
             <div className="flex h-9 items-center px-2">
               <Button
                 variant="ghost"

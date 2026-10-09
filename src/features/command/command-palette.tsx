@@ -16,6 +16,7 @@ import {
   UserRound,
   Users
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -45,13 +46,16 @@ import { useChatDialogStore } from "@/features/chat/model/ui-state";
 import { useProjects } from "@/features/projects/hooks";
 import { Highlight } from "@/features/search/components/highlight";
 import { excerptAround, foldText, messageHref } from "@/features/search/model";
+import { tasksApi } from "@/features/tasks/api";
 import { taskHref } from "@/features/tasks/use-task-panel";
 import { isModKey } from "@/lib/keyboard";
+import { qk } from "@/lib/query-keys";
 import { useThemeStore } from "@/stores/theme-store";
 import { useUiStore } from "@/stores/ui-store";
 
 import { useGlobalSearch } from "./search-api";
 import { ShellServices } from "./shell-services";
+import { asTaskKey, findTaskByKey } from "./task-key";
 
 /**
  * Global ⌘K / Ctrl+K palette: jump to conversations, navigation, actions and server-side search
@@ -103,8 +107,13 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
   const openDm = useOpenDm();
   const { logout } = useLogout();
   const search = useGlobalSearch(term);
+  const queryClient = useQueryClient();
   const trimmed = term.trim();
   const searching = trimmed.length >= 2;
+  // An exact task key ("WEB-12") + Enter opens that task (WK-50), even before results arrive.
+  const taskKey = asTaskKey(trimmed);
+  const exactTask = findTaskByKey(search.data?.tasks, taskKey);
+  const [opening, setOpening] = useState(false);
 
   const go = (path: string) => {
     onDone();
@@ -113,6 +122,26 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
   const run = (action: () => void) => {
     onDone();
     action();
+  };
+  const openTaskByKey = async (key: string) => {
+    if (exactTask) {
+      go(taskHref(exactTask));
+      return;
+    }
+    setOpening(true);
+    try {
+      const found = await tasksApi.byKey(key);
+      const detail = await queryClient.fetchQuery({
+        queryKey: qk.task(found.id),
+        queryFn: ({ signal }) => tasksApi.get(found.id, signal)
+      });
+      go(taskHref(detail));
+    } catch {
+      // Unknown key or no access: fall back to the full search.
+      go(`/search?q=${encodeURIComponent(key)}`);
+    } finally {
+      setOpening(false);
+    }
   };
 
   const projectItems = projects.data?.items ?? [];
@@ -157,6 +186,29 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           )}
         </CommandEmpty>
 
+        {taskKey ? (
+          <CommandGroup heading="Mở công việc">
+            <CommandItem
+              value={`remote:open-key:${taskKey}`}
+              onSelect={() => void openTaskByKey(taskKey)}
+            >
+              <span className="w-16 shrink-0 font-mono text-xs text-foreground-muted">
+                {exactTask?.key ?? taskKey}
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {exactTask ? exactTask.title : "Mở công việc theo mã"}
+              </span>
+              {opening ? (
+                <Spinner className="size-3.5" />
+              ) : exactTask ? (
+                <StatusPill status={exactTask.status} size="xs" className="max-w-28" />
+              ) : (
+                <CommandShortcut className="tracking-normal">Enter</CommandShortcut>
+              )}
+            </CommandItem>
+          </CommandGroup>
+        ) : null}
+
         {searching ? (
           <CommandGroup>
             <CommandItem
@@ -172,9 +224,9 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandGroup>
         ) : null}
 
-        {results && results.tasks.length > 0 ? (
+        {results && results.tasks.some((task) => task.id !== exactTask?.id) ? (
           <CommandGroup heading="Công việc">
-            {results.tasks.map((task) => (
+            {results.tasks.filter((task) => task.id !== exactTask?.id).map((task) => (
               <CommandItem
                 key={task.id}
                 value={`remote:task:${task.id}`}

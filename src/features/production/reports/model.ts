@@ -197,8 +197,8 @@ export const usesSource = (measures: readonly ReportMeasure[], source: "SCORES" 
 
 export const taskDateInfo: Record<TaskDate, { label: string; description: string }> = {
   DONE: {
-    label: "Ngày Done",
-    description: "Task được tính vào ngày hoàn thành lần đầu. Task chưa Done không được tính."
+    label: "Ngày xong",
+    description: "Task được tính vào ngày hoàn thành lần đầu. Task chưa xong không được tính."
   },
   ASSIGNED: {
     label: "Ngày giao",
@@ -265,7 +265,10 @@ export const recentMonths = (today: string, count = 12) => {
 export type IdFilterKey =
   "user" | "team" | "project" | "client" | "process" | "shift" | "status" | "job" | "tag";
 
-export const filterLabels: Record<IdFilterKey | "taskKind" | "scoreRole" | "taskState", string> = {
+export const filterLabels: Record<
+  IdFilterKey | "taskKind" | "scoreRole" | "taskState" | "jobState",
+  string
+> = {
   user: reportDimensionInfo.user.label,
   team: reportDimensionInfo.team.label,
   project: reportDimensionInfo.project.label,
@@ -277,7 +280,8 @@ export const filterLabels: Record<IdFilterKey | "taskKind" | "scoreRole" | "task
   tag: "Tag",
   taskKind: reportDimensionInfo.task_kind.label,
   scoreRole: "Điểm của",
-  taskState: "Tình trạng task"
+  taskState: "Tình trạng task",
+  jobState: "Lưu trữ job"
 };
 
 /** Sets one filter; an empty list / undefined removes it (the contract refuses empty lists). */

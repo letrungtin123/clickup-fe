@@ -26,6 +26,8 @@ export const kpiKeys = {
   targets: (year: number) => ["production", "kpi", "targets", year] as const,
   settlements: (period: string | null) => ["production", "kpi", "settlements", period] as const,
   runs: (period: string | null) => ["production", "kpi", "runs", period] as const,
+  /** Every KPI report window (provisional rows follow score entries). */
+  reportAll: () => ["production", "kpi", "report"] as const,
   report: (from: string, to: string, teamId: string | null) =>
     ["production", "kpi", "report", from, to, teamId] as const
 };

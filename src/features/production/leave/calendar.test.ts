@@ -8,7 +8,9 @@ import {
   draftDays,
   formatLeaveDates,
   formatLeaveDays,
+  formatLeaveSpan,
   leaveLoad,
+  leaveWorkdays,
   monthBounds,
   monthGrid,
   shiftDay,
@@ -99,7 +101,9 @@ describe("bucketLeaveByDay", () => {
     const full = request({ name: "NV04" });
     const byDay = bucketLeaveByDay([morning, afternoon, full], "2026-10-01", "2026-10-31");
     const entries = byDay.get("2026-10-12") ?? [];
-    expect(entries.map((entry) => [entry.request.user.displayName, entry.part, entry.amount])).toEqual([
+    expect(
+      entries.map((entry) => [entry.request.user.displayName, entry.part, entry.amount])
+    ).toEqual([
       ["NV02", "MORNING", 0.5],
       ["NV03", "AFTERNOON", 0.5],
       ["NV04", "FULL_DAY", 1]
@@ -107,7 +111,9 @@ describe("bucketLeaveByDay", () => {
     expect(leaveLoad(entries)).toBe(2);
     // A malformed half day spanning several days still only counts its first day.
     const broken = request({ part: "MORNING", toDate: "2026-10-13" });
-    expect([...bucketLeaveByDay([broken], "2026-10-01", "2026-10-31").keys()]).toEqual(["2026-10-12"]);
+    expect([...bucketLeaveByDay([broken], "2026-10-01", "2026-10-31").keys()]).toEqual([
+      "2026-10-12"
+    ]);
   });
 
   it("clips requests to the visible window at month edges", () => {
@@ -152,16 +158,18 @@ describe("request form", () => {
     expect(validateLeaveDraft(ok, today)).toBeNull();
     expect(validateLeaveDraft({ ...ok, toDate: "2026-10-13" }, today)).toMatch(/nửa ngày/);
     expect(validateLeaveDraft({ ...ok, toDate: "2026-10-11" }, today)).toMatch(/Ngày kết thúc/);
+    expect(validateLeaveDraft({ ...ok, part: "FULL_DAY", toDate: "2026-11-12" }, today)).toMatch(
+      /tối đa 31 ngày/
+    );
     expect(
-      validateLeaveDraft({ ...ok, part: "FULL_DAY", toDate: "2026-11-12" }, today)
-    ).toMatch(/tối đa 31 ngày/);
-    expect(validateLeaveDraft({ ...ok, fromDate: "2026-09-08", toDate: "2026-09-08" }, today)).toMatch(
-      /đã qua/
-    );
-    expect(validateLeaveDraft({ ...ok, fromDate: "2026-09-09", toDate: "2026-09-09" }, today)).toBeNull();
-    expect(validateLeaveDraft({ ...ok, fromDate: "2027-10-11", toDate: "2027-10-11" }, today)).toMatch(
-      /trước tối đa/
-    );
+      validateLeaveDraft({ ...ok, fromDate: "2026-09-08", toDate: "2026-09-08" }, today)
+    ).toMatch(/đã qua/);
+    expect(
+      validateLeaveDraft({ ...ok, fromDate: "2026-09-09", toDate: "2026-09-09" }, today)
+    ).toBeNull();
+    expect(
+      validateLeaveDraft({ ...ok, fromDate: "2027-10-11", toDate: "2027-10-11" }, today)
+    ).toMatch(/trước tối đa/);
   });
 });
 
@@ -172,5 +180,44 @@ describe("labels", () => {
     expect(formatLeaveDates("2026-12-28", "2027-01-02")).toBe("28/12/2026 – 02/01/2027");
     expect(formatLeaveDays(0.5)).toBe("0,5 ngày");
     expect(formatLeaveDays(3)).toBe("3 ngày");
+  });
+});
+
+describe("working days used by KPI (BUG-PR-26)", () => {
+  // 2026-10-11 is a Sunday.
+  it("counts Monday–Saturday only; a half day is 0.5 on a working day", () => {
+    expect(leaveWorkdays({ fromDate: "2026-10-11", toDate: "2026-10-11", part: "FULL_DAY" })).toBe(
+      0
+    );
+    expect(leaveWorkdays({ fromDate: "2026-10-10", toDate: "2026-10-12", part: "FULL_DAY" })).toBe(
+      2
+    );
+    expect(leaveWorkdays({ fromDate: "2026-10-05", toDate: "2026-10-11", part: "FULL_DAY" })).toBe(
+      6
+    );
+    expect(leaveWorkdays({ fromDate: "2026-10-12", toDate: "2026-10-12", part: "MORNING" })).toBe(
+      0.5
+    );
+    expect(leaveWorkdays({ fromDate: "2026-10-11", toDate: "2026-10-11", part: "AFTERNOON" })).toBe(
+      0
+    );
+    expect(leaveWorkdays({ fromDate: "2026-10-12", toDate: "2026-10-10", part: "FULL_DAY" })).toBe(
+      0
+    );
+  });
+
+  it("names the working days only when they differ from the calendar days", () => {
+    expect(
+      formatLeaveSpan({ fromDate: "2026-10-11", toDate: "2026-10-11", part: "FULL_DAY" }, 1)
+    ).toBe("1 ngày · 0 ngày làm việc");
+    expect(
+      formatLeaveSpan({ fromDate: "2026-10-10", toDate: "2026-10-12", part: "FULL_DAY" }, 3)
+    ).toBe("3 ngày · 2 ngày làm việc");
+    expect(
+      formatLeaveSpan({ fromDate: "2026-10-12", toDate: "2026-10-13", part: "FULL_DAY" }, 2)
+    ).toBe("2 ngày");
+    expect(
+      formatLeaveSpan({ fromDate: "2026-10-12", toDate: "2026-10-12", part: "MORNING" }, 0.5)
+    ).toBe("0,5 ngày");
   });
 });

@@ -24,13 +24,22 @@ export type RequestOptions<T> = {
   signal?: AbortSignal | undefined;
   schema: z.ZodType<T>;
   auth?: AuthMode;
+  /**
+   * Survive the page going away (pagehide / tab hidden): `fetch(..., { keepalive: true })`. With a
+   * cached CSRF token the request is issued synchronously, inside the unload handler.
+   */
+  keepalive?: boolean | undefined;
 };
 
 type Shorthand = {
   query?: Record<string, QueryValue> | undefined;
   signal?: AbortSignal | undefined;
   auth?: AuthMode;
+  keepalive?: boolean | undefined;
 };
+
+/** Browsers cap in-flight keepalive bodies at 64 KiB; stay below it. */
+export const maxKeepaliveBodyBytes = 60_000;
 
 type RetryState = { csrfRetried: boolean; authRetried: boolean };
 
@@ -112,6 +121,7 @@ export const createApiClient = (config: ApiClientConfig) => {
   let csrfToken: string | null = null;
   let csrfInflight: Promise<string> | null = null;
   let refreshInflight: Promise<boolean> | null = null;
+  const refreshListeners = new Set<() => void>();
   let unauthorizedHandler: (() => void) | null = null;
 
   const url = (path: string, query?: Record<string, QueryValue>) =>
@@ -173,12 +183,16 @@ export const createApiClient = (config: ApiClientConfig) => {
     if (options.signal) {
       init.signal = options.signal;
     }
+    if (options.keepalive) {
+      init.keepalive = true;
+    }
     if (options.body !== undefined) {
       headers["content-type"] = "application/json";
       init.body = JSON.stringify(options.body);
     }
     if (method !== "GET") {
-      headers[csrfHeaderName] = await getCsrfToken();
+      // No await when the token is cached: the request leaves synchronously (keepalive on unload).
+      headers[csrfHeaderName] = csrfToken ?? (await getCsrfToken());
     }
 
     const response = await send(url(path, options.query), init);
@@ -229,7 +243,16 @@ export const createApiClient = (config: ApiClientConfig) => {
       auth: "none"
     })
       .then(
-        () => true,
+        () => {
+          for (const listener of [...refreshListeners]) {
+            try {
+              listener();
+            } catch {
+              // A listener failing must not turn a successful refresh into a failure.
+            }
+          }
+          return true;
+        },
         () => false
       )
       .finally(() => {
@@ -252,6 +275,13 @@ export const createApiClient = (config: ApiClientConfig) => {
     put: withBody("PUT"),
     delete: withBody("DELETE"),
     refreshSession,
+    /** Runs after every successful session refresh (e.g. to hand the new token to the open socket). */
+    onSessionRefreshed: (listener: () => void) => {
+      refreshListeners.add(listener);
+      return () => {
+        refreshListeners.delete(listener);
+      };
+    },
     /** Called when a request is definitively unauthenticated (refresh failed). */
     setUnauthorizedHandler: (handler: (() => void) | null) => {
       unauthorizedHandler = handler;
@@ -259,6 +289,12 @@ export const createApiClient = (config: ApiClientConfig) => {
     /** Forget the cached CSRF token (e.g. after logout). The cookie stays; the next unsafe call refetches. */
     resetCsrfToken: () => {
       csrfToken = null;
+    },
+    /** True when an unsafe request can be sent without first fetching a CSRF token. */
+    hasCsrfToken: () => csrfToken !== null,
+    /** Fetches the CSRF token ahead of time (before an unload-time keepalive save). */
+    warmCsrfToken: () => {
+      if (csrfToken === null) void getCsrfToken().catch(() => undefined);
     }
   };
 };

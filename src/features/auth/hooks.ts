@@ -11,6 +11,7 @@ import { disconnectRealtime } from "@/lib/realtime/socket";
 import { authApi } from "./api";
 import { can as canFn, type PermissionLike } from "./permissions";
 import { SessionValueContext } from "./session-context";
+import { announceSession } from "./session-sync";
 
 export const sessionQueryOptions = {
   queryKey: qk.session(),
@@ -76,7 +77,11 @@ export const useLogout = () => {
   const mutation = useMutation({
     mutationFn: authApi.logout,
     meta: { errorMessage: false },
-    onSettled: () => endSession("/login")
+    onSettled: () => {
+      // The cookies are gone for every tab: tell the others to leave too (BUG-WK-16).
+      announceSession({ type: "signed-out" });
+      endSession("/login");
+    }
   });
 
   const logout = useCallback(() => mutation.mutate(), [mutation]);

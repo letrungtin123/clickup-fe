@@ -8,6 +8,7 @@ import { qk } from "@/lib/query-keys";
 import { tasksApi } from "./api";
 import { reconcileTask } from "./cache";
 import { confirmAction } from "./confirm-store";
+import { markLocalTaskMutation } from "./local-mutations";
 import { taskErrorMessage } from "./errors";
 
 /** Removes an attachment after confirmation and patches the task caches. */
@@ -23,6 +24,7 @@ export const useDeleteAttachment = (task: TaskDetail) => {
     });
     if (!ok) return;
     try {
+      markLocalTaskMutation(task.id);
       await tasksApi.deleteAttachment(attachment.id);
       const detail = client.getQueryData<TaskDetail>(qk.task(task.id));
       if (detail) {

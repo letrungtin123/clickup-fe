@@ -14,15 +14,8 @@ import { usePermissions, useSessionContext } from "@/features/auth/hooks";
 import { InboxWidgetContent } from "@/features/notifications/components/inbox-widget";
 import { useProjects } from "@/features/projects/hooks";
 import { MyTasksWidget } from "@/features/tasks/components/my-tasks-list";
+import { greetingFor } from "@/lib/greeting";
 import { useUiStore } from "@/stores/ui-store";
-
-const greetingFor = (date: Date) => {
-  const hour = date.getHours();
-  if (hour < 11) return "Chào buổi sáng";
-  if (hour < 14) return "Chào buổi trưa";
-  if (hour < 18) return "Chào buổi chiều";
-  return "Chào buổi tối";
-};
 
 export const HomeRoute = () => {
   const session = useSessionContext();

@@ -30,10 +30,10 @@ import type { ProductionTask } from "@/contracts/production-jobs";
 
 import { fieldsFor, toCustomValuesPayload, validateCustomValues } from "../../custom-fields";
 import { productionErrorMessage } from "../../errors";
-import { todayIn } from "../../format";
+import { formatNumber, todayIn } from "../../format";
 import { useCustomFields, useProcesses, useProductionMe, useShifts, useTags } from "../../hooks";
-import { useProductionTask, useTaskMutations } from "../../jobs-hooks";
-import { formatDateTime, relativeDeadline } from "../../jobs-model";
+import { useCachedJob, useProductionTask, useTaskMutations } from "../../jobs-hooks";
+import { canSeeTask, formatDateTime, relativeDeadline } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
 import { sheetOnPhone } from "../../ui";
 import { CustomFieldsForm, CustomFieldValue } from "../custom-field-input";
@@ -107,9 +107,18 @@ const TaskDetailBody = ({
   const mover = useTaskMover();
   const [dialog, setDialog] = useState<"assign" | "qty" | "edit" | null>(null);
   const taskFields = useMemo(() => fieldsFor(fields.data?.items ?? [], "TASK"), [fields.data]);
+  const job = useCachedJob(task.jobId);
   const deadline = relativeDeadline(task.deadline);
   const late = task.isLate;
-  const { canAssign, canEdit, canEditQty } = task.capabilities;
+  // Tasks of an archived job are read-only (the API refuses changes too).
+  const archived = task.jobArchived || (job?.archived ?? false);
+  const caps = archived
+    ? { transitions: [], canAssign: false, canEdit: false, canEditQty: false }
+    : task.capabilities;
+  const { canAssign, canEdit, canEditQty } = caps;
+  const jobLeaderId = job?.leader.id ?? null;
+  const mentionable = (personId: string) =>
+    canSeeTask(personId, people.roles.get(personId), task, jobLeaderId);
 
   return (
     <div className={cn("flex flex-col gap-5", variant === "sheet" ? "px-4 pt-1 pb-6 md:px-5" : "")}>
@@ -135,11 +144,16 @@ const TaskDetailBody = ({
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip status={task.status} />
           {task.qcFailCount > 0 ? (
-            <span className="text-xs text-danger">QC không đạt {task.qcFailCount} lần</span>
+            <span className="text-xs text-danger">QC trả lại {task.qcFailCount} lần</span>
           ) : null}
         </div>
+        {archived ? (
+          <p className="text-xs text-foreground-muted">Job đã lưu trữ — task chỉ xem được.</p>
+        ) : null}
         <TransitionButtons
-          task={task}
+          task={
+            archived ? { ...task, capabilities: { ...task.capabilities, transitions: [] } } : task
+          }
           busy={mover.isPending}
           onMove={(option) => mover.start(task, option)}
           size="sm"
@@ -162,7 +176,7 @@ const TaskDetailBody = ({
           </span>
           <span className="text-xs text-foreground-muted">
             {" "}
-            {task.qtyDone !== null ? "done / giao" : "được giao"}
+            {task.qtyDone !== null ? "xong / giao" : "được giao"}
           </span>
         </Fact>
         <Fact label="Deadline">
@@ -181,12 +195,12 @@ const TaskDetailBody = ({
           ) : null}
         </Fact>
         <Fact label="Giao lúc">{formatDateTime(task.assignedAt, timeZone)}</Fact>
-        {task.doneAt ? <Fact label="Done lúc">{formatDateTime(task.doneAt, timeZone)}</Fact> : null}
+        {task.doneAt ? <Fact label="Xong lúc">{formatDateTime(task.doneAt, timeZone)}</Fact> : null}
         {task.checkedAt ? (
-          <Fact label="Checked lúc">{formatDateTime(task.checkedAt, timeZone)}</Fact>
+          <Fact label="Kiểm lúc">{formatDateTime(task.checkedAt, timeZone)}</Fact>
         ) : null}
         {task.otHours !== null ? (
-          <Fact label="Giờ OT">{String(task.otHours).replace(".", ",")} giờ</Fact>
+          <Fact label="Giờ OT">{formatNumber(task.otHours)} giờ</Fact>
         ) : null}
       </dl>
 
@@ -229,7 +243,7 @@ const TaskDetailBody = ({
           {canEditQty && task.doneAt ? (
             <Button variant="outline" size="sm" onClick={() => setDialog("qty")}>
               <SlidersHorizontal />
-              Sửa số tấm done
+              Sửa số tấm đã xong
             </Button>
           ) : null}
           {canEdit ? (
@@ -258,6 +272,8 @@ const TaskDetailBody = ({
         entity="tasks"
         id={task.id}
         people={people}
+        mentionable={mentionable}
+        readOnly={archived}
         onOpenTask={onOpenTask}
         className="border-t pt-4"
       />
@@ -356,7 +372,7 @@ const AssignDialog = ({
           />
           {done ? (
             <FieldDescription className="text-xs">
-              Task đã Done nên không đổi người làm.
+              Task đã xong nên không đổi người làm.
             </FieldDescription>
           ) : null}
         </Field>
@@ -447,7 +463,7 @@ const QtyDialog = ({
         </DialogHeader>
         <Field>
           <FieldLabel htmlFor={`${ids}-qty`}>
-            Số tấm done (hiện tại {task.qtyDone ?? "—"})
+            Số tấm đã xong (hiện tại {task.qtyDone ?? "—"})
           </FieldLabel>
           <Input
             id={`${ids}-qty`}
@@ -573,7 +589,7 @@ const EditTaskDialog = ({
             <DialogTitle>Sửa task #{task.number}</DialogTitle>
             <DialogDescription>
               {done
-                ? "Task đã Done: chỉ sửa được deadline, ghi chú, trường tùy chỉnh và tag."
+                ? "Task đã xong: chỉ sửa được deadline, ghi chú, trường tùy chỉnh và tag."
                 : "Mọi thay đổi được ghi vào lịch sử task."}
             </DialogDescription>
           </DialogHeader>

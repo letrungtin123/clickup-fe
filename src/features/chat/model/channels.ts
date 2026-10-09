@@ -152,3 +152,17 @@ export const markSidebarRead = (channel: ChatChannel, seq: number): ChatChannel 
     mentionCount: unreadCount === 0 ? 0 : channel.mentionCount
   };
 };
+
+/**
+ * Must the viewer's capabilities (canPost, canJoin…) be re-read after a `chat:channel` event? They
+ * follow the archived flag and the channel kind. Unarchiving arrives as an "updated" event, so the
+ * flag is compared, not the event kind (BUG-WK-43: viewers could not post until a manual refetch).
+ */
+export const channelEventChangesCapabilities = (
+  cached: Pick<ChatChannelInfo, "archivedAt" | "kind"> | undefined,
+  event: { kind: string; channel: Pick<ChatChannelInfo, "archivedAt" | "kind"> | null }
+) => {
+  if (event.kind === "archived") return true;
+  if (!event.channel || !cached) return false;
+  return Boolean(cached.archivedAt) !== Boolean(event.channel.archivedAt) || cached.kind !== event.channel.kind;
+};

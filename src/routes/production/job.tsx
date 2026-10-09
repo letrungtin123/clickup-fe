@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import {
   Archive,
   ArchiveRestore,
+  ChevronDown,
   ChevronLeft,
   Ellipsis,
   ExternalLink,
@@ -11,7 +12,8 @@ import {
   MessagesSquare,
   PencilLine,
   Split,
-  Undo2
+  Undo2,
+  XCircle
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -31,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { Feedback, JobDetail } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { CloseFeedbackDialog } from "@/features/production/components/jobs/close-feedback-dialog";
 import { FeedbackDialog } from "@/features/production/components/jobs/feedback-dialog";
 import {
   Fact,
@@ -57,9 +60,10 @@ import {
 } from "@/features/production/jobs-hooks";
 import {
   assignedNormalQty,
+  canSeeJob,
   formatDateTime,
-  jobProgress,
-  relativeDeadline
+  jobDeadlineCountdown,
+  jobProgress
 } from "@/features/production/jobs-model";
 import { useProductionPeople } from "@/features/production/people";
 import { useOpenTask } from "@/features/production/task-link";
@@ -125,19 +129,33 @@ const JobPage = ({ job }: { job: JobDetail }) => {
     JobDetail["capabilities"]["bulkActions"][number] | null
   >(null);
   const [reassignFor, setReassignFor] = useState<Feedback | null>(null);
+  const [closingFeedback, setClosingFeedback] = useState<Feedback | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const progress = jobProgress(job);
   // Over-allocation is about the client's images: feedback redo tasks are extra work, not extra images.
   const overBy = assignedNormalQty(job.tasks) - job.totalImages;
-  const deadline = relativeDeadline(job.deadline);
+  const deadline = jobDeadlineCountdown(job, mover.lookup.statuses);
   const late = job.lateTaskCount > 0;
   const caps = job.capabilities;
+  // Archived jobs are read-only: only restoring (and reading the chat) stays available.
+  const active = !job.archived;
+  // "Đóng feedback (không cần làm lại)": Account / Admin on an open feedback of an active job.
+  const canCloseFeedback = active && caps.canCloseFeedback;
+  const resolvedFeedbacks = job.feedbacks.filter((feedback) => feedback.status === "RESOLVED");
+  // Feedback is entered through "Ghi feedback" (and left by the system), never as a bulk move.
+  const bulkActions = active
+    ? caps.bulkActions.filter(
+        (action) => mover.lookup.byId.get(action.toStatusId)?.code !== "FEEDBACK"
+      )
+    : [];
   const desktop = breakpoint === "desktop";
   const openFeedbacks = job.feedbacks.filter((feedback) => feedback.status !== "RESOLVED");
 
+  // Anyone who can see the job opens its chat through the API (which adds them as a member);
+  // creating it stays with Leader / Account / Admin. Archived jobs only reopen an existing chat.
   const openChat = () => {
-    if (!caps.canEdit && job.channelId) {
+    if (!active && job.channelId) {
       void navigate(`/c/${job.channelId}`);
       return;
     }
@@ -155,6 +173,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
       entity="jobs"
       id={job.id}
       people={people}
+      mentionable={(personId) => canSeeJob(personId, people.roles.get(personId), job)}
+      readOnly={job.archived}
       onOpenTask={(taskId) => {
         setTimelineOpen(false);
         openTask(taskId);
@@ -210,15 +230,18 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                 <span className={cn("tabular-nums", late && "font-medium text-danger")}>
                   {formatDateTime(job.deadline, timeZone, true)}
                 </span>
-                <span
-                  className={cn(
-                    "block text-xs",
-                    deadline.late ? "text-danger" : "text-foreground-muted"
-                  )}
-                >
-                  {deadline.label}
-                  {late ? ` · ${job.lateTaskCount} task trễ` : ""}
-                </span>
+                {deadline || late ? (
+                  <span
+                    className={cn(
+                      "block text-xs",
+                      deadline?.late ? "text-danger" : "text-foreground-muted"
+                    )}
+                  >
+                    {[deadline?.label, late ? `${job.lateTaskCount} task trễ` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : null}
               </Fact>
               <Fact label="Thư mục ảnh">
                 {job.driveLink ? (
@@ -257,27 +280,57 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                 hint={overBy > 0 ? `vượt ${overBy}` : undefined}
               />
               <ProgressStat
-                label="Đã done"
+                label="Đã xong"
                 value={job.qtyDone}
                 percent={progress.done}
                 tone="brand"
               />
               <ProgressStat
-                label="Đã checked"
+                label="Đã kiểm"
                 value={job.qtyChecked}
                 percent={progress.checked}
                 tone="success"
               />
             </section>
 
+            {job.archived ? (
+              <div
+                role="status"
+                className="flex flex-col gap-2 rounded-xl border border-border-strong bg-muted/60 px-3 py-2.5 text-[13px] sm:flex-row sm:items-center"
+              >
+                <p className="flex min-w-0 flex-1 items-start gap-2">
+                  <Archive
+                    className="mt-0.5 size-4 shrink-0 text-foreground-muted"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Job đã lưu trữ nên chỉ xem được: không chia task, chuyển trạng thái, ghi
+                    feedback hay sửa job.
+                    {caps.canArchive ? " Khôi phục job để làm tiếp." : ""}
+                  </span>
+                </p>
+                {caps.canArchive ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 self-start bg-surface sm:self-auto"
+                    onClick={() => setDialog("archive")}
+                  >
+                    <ArchiveRestore />
+                    Khôi phục job
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap items-center gap-2">
-              {caps.canSplit ? (
+              {caps.canSplit && active ? (
                 <Button onClick={() => setDialog("split")}>
                   <Split />
                   Chia task
                 </Button>
               ) : null}
-              {caps.bulkActions.map((action) => (
+              {bulkActions.map((action) => (
                 <Button
                   key={action.toStatusId}
                   variant="outline"
@@ -288,13 +341,13 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   <span className="text-foreground-muted tabular-nums">· {action.taskCount}</span>
                 </Button>
               ))}
-              {caps.canFeedback ? (
+              {caps.canFeedback && active ? (
                 <Button variant="outline" onClick={() => setDialog("feedback")}>
                   <MessageCircleWarning />
                   Ghi feedback
                 </Button>
               ) : null}
-              {caps.canEdit || job.channelId ? (
+              {(caps.canEdit && active) || job.channelId ? (
                 <Button variant="outline" onClick={openChat} disabled={chat.isPending}>
                   {chat.isPending ? <Spinner /> : <MessagesSquare />}
                   Nhóm chat
@@ -306,7 +359,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   Hoạt động
                 </Button>
               ) : null}
-              {caps.canEdit || caps.canArchive ? (
+              {(caps.canEdit && active) || caps.canArchive ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={<Button variant="ghost" size="icon" aria-label="Tùy chọn job" />}
@@ -314,7 +367,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                     <Ellipsis />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
-                    {caps.canEdit ? (
+                    {caps.canEdit && active ? (
                       <DropdownMenuItem onClick={() => setDialog("edit")}>
                         <PencilLine />
                         Sửa job
@@ -322,7 +375,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                     ) : null}
                     {caps.canArchive ? (
                       <>
-                        {caps.canEdit ? <DropdownMenuSeparator /> : null}
+                        {caps.canEdit && active ? <DropdownMenuSeparator /> : null}
                         <DropdownMenuItem onClick={() => setDialog("archive")}>
                           {job.archived ? <ArchiveRestore /> : <Archive />}
                           {job.archived ? "Khôi phục job" : "Lưu trữ job"}
@@ -362,21 +415,39 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                         {formatDateTime(feedback.createdAt, timeZone, true)}
                       </p>
                     </div>
-                    {caps.canSplit ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 bg-surface"
-                        onClick={() => setReassignFor(feedback)}
-                      >
-                        <Undo2 />
-                        Giao lại
-                      </Button>
+                    {(caps.canSplit && active) || canCloseFeedback ? (
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {caps.canSplit && active ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-surface"
+                            onClick={() => setReassignFor(feedback)}
+                          >
+                            <Undo2 />
+                            Giao lại
+                          </Button>
+                        ) : null}
+                        {canCloseFeedback ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setClosingFeedback(feedback)}
+                          >
+                            <XCircle />
+                            Đóng feedback (không cần làm lại)
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </li>
                 ))}
               </ul>
             </section>
+          ) : null}
+
+          {resolvedFeedbacks.length > 0 ? (
+            <ResolvedFeedbacks feedbacks={resolvedFeedbacks} timeZone={timeZone} />
           ) : null}
 
           <section aria-labelledby="job-tasks" className="flex flex-col gap-2">
@@ -393,6 +464,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
               onOpen={openTask}
               onMove={(task, option) => mover.start(task, option)}
               busyTaskId={mover.pendingTaskId}
+              readOnly={!active}
             />
           </section>
         </motion.div>
@@ -442,6 +514,14 @@ const JobPage = ({ job }: { job: JobDetail }) => {
             onClose={() => setReassignFor(null)}
           />
         </>
+      ) : null}
+      {canCloseFeedback ? (
+        <CloseFeedbackDialog
+          key={`close-${closingFeedback?.id ?? "none"}`}
+          jobId={job.id}
+          feedback={closingFeedback}
+          onClose={() => setClosingFeedback(null)}
+        />
       ) : null}
       {caps.canFeedback ? (
         <FeedbackDialog
@@ -531,4 +611,55 @@ const ProgressStat = ({
     </span>
     {percent !== undefined ? <MiniBar value={percent} tone={tone} className="h-1.5" /> : null}
   </div>
+);
+
+/** Client feedback already handled: re-done and checked, or closed without rework (with the reason). */
+const ResolvedFeedbacks = ({
+  feedbacks,
+  timeZone
+}: {
+  feedbacks: Feedback[];
+  timeZone: string;
+}) => (
+  <details className="group rounded-xl border bg-surface shadow-xs">
+    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+      <ChevronDown
+        className="size-4 text-foreground-muted transition-transform group-open:rotate-180"
+        aria-hidden="true"
+      />
+      Feedback đã xử lý
+      <span className="text-xs font-normal text-foreground-muted tabular-nums">
+        {feedbacks.length}
+      </span>
+    </summary>
+    <ul className="flex flex-col divide-y border-t">
+      {feedbacks.map((feedback) => (
+        <li key={feedback.id} className="flex flex-col gap-1 px-3 py-2.5 text-[13px]">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium">
+              {feedback.type === "WRONG" ? "Sai — làm lại" : "Yêu cầu thêm"}
+            </span>
+            <span
+              className={cn(
+                "rounded-md px-1.5 py-px text-[11px] font-medium",
+                feedback.resolution === "CLOSED"
+                  ? "bg-muted text-foreground-muted"
+                  : "bg-success-soft text-success"
+              )}
+            >
+              {feedback.resolution === "CLOSED" ? "Đã đóng, không cần làm lại" : "Đã làm lại xong"}
+            </span>
+          </p>
+          <p className="whitespace-pre-wrap text-foreground-muted">{feedback.note}</p>
+          {feedback.resolutionNote ? (
+            <p className="text-xs whitespace-pre-wrap">Lý do: {feedback.resolutionNote}</p>
+          ) : null}
+          <p className="text-[11px] text-foreground-subtle">
+            {feedback.resolvedBy ? `${feedback.resolvedBy.displayName} · ` : ""}
+            {formatDateTime(feedback.resolvedAt, timeZone, true)}
+          </p>
+        </li>
+      ))}
+    </ul>
+  </details>
 );

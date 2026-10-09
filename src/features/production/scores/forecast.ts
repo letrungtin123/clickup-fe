@@ -1,6 +1,9 @@
 import type { ForecastTone, ScoreForecast } from "@/contracts/production-scores";
 
-import { formatCredit } from "../format";
+import { formatCredit, formatPercent } from "../format";
+
+/** API percents are already ×100 (94.65 → "94,7%"); one shared formatter (format.ts). */
+export { formatPercent };
 
 /**
  * KPI forecast presentation (SPEC Phase 3 §5, PLAN §10 "Dự báo KPI"): the API decides the tone;
@@ -24,14 +27,6 @@ export const forecastLabel = (forecast: Pick<ScoreForecast, "tone" | "daysLeft">
   forecast.daysLeft <= 0 && (forecast.tone === "AT_RISK" || forecast.tone === "BEHIND")
     ? "Không đạt KPI"
     : forecastToneInfo[forecast.tone].label;
-
-const percentFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
-
-/** API percents are already ×100 (94.65 → "94,7%"); null → "—". */
-export const formatPercent = (value: number | null | undefined) =>
-  value === null || value === undefined || !Number.isFinite(value)
-    ? "—"
-    : `${percentFormatter.format(value)}%`;
 
 /** Signed points difference: +12,50 / −3,00. */
 export const formatSignedCredit = (value: number | null | undefined) => {

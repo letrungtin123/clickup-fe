@@ -11,6 +11,8 @@ import type {
   TaskTransitionOption
 } from "@/contracts/production-jobs";
 
+import { formatNumber } from "./format";
+
 /**
  * Pure helpers for production jobs and tasks (SPEC Phase 2, PD-014). The API decides what is allowed
  * (task.capabilities / job.capabilities); these only shape data for display and give instant form
@@ -79,15 +81,23 @@ export const isoToZoned = (iso: string, timeZone: string) => {
   };
 };
 
-/** "17:30 · 09/10" (short) or "17:30, 09/10/2026" (long) in the organization timezone. */
-export const formatDateTime = (iso: string | null | undefined, timeZone: string, long = false) => {
+/**
+ * "17:30 · 09/10" (short) or "17:30, 09/10/2026" (long) in the organization timezone. The short
+ * form adds the year when it is not the current one ("17:30 · 09/10/2025", BUG-PR-26).
+ */
+export const formatDateTime = (
+  iso: string | null | undefined,
+  timeZone: string,
+  long = false,
+  now: Date = new Date()
+) => {
   if (!iso) return "—";
   const p = partsIn(new Date(iso), timeZone);
   const pad = (value: number) => String(value).padStart(2, "0");
   const time = `${pad(p.hour)}:${pad(p.minute)}`;
-  return long
-    ? `${time}, ${pad(p.day)}/${pad(p.month)}/${p.year}`
-    : `${time} · ${pad(p.day)}/${pad(p.month)}`;
+  if (long) return `${time}, ${pad(p.day)}/${pad(p.month)}/${p.year}`;
+  const year = p.year === partsIn(now, timeZone).year ? "" : `/${p.year}`;
+  return `${time} · ${pad(p.day)}/${pad(p.month)}${year}`;
 };
 
 /** Relative wording for deadlines: "còn 3 giờ", "trễ 2 ngày". */
@@ -103,6 +113,36 @@ export const relativeDeadline = (iso: string, now: Date = new Date()) => {
         : `${Math.round(minutes / (24 * 60))} ngày`;
   return { late, label: late ? `trễ ${label}` : `còn ${label}` };
 };
+
+type FinishMeta = Pick<ProductionStatus, "id" | "code" | "sortOrder" | "isTerminal">;
+
+/**
+ * Statuses past production (BE finishedStatusIds): Complete and every later status, or terminal.
+ * Without the workflow the default codes are used.
+ */
+export const isFinishedStatus = (
+  status: Pick<ProductionStatus, "id" | "code"> | null,
+  statuses: readonly FinishMeta[]
+) => {
+  if (!status) return false;
+  const complete = statuses.find((item) => item.code === "COMPLETE");
+  const current = statuses.find((item) => item.id === status.id);
+  if (!complete || !current) return ["COMPLETE", "DELIVERING", "DELIVERED"].includes(status.code);
+  return current.isTerminal || current.sortOrder >= complete.sortOrder;
+};
+
+/**
+ * The job deadline's countdown ("còn 3 giờ", "trễ 2 ngày"), or null once the job is complete or
+ * delivered with no client feedback open — a countdown means nothing then (BUG-PR-26).
+ */
+export const jobDeadlineCountdown = (
+  job: Pick<JobSummary, "deadline" | "status" | "openFeedbackCount">,
+  statuses: readonly FinishMeta[],
+  now: Date = new Date()
+) =>
+  job.openFeedbackCount === 0 && isFinishedStatus(job.status, statuses)
+    ? null
+    : relativeDeadline(job.deadline, now);
 
 /** SPEC Phase 2 §2: a task's default deadline is the job deadline minus the project's QC buffer. */
 export const defaultTaskDeadline = (jobDeadline: string, qcBufferHours: number) =>
@@ -258,6 +298,63 @@ export const qcActions = (
     }) ?? null;
   return { pass, fail };
 };
+
+// Overview agenda -----------------------------------------------------------------------------------------
+
+/**
+ * "Việc cần làm" on the production overview: open tasks, the not-yet-done ones that are late or
+ * due today (organization day), and the next few to work on — late first, then by deadline; tasks
+ * already done (waiting for QC / the Leader) come last and carry no deadline countdown.
+ */
+export const taskAgenda = <T extends Pick<ProductionTask, "id" | "deadline" | "isLate" | "doneAt">>(
+  tasks: readonly T[],
+  timeZone: string,
+  now: Date = new Date(),
+  take = 5
+) => {
+  const today = isoToZoned(now.toISOString(), timeZone).day;
+  const todo = tasks.filter((task) => task.doneAt === null);
+  const late = new Set(
+    todo.filter((task) => task.isLate || new Date(task.deadline) < now).map((task) => task.id)
+  );
+  const dueToday = todo.filter(
+    (task) => !late.has(task.id) && isoToZoned(task.deadline, timeZone).day === today
+  ).length;
+  const rank = (task: T) => (late.has(task.id) ? 0 : task.doneAt === null ? 1 : 2);
+  const next = [...tasks]
+    .sort(
+      (a, b) => rank(a) - rank(b) || new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+    )
+    .slice(0, take);
+  return { open: tasks.length, todo: todo.length, late: late.size, dueToday, next };
+};
+
+// Paging --------------------------------------------------------------------------------------------------
+
+/**
+ * Rows of an infinite (cursor) list in page order without duplicates: a row whose sort key changed
+ * between two page fetches can show up on both pages.
+ */
+export const flattenPages = <T extends { id: string }>(
+  pages: readonly { items: readonly T[] }[] | undefined
+): T[] => {
+  const seen = new Set<string>();
+  const rows: T[] = [];
+  for (const page of pages ?? []) {
+    for (const item of page.items) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      rows.push(item);
+    }
+  }
+  return rows;
+};
+
+/** "200 task đầu theo deadline" while more pages exist, otherwise "Tất cả 37 task". */
+export const pagedCountLabel = (count: number, hasMore: boolean, noun = "task") =>
+  hasMore
+    ? `Đang hiện ${formatNumber(count)} ${noun} đầu (theo deadline)`
+    : `Tất cả ${formatNumber(count)} ${noun}`;
 
 // Kanban --------------------------------------------------------------------------------------------------
 
@@ -470,9 +567,11 @@ export const describeTaskLog = (
         { text: " sang " },
         { text: str(to.name) ?? "?", strong: true }
       ];
-      if (num(to.qtyDone) !== null) segments.push({ text: ` · ${num(to.qtyDone)} tấm` });
-      if (num(to.otHours) !== null) segments.push({ text: ` · ${num(to.otHours)} giờ OT` });
-      if (to.qcFail === true) segments.push({ text: " · QC không đạt", tone: "danger" });
+      if (num(to.qtyDone) !== null)
+        segments.push({ text: ` · ${formatNumber(num(to.qtyDone))} tấm` });
+      if (num(to.otHours) !== null)
+        segments.push({ text: ` · ${formatNumber(num(to.otHours))} giờ OT` });
+      if (to.qcFail === true) segments.push({ text: " · QC trả lại", tone: "danger" });
       if (to.override === true) segments.push({ text: " · chuyển ngoài luồng", tone: "warning" });
       return segments;
     }
@@ -523,6 +622,38 @@ export const describeTaskLog = (
 };
 
 // Mentions ------------------------------------------------------------------------------------------------------
+
+const seesEverything = (roles: readonly ProductionRole[] | undefined) =>
+  (roles ?? []).some((role) => role === "ACCOUNT" || role === "LEADER" || role === "ADMIN");
+
+/**
+ * Who may read a task's comments (BE canViewTask): its worker, its QC, the job's Leader and anyone
+ * with Account / Leader / Admin. Mentions are limited to them; `roles` is unknown for people the
+ * caller cannot list, who then only qualify through the task itself.
+ */
+export const canSeeTask = (
+  personId: string,
+  roles: readonly ProductionRole[] | undefined,
+  task: { assignee: { id: string }; qc: { id: string } | null },
+  jobLeaderId: string | null = null
+) =>
+  personId === task.assignee.id ||
+  personId === task.qc?.id ||
+  personId === jobLeaderId ||
+  seesEverything(roles);
+
+/** Who may read a job's timeline: Account / Leader / Admin, its Leader, its workers and QCs. */
+export const canSeeJob = (
+  personId: string,
+  roles: readonly ProductionRole[] | undefined,
+  job: {
+    leader: { id: string };
+    tasks: readonly { assignee: { id: string }; qc: { id: string } | null }[];
+  }
+) =>
+  personId === job.leader.id ||
+  seesEverything(roles) ||
+  job.tasks.some((task) => task.assignee.id === personId || task.qc?.id === personId);
 
 /** "@abc" right before the caret (start of text or after whitespace) → { query: "abc", start }. */
 export const mentionAt = (text: string, caret: number) => {

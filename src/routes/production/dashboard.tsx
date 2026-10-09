@@ -101,7 +101,7 @@ const LeaderDashboardPage = () => {
             Sản xuất
           </Link>
         }
-        title="Dashboard"
+        title="Bảng điều khiển"
         description={
           breakpoint === "mobile"
             ? undefined
@@ -204,7 +204,7 @@ const LeaderDashboardPage = () => {
                 unit="task"
                 className={data.counts.late > 0 ? "border-danger/30" : ""}
               >
-                <span>Quá hạn mà chưa Done</span>
+                <span>Quá hạn mà chưa xong</span>
               </StatCard>
               <StatCard
                 label="Sắp đến hạn"
@@ -226,7 +226,7 @@ const LeaderDashboardPage = () => {
                 </span>
               </StatCard>
               <StatCard
-                label="Done hôm nay"
+                label="Xong hôm nay"
                 icon={CircleCheckBig}
                 value={formatInteger(totals.doneToday)}
                 unit="tấm"

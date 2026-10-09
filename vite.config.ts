@@ -22,6 +22,11 @@ const vendorChunk = (id: string) => {
     return "data";
   }
 
+  // Every lucide icon is its own tiny module: one cacheable chunk instead of dozens of requests (PERF-16).
+  if (/\/node_modules\/lucide-react\//.test(normalizedId)) {
+    return "icons";
+  }
+
   // Base UI, motion, dnd-kit etc. are left to the bundler so each lazy route only loads what it uses.
   return undefined;
 };
@@ -34,6 +39,32 @@ const vendorChunk = (id: string) => {
 const unsafeProxyPath = (url: string | undefined) => {
   const path = (url ?? "").split("?")[0] ?? "";
   return /(^|\/)(\.|%2e){2}(\/|$)|%2f|%5c|%25|\\/i.test(path);
+};
+
+/**
+ * Security headers for `vite preview` (SEC-INF-07). The production reverse proxy should send the same
+ * set. connect-src: same-origin API + Socket.IO (ws/wss) and the pinned emoji data on jsDelivr
+ * (SEC-INF-15); images may be data:/blob: (upload previews) or same-origin signed storage URLs.
+ */
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' ws: wss: https://cdn.jsdelivr.net",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'"
+].join("; ");
+
+const securityHeaders: Record<string, string> = {
+  "Content-Security-Policy": contentSecurityPolicy,
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
 };
 
 /** Images may render inline; every other stored file is a download and can never run as a page (SEC-INF-03). */
@@ -113,7 +144,8 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: "127.0.0.1",
       port: 5890,
-      strictPort: true
+      strictPort: true,
+      headers: securityHeaders
     }
   };
 });

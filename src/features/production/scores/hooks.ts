@@ -1,21 +1,24 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { isApiError } from "@/lib/api/errors";
-import { useRealtimeEvent } from "@/lib/realtime/hooks";
-import { scheduleInvalidate } from "@/lib/realtime/socket";
 
 import { scoresApi } from "./api";
-import { kpiKeys, scoreKeys } from "./keys";
+import { scoreKeys } from "./keys";
 
 /** Client errors (403 private board, 400 range) are answers, not glitches: never retried. */
 export const retryUnlessClientError = (failureCount: number, error: unknown) =>
   !(isApiError(error) && error.status >= 400 && error.status < 500) && failureCount < 2;
 
-/** GET /production/scores/me for an inclusive day range (null = the current KPI period). */
+/**
+ * GET /production/scores/me for an inclusive day range (null = the current KPI period). Entries come
+ * in pages (newest first); every page repeats the range's summary and cards, read from the first.
+ */
 export const useMyScores = (range: { from: string; to: string } | null) =>
-  useQuery({
+  useInfiniteQuery({
     queryKey: scoreKeys.me(range?.from ?? null, range?.to ?? null),
-    queryFn: ({ signal }) => scoresApi.me(range ?? {}, signal),
+    queryFn: ({ pageParam, signal }) => scoresApi.me(range ?? {}, pageParam, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
     retry: retryUnlessClientError
   });
@@ -40,15 +43,8 @@ export const useScoreBoard = (period: string | null, teamId: string | null, enab
     enabled
   });
 
-/**
- * Live scores (PLAN §10 "Dự báo KPI … theo thời gian thực"): any production task change may have
- * written score entries, so scores and KPI figures are refetched (coalesced) on `production:changed`.
- * The production room is joined once for the whole shell by ProductionRuntime.
+/*
+ * Live scores (PLAN §10 "Dự báo KPI … theo thời gian thực") are kept by ProductionRuntime through
+ * live-sync.ts requestScoresRefresh: score and KPI views are marked stale on every relevant change
+ * (own or not) and refetched while on screen at most every 30 s (PERF-01, BUG-PR-19).
  */
-export const useLiveScores = () => {
-  useRealtimeEvent("production:changed", (event) => {
-    if (event.kind !== "tasks" && event.kind !== "job") return;
-    scheduleInvalidate(scoreKeys.all());
-    scheduleInvalidate(kpiKeys.all());
-  });
-};

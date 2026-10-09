@@ -246,7 +246,7 @@ export const SplitTasksDialog = ({
                             ? rule || !line.processId
                               ? "—"
                               : "Chưa có đơn giá"
-                            : `≈ ${formatCredit(earnings.credit)} credit${earnings.money !== null ? ` · ${formatMoney(earnings.money)}` : ""}`}
+                            : `≈ ${formatCredit(earnings.credit)} điểm${earnings.money !== null ? ` · ${formatMoney(earnings.money)}` : ""}`}
                       </span>
                       <Button
                         variant="ghost"

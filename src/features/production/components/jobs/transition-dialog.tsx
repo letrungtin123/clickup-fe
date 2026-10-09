@@ -18,6 +18,7 @@ import type { ProductionStatus } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 
 import { productionErrorMessage } from "../../errors";
+import { formatNumber } from "../../format";
 import { transitionAsks } from "../../jobs-model";
 import { sheetOnPhone } from "../../ui";
 import { FormAlert } from "../settings-kit";
@@ -44,7 +45,7 @@ export const TransitionDialog = ({
   const asks = option && task ? transitionAsks(task, option) : null;
   const [qty, setQty] = useState(String(task?.qtyDone ?? task?.qtyAssigned ?? ""));
   const [ot, setOt] = useState(
-    task?.otHours !== null && task?.otHours !== undefined ? String(task.otHours) : ""
+    task?.otHours !== null && task?.otHours !== undefined ? formatNumber(task.otHours) : ""
   );
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<{
@@ -121,7 +122,7 @@ export const TransitionDialog = ({
               {task
                 ? `${task.jobCode} · ${task.process.name} · ${
                     task.qtyDone !== null
-                      ? `done ${task.qtyDone}/${task.qtyAssigned}`
+                      ? `xong ${task.qtyDone}/${task.qtyAssigned}`
                       : `giao ${task.qtyAssigned}`
                   } tấm`
                 : null}

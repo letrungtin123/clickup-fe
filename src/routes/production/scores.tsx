@@ -15,12 +15,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { MyScores, ScoreTotals } from "@/contracts/production-scores";
+import type { MyScores, ScoreEntry, ScoreTotals } from "@/contracts/production-scores";
 import { useSessionContext } from "@/features/auth/hooks";
 import { formatCredit, formatInteger, formatMoney, todayIn } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
+import { flattenPages } from "@/features/production/jobs-model";
 import { MySettlements } from "@/features/production/kpi/components/my-settlements";
-import { EntriesList } from "@/features/production/scores/components/entries-list";
+import {
+  EntriesList,
+  type EntriesPaging
+} from "@/features/production/scores/components/entries-list";
 import {
   ForecastPanel,
   ForecastSkeleton
@@ -31,7 +35,7 @@ import {
   PeriodPicker,
   StatCard
 } from "@/features/production/scores/components/kit";
-import { useLiveScores, useMyScores, useScoreForecast } from "@/features/production/scores/hooks";
+import { useMyScores, useScoreForecast } from "@/features/production/scores/hooks";
 import {
   isPeriod,
   periodLabel,
@@ -58,7 +62,6 @@ export const ProductionScoresRoute = () => {
   const session = useSessionContext();
   const breakpoint = useBreakpoint();
   const [params, setParams] = useSearchParams();
-  useLiveScores();
 
   const settings = me.data?.settings;
   const closeDay = settings?.kpiCloseDay ?? 25;
@@ -191,7 +194,19 @@ const Overview = ({
           />
         </Panel>
       ) : (
-        <ScoresContent data={scores.data} period={period} isCurrent={period === current} today={today} />
+        <ScoresContent
+          data={scores.data.pages[0]!}
+          entries={flattenPages(scores.data.pages.map((page) => ({ items: page.entries })))}
+          paging={{
+            hasMore: scores.hasNextPage,
+            loading: scores.isFetchingNextPage,
+            failed: scores.isFetchNextPageError,
+            loadMore: () => void scores.fetchNextPage()
+          }}
+          period={period}
+          isCurrent={period === current}
+          today={today}
+        />
       )}
     </>
   );
@@ -208,11 +223,15 @@ const KhoanLine = ({ totals }: { totals: ScoreTotals }) =>
 
 const ScoresContent = ({
   data,
+  entries,
+  paging,
   period,
   isCurrent,
   today
 }: {
   data: MyScores;
+  entries: ScoreEntry[];
+  paging: EntriesPaging;
   period: string;
   isCurrent: boolean;
   today: string;
@@ -303,9 +322,9 @@ const ScoresContent = ({
 
       <Panel
         title="Lịch sử ghi điểm"
-        description="Mỗi lần task Done/Checked ghi một dòng; sửa số lượng sau Done thêm dòng điều chỉnh."
+        description="Mỗi lần task xong hoặc được QC kiểm ghi một dòng; sửa số tấm sau khi xong thêm dòng điều chỉnh."
       >
-        <EntriesList entries={data.entries} truncated={data.truncated} />
+        <EntriesList entries={entries} paging={paging} />
       </Panel>
     </>
   );

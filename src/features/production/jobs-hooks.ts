@@ -10,10 +10,12 @@ import {
 
 import type {
   JobDetail,
+  JobPage,
   ProductionStatusRef,
   ProductionTask,
   ProductionTaskPage
 } from "@/contracts/production-jobs";
+import { useSessionContext } from "@/features/auth/hooks";
 
 import {
   jobsApi,
@@ -31,12 +33,19 @@ import {
   type UpdateTaskInput
 } from "./jobs-api";
 import { productionKeys } from "./keys";
+import {
+  patchJobInPages,
+  patchQcQueue,
+  replaceTaskInPages,
+  requestScoresRefresh
+} from "./live-sync";
 
 /**
  * Data hooks for production jobs and tasks. Every write answers with fresh server state (the task or
- * the job with its capabilities); we store it, then invalidate the derived views (job status and
- * progress, lists, queues, timelines). Realtime `production:changed` hints (production-runtime.tsx)
- * invalidate the same keys for other people's changes.
+ * the job with its capabilities); we store it where it is cached (task, job, my tasks, QC queue, job
+ * list rows) and only refetch what derives from it server-side (job status/progress, timelines),
+ * and only while on screen. Realtime `production:changed` hints for other people's changes are
+ * handled by production-runtime.tsx / live-sync.ts (PERF-01).
  */
 
 const nextCursor = (page: { pageInfo: { hasMore: boolean; nextCursor: string | null } }) =>
@@ -61,6 +70,14 @@ export const useJob = (jobId: string | undefined) =>
     enabled: Boolean(jobId)
   });
 
+/** The job detail if it is already cached (e.g. the task was opened from its job); never fetches. */
+export const useCachedJob = (jobId: string | null | undefined) =>
+  useQuery({
+    queryKey: productionKeys.job(jobId ?? ""),
+    queryFn: ({ signal }) => jobsApi.get(jobId ?? "", signal),
+    enabled: false
+  }).data;
+
 export const useProductionTask = (taskId: string | null | undefined) =>
   useQuery({
     queryKey: productionKeys.task(taskId ?? ""),
@@ -75,19 +92,22 @@ export const useTaskScores = (taskId: string | null | undefined, enabled = true)
     enabled: Boolean(taskId) && enabled
   });
 
-export const useMyTasks = (role: MyTasksRole, includeFinished: boolean) =>
+/** My tasks in pages of MY_TASKS_PAGE (deadline order); `fetchNextPage` loads more (BUG-PR-18). */
+export const useMyTasks = (role: MyTasksRole, includeFinished: boolean, enabled = true) =>
   useInfiniteQuery({
     queryKey: productionKeys.myTasks(role, includeFinished),
     queryFn: ({ pageParam, signal }) => jobsApi.myTasks(role, includeFinished, pageParam, signal),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    enabled
   });
 
-export const useQcQueue = () =>
+export const useQcQueue = (enabled = true) =>
   useQuery({
     queryKey: productionKeys.qcQueue(),
-    queryFn: ({ signal }) => jobsApi.qcQueue(signal)
+    queryFn: ({ signal }) => jobsApi.qcQueue(signal),
+    enabled
   });
 
 export const useProductionTimeline = (entity: TimelineEntity, id: string) =>
@@ -101,7 +121,10 @@ export const useProductionTimeline = (entity: TimelineEntity, id: string) =>
 
 // --- Cache helpers ---------------------------------------------------------------------------------------
 
-/** Derived views that may change after any task or job write. */
+/**
+ * Views derived from a write on a job or several of its tasks (split, reassign, bulk move,
+ * feedback): refetched only while on screen (TanStack's default), others are marked stale.
+ */
 export const invalidateProductionViews = (
   client: QueryClient,
   jobId?: string | null,
@@ -114,36 +137,52 @@ export const invalidateProductionViews = (
     }),
     client.invalidateQueries({ queryKey: productionKeys.myTasks() }),
     client.invalidateQueries({ queryKey: productionKeys.qcQueue() }),
-    client.invalidateQueries({ queryKey: productionKeys.timeline() }),
-    ...taskIds.map((taskId) => client.invalidateQueries({ queryKey: productionKeys.task(taskId) }))
+    client.invalidateQueries({
+      queryKey: jobId ? productionKeys.timeline("jobs", jobId) : productionKeys.timeline()
+    }),
+    ...taskIds.flatMap((taskId) => [
+      client.invalidateQueries({ queryKey: productionKeys.task(taskId) }),
+      client.invalidateQueries({ queryKey: productionKeys.timeline("tasks", taskId) })
+    ])
   ]);
 
-const replaceInPages = (
-  data: InfiniteData<ProductionTaskPage> | undefined,
-  task: ProductionTask
-) =>
-  data
-    ? {
-        ...data,
-        pages: data.pages.map((page) => ({
-          ...page,
-          items: page.items.map((item) => (item.id === task.id ? task : item))
-        }))
-      }
-    : data;
+/** Stores a job the API returned: its detail and its row in every cached job list. */
+const storeJob = (client: QueryClient, job: JobDetail) => {
+  client.setQueryData(productionKeys.job(job.id), job);
+  client.setQueriesData<InfiniteData<JobPage>>({ queryKey: productionKeys.jobs() }, (data) =>
+    patchJobInPages(data, job)
+  );
+};
 
-/** Stores a task the API returned everywhere it is cached, then refreshes derived views. */
-export const applyTask = (client: QueryClient, task: ProductionTask) => {
+/**
+ * Stores a task the API returned everywhere it is cached (task, job, my tasks, QC queue) instead of
+ * refetching the 200-row lists; those are only marked stale (filters such as "finished" re-apply on
+ * the next visit). The job (status and progress are derived server-side) and the two timelines
+ * refetch while on screen.
+ */
+export const applyTask = (
+  client: QueryClient,
+  task: ProductionTask,
+  myId: string | null = null
+) => {
   client.setQueryData(productionKeys.task(task.id), task);
   void client.invalidateQueries({ queryKey: productionKeys.taskScores(task.id) });
   client.setQueryData<JobDetail>(productionKeys.job(task.jobId), (job) =>
     job ? { ...job, tasks: job.tasks.map((item) => (item.id === task.id ? task : item)) } : job
   );
+  void client.invalidateQueries({ queryKey: productionKeys.job(task.jobId), exact: true });
   client.setQueriesData<InfiniteData<ProductionTaskPage>>(
     { queryKey: productionKeys.myTasks() },
-    (data) => replaceInPages(data, task)
+    (data) => replaceTaskInPages(data, task)
   );
-  void invalidateProductionViews(client, task.jobId);
+  void client.invalidateQueries({ queryKey: productionKeys.myTasks(), refetchType: "none" });
+  client.setQueryData<ProductionTaskPage>(productionKeys.qcQueue(), (data) =>
+    patchQcQueue(data, task, myId)
+  );
+  void client.invalidateQueries({ queryKey: productionKeys.qcQueue(), refetchType: "none" });
+  void client.invalidateQueries({ queryKey: productionKeys.jobs() });
+  void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", task.jobId) });
+  void client.invalidateQueries({ queryKey: productionKeys.timeline("tasks", task.id) });
 };
 
 // --- Job writes ---------------------------------------------------------------------------------------
@@ -166,9 +205,12 @@ export const useUpdateJob = (jobId: string) => {
     mutationFn: (input: UpdateJobInput) => jobsApi.update(jobId, input),
     meta: { errorMessage: false },
     onSuccess: (job) => {
-      client.setQueryData(productionKeys.job(job.id), job);
-      void client.invalidateQueries({ queryKey: productionKeys.jobs() });
+      storeJob(client, job);
+      // Rows are patched; filtered lists (archived, deadline range) re-apply on the next visit.
+      void client.invalidateQueries({ queryKey: productionKeys.jobs(), refetchType: "none" });
       void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", jobId) });
+      // Archiving hides the job's tasks from my tasks.
+      void client.invalidateQueries({ queryKey: productionKeys.myTasks(), refetchType: "none" });
     }
   });
 };
@@ -198,12 +240,13 @@ export const useJobTransition = (jobId: string) => {
     mutationFn: (toStatusId: string) => jobsApi.transition(jobId, toStatusId),
     meta: { errorMessage: false },
     onSuccess: (result) => {
-      client.setQueryData(productionKeys.job(jobId), result.job);
+      storeJob(client, result.job);
       void invalidateProductionViews(
         client,
         jobId,
         result.job.tasks.map((task) => task.id)
       );
+      requestScoresRefresh(client);
     }
   });
 };
@@ -214,12 +257,32 @@ export const useCreateFeedback = (jobId: string) => {
     mutationFn: (input: FeedbackInput) => jobsApi.feedback(jobId, input),
     meta: { errorMessage: false },
     onSuccess: (job) => {
-      client.setQueryData(productionKeys.job(jobId), job);
+      storeJob(client, job);
       void invalidateProductionViews(
         client,
         jobId,
         job.tasks.map((task) => task.id)
       );
+      requestScoresRefresh(client);
+    }
+  });
+};
+
+/** Closes an open client feedback without rework; the parked tasks leave Feedback (API rules). */
+export const useCloseFeedback = (jobId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ feedbackId, note }: { feedbackId: string; note: string }) =>
+      jobsApi.closeFeedback(feedbackId, note),
+    meta: { errorMessage: false },
+    onSuccess: (job) => {
+      storeJob(client, job);
+      void invalidateProductionViews(
+        client,
+        jobId,
+        job.tasks.map((task) => task.id)
+      );
+      requestScoresRefresh(client);
     }
   });
 };
@@ -241,6 +304,7 @@ type TransitionVariables = {
 
 export const useTransitionTask = () => {
   const client = useQueryClient();
+  const myId = useSessionContext().user.id;
   return useMutation({
     mutationFn: ({ task, input }: TransitionVariables) => jobsApi.transitionTask(task.id, input),
     meta: { errorMessage: false },
@@ -253,7 +317,7 @@ export const useTransitionTask = () => {
       client.setQueriesData<InfiniteData<ProductionTaskPage>>(
         { queryKey: productionKeys.myTasks() },
         (data) =>
-          replaceInPages(data, {
+          replaceTaskInPages(data, {
             ...task,
             status: optimisticStatus,
             capabilities: { ...task.capabilities, transitions: [] }
@@ -264,13 +328,18 @@ export const useTransitionTask = () => {
     onError: (_error, _variables, context) => {
       for (const [key, data] of context?.snapshot ?? []) client.setQueryData(key, data);
     },
-    onSuccess: (task) => applyTask(client, task)
+    onSuccess: (task) => {
+      applyTask(client, task, myId);
+      // Done / Checked write score entries (BUG-PR-19).
+      requestScoresRefresh(client);
+    }
   });
 };
 
 export const useTaskMutations = () => {
   const client = useQueryClient();
-  const onSuccess = (task: ProductionTask) => applyTask(client, task);
+  const myId = useSessionContext().user.id;
+  const onSuccess = (task: ProductionTask) => applyTask(client, task, myId);
   return {
     update: useMutation({
       mutationFn: ({ taskId, input }: { taskId: string; input: UpdateTaskInput }) =>
@@ -282,7 +351,11 @@ export const useTaskMutations = () => {
       mutationFn: ({ taskId, input }: { taskId: string; input: QtyInput }) =>
         jobsApi.setQty(taskId, input),
       meta: { errorMessage: false },
-      onSuccess
+      onSuccess: (task: ProductionTask) => {
+        onSuccess(task);
+        // A corrected Done quantity adds adjustment score rows.
+        requestScoresRefresh(client);
+      }
     }),
     assign: useMutation({
       mutationFn: ({ taskId, input }: { taskId: string; input: AssignInput }) =>
@@ -297,7 +370,6 @@ export const useTaskMutations = () => {
 
 export const useCommentMutations = () => {
   const client = useQueryClient();
-  const refresh = () => void client.invalidateQueries({ queryKey: productionKeys.timeline() });
   return {
     add: useMutation({
       mutationFn: ({
@@ -312,18 +384,35 @@ export const useCommentMutations = () => {
         mentionedUserIds: string[];
       }) => jobsApi.comment(entity, id, body, mentionedUserIds),
       meta: { errorMessage: false },
-      onSuccess: refresh
+      // The comment's own timeline and its job's (which interleaves task comments).
+      onSuccess: (comment) => {
+        void client.invalidateQueries({
+          queryKey: productionKeys.timeline(
+            comment.entity === "JOB" ? "jobs" : "tasks",
+            comment.entityId
+          )
+        });
+        void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", comment.jobId) });
+      }
     }),
     edit: useMutation({
       mutationFn: ({ commentId, body }: { commentId: string; body: string }) =>
         jobsApi.editComment(commentId, body),
       meta: { errorMessage: false },
-      onSuccess: refresh
+      onSuccess: (comment) => {
+        void client.invalidateQueries({
+          queryKey: productionKeys.timeline(
+            comment.entity === "JOB" ? "jobs" : "tasks",
+            comment.entityId
+          )
+        });
+        void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", comment.jobId) });
+      }
     }),
     remove: useMutation({
       mutationFn: (commentId: string) => jobsApi.deleteComment(commentId),
       meta: { errorMessage: false },
-      onSuccess: refresh
+      onSuccess: () => void client.invalidateQueries({ queryKey: productionKeys.timeline() })
     })
   };
 };

@@ -26,6 +26,9 @@ export const AttachmentsSection = ({
   const files = task.attachments.filter((attachment) => !attachment.isImage);
   const pending = uploads.items.filter((item) => item.status !== "done");
   const empty = task.attachments.length === 0 && pending.length === 0;
+  // Row counters (attachmentCount) include files attached through comments; the list does not.
+  // (The detail lists at most 100 files, so the difference is only meaningful below that.)
+  const inComments = task.attachments.length < 100 ? Math.max(0, task.attachmentCount - task.attachments.length) : 0;
 
   if (empty && !canUpload) return null;
 
@@ -36,8 +39,12 @@ export const AttachmentsSection = ({
           <Paperclip className="size-3.5 text-foreground-muted" aria-hidden="true" />
           Tệp đính kèm
         </h3>
+        {/* The count is the list below; files sent with comments live in the timeline (WK-54). */}
         {task.attachments.length > 0 ? (
           <span className="text-xs text-foreground-muted tabular-nums">{task.attachments.length}</span>
+        ) : null}
+        {inComments > 0 ? (
+          <span className="text-[11px] text-foreground-subtle tabular-nums">· {inComments} trong bình luận</span>
         ) : null}
         {canUpload ? (
           <>

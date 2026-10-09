@@ -233,8 +233,8 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
           )}
           {numberField(
             "anomalyFailPercent",
-            "Ngưỡng tỉ lệ QC fail",
-            "Nhân viên có tỉ lệ fail cao hơn ngưỡng này hiện trong báo cáo bất thường.",
+            "Ngưỡng tỉ lệ QC trả lại",
+            "Nhân viên có tỉ lệ bị QC trả lại cao hơn ngưỡng này hiện trong báo cáo bất thường.",
             "%"
           )}
         </div>

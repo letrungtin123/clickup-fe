@@ -4,7 +4,6 @@ import { vi } from "date-fns/locale";
 import {
   AlertCircle,
   Ban,
-  Check,
   Copy,
   Info,
   MessageSquareReply,
@@ -14,16 +13,10 @@ import {
   SmilePlus,
   Trash2
 } from "lucide-react";
-import { memo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useState } from "react";
 
-import {
-  docToPlainText,
-  RichTextEditor,
-  RichTextView,
-  type RichTextEditorHandle
-} from "@/components/shared/rich-text";
+import { RichTextView } from "@/components/shared/rich-text/rich-text-view";
 import { UserAvatar } from "@/components/shared/user-avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +36,15 @@ import { EmojiPickerPopover, QUICK_REACTIONS } from "./emoji-picker";
 import { MessageActionSheet } from "./message-action-sheet";
 import { MessageAttachments } from "./message-attachments";
 import { useMessageActions } from "./message-context";
+
+/** The editor (Tiptap) loads only when a message is edited (PERF-16). */
+const InlineEditor = lazy(() => import("./message-inline-editor"));
+
+const EditorFallback = ({ text }: { text: string }) => (
+  <div className="mt-1 min-h-[4.75rem] rounded-lg border bg-background px-3 py-2 text-sm text-foreground-muted shadow-xs" aria-busy="true">
+    {text}
+  </div>
+);
 
 const fullDate = (iso: string) =>
   format(new Date(iso), "EEEE, d MMMM yyyy 'lúc' HH:mm", { locale: vi });
@@ -166,7 +168,9 @@ export const MessageItem = memo(function MessageItem({
           ) : null}
 
           {editing ? (
-            <InlineEditor message={message} />
+            <Suspense fallback={<EditorFallback text={message.text} />}>
+              <InlineEditor message={message} />
+            </Suspense>
           ) : message.isDeleted ? (
             <p className="flex items-center gap-1.5 py-0.5 text-[13px] text-foreground-subtle italic">
               <Ban className="size-3.5" aria-hidden="true" />
@@ -518,52 +522,3 @@ const SystemRow = ({ message }: { message: ChatMessage }) => {
   );
 };
 
-/** Inline edit: Enter saves, Shift+Enter breaks the line, Esc cancels. */
-const InlineEditor = ({ message }: { message: ChatMessage }) => {
-  const actions = useMessageActions();
-  const handle = useRef<RichTextEditorHandle | null>(null);
-  const save = () => {
-    const doc = handle.current?.getDoc();
-    if (!doc || handle.current?.isEmpty()) {
-      if (message.attachments.length === 0) {
-        actions.requestDelete(message);
-        return;
-      }
-    }
-    if (doc) actions.saveEdit(message, doc, docToPlainText(doc));
-  };
-  return (
-    <div
-      className="mt-1 rounded-lg border bg-background px-3 py-2 shadow-xs focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-ring/30"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          actions.cancelEdit();
-        }
-      }}
-    >
-      <RichTextEditor
-        ref={handle}
-        variant="message"
-        value={message.body}
-        submitOnEnter
-        autoFocus
-        mentionSource={actions.mentionSource}
-        onSubmit={(doc) => actions.saveEdit(message, doc, docToPlainText(doc))}
-        aria-label="Sửa tin nhắn"
-      />
-      <div className="mt-2 flex items-center justify-end gap-2">
-        <span className="mr-auto hidden text-[11px] text-foreground-subtle sm:inline">
-          Esc để hủy · Enter để lưu
-        </span>
-        <Button size="sm" variant="ghost" onClick={actions.cancelEdit}>
-          Hủy
-        </Button>
-        <Button size="sm" onClick={save}>
-          <Check />
-          Lưu
-        </Button>
-      </div>
-    </div>
-  );
-};

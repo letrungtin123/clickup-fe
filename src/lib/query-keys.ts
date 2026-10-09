@@ -120,7 +120,8 @@ export const qk = {
   notifications: {
     all: () => ["notifications"] as const,
     unreadCount: () => ["notifications", "unread-count"] as const,
-    feed: (filter: "all" | "unread") => ["notifications", "feed", filter] as const
+    /** "mentions" = the "Nhắc đến" tab, filtered server side by type. */
+    feed: (filter: "all" | "unread" | "mentions") => ["notifications", "feed", filter] as const
   },
 
   search: (q: string, groups?: readonly string[]) =>

@@ -9,7 +9,12 @@ import { qk } from "@/lib/query-keys";
 
 import { useChannels, forgetChannel } from "../hooks/use-channels";
 import { chatKeys } from "../keys";
-import { mergeChannelInfo, roomCandidates, updateSidebarChannel } from "../model/channels";
+import {
+  channelEventChangesCapabilities,
+  mergeChannelInfo,
+  roomCandidates,
+  updateSidebarChannel
+} from "../model/channels";
 import { conversationKey } from "../model/pending";
 import { useActiveChannelStore, useTypingStore } from "../model/ui-state";
 import {
@@ -101,11 +106,9 @@ export const ChatRuntime = () => {
           scheduleInvalidate(chatKeys.membersAll(event.channelId));
         }
         const cached = queryClient.getQueryData<ChatChannelDetail>(detailKey);
-        if (
-          event.kind === "archived" ||
-          (event.channel && cached && cached.kind !== event.channel.kind)
-        ) {
-          // capabilities (canPost, canJoin…) follow the archived flag and the channel kind
+        if (channelEventChangesCapabilities(cached, event)) {
+          // capabilities (canPost, canJoin…) follow the archived flag and the channel kind;
+          // unarchiving is an "updated" event, so viewers can post again right away (BUG-WK-43)
           scheduleInvalidate(detailKey, true);
         }
         break;

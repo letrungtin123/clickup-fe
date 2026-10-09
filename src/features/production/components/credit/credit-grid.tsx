@@ -255,7 +255,7 @@ const CreditCell = ({
 }: CreditCellProps) => {
   const startsToday = rule?.effectiveFrom === at;
   const label = rule
-    ? `${project.code} × ${process.name}: ${formatCredit(rule.creditPerImage)} credit, ${
+    ? `${project.code} × ${process.name}: ${formatCredit(rule.creditPerImage)} điểm, ${
         rule.moneyPerImage === null ? "không có tiền" : formatMoney(rule.moneyPerImage)
       }, áp dụng từ ${formatDay(rule.effectiveFrom)}`
     : `${project.code} × ${process.name}: chưa có đơn giá`;

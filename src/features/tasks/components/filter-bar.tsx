@@ -60,6 +60,10 @@ const toggle = <T,>(values: readonly T[], value: T) =>
 /**
  * Filter / sort bar shared by List, Board and Table. All state lives in the URL (useTaskFilters);
  * search is debounced; due windows are computed in the browser's timezone.
+ *
+ * Layout (BUG-WK-18): "Sắp xếp" and "Xóa lọc" sit in a trailing group that never scrolls away; the
+ * filters wrap onto a second row on desktop (narrow main area with the detail panel open) and scroll
+ * sideways on phones.
  */
 export const TaskFilterBar = ({
   projectId,
@@ -73,27 +77,37 @@ export const TaskFilterBar = ({
   const { filters, setFilters, resetFilters } = useTaskFilters();
   const count = activeFilterCount(filters);
 
+  const trailing = view === "table" || count > 0;
+
   return (
-    <div
-      role="toolbar"
-      aria-label="Bộ lọc công việc"
-      className="scrollbar-none -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 md:-mx-6 md:px-6"
-    >
-      <SearchField value={filters.q} onChange={(q) => setFilters({ q })} />
-      <StatusFilter projectId={projectId} listId={listId} filters={filters} onChange={(statusIds) => setFilters({ statusIds })} />
-      <AssigneeFilter projectId={projectId} filters={filters} onChange={(assigneeIds) => setFilters({ assigneeIds })} />
-      <PriorityFilter filters={filters} onChange={(next) => setFilters({ priorities: next })} />
-      <DueFilterButton filters={filters} onChange={(due) => setFilters({ due })} />
-      <label className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-foreground-muted pointer-coarse:h-9 hover:bg-surface-hover">
-        <Switch size="sm" checked={filters.includeDone} onCheckedChange={(includeDone) => setFilters({ includeDone })} />
-        <span className="whitespace-nowrap">Hiện việc đã xong</span>
-      </label>
-      {view === "table" ? <SortControl filters={filters} onChange={(sort, order) => setFilters({ sort, order })} /> : null}
-      {count > 0 ? (
-        <Button variant="ghost" size="sm" onClick={resetFilters} className="shrink-0 text-foreground-muted">
-          <X />
-          Xóa lọc ({count})
-        </Button>
+    <div role="toolbar" aria-label="Bộ lọc công việc" className="-mx-4 flex items-start gap-1.5 px-4 md:-mx-6 md:px-6">
+      <div className="scrollbar-none -my-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 md:flex-wrap md:overflow-visible">
+        <SearchField value={filters.q} onChange={(q) => setFilters({ q })} />
+        <StatusFilter projectId={projectId} listId={listId} filters={filters} onChange={(statusIds) => setFilters({ statusIds })} />
+        <AssigneeFilter projectId={projectId} filters={filters} onChange={(assigneeIds) => setFilters({ assigneeIds })} />
+        <PriorityFilter filters={filters} onChange={(next) => setFilters({ priorities: next })} />
+        <DueFilterButton filters={filters} onChange={(due) => setFilters({ due })} />
+        <label className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-foreground-muted pointer-coarse:h-10 hover:bg-surface-hover">
+          <Switch size="sm" checked={filters.includeDone} onCheckedChange={(includeDone) => setFilters({ includeDone })} />
+          <span className="whitespace-nowrap">Hiện việc đã xong</span>
+        </label>
+      </div>
+      {trailing ? (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {view === "table" ? <SortControl filters={filters} onChange={(sort, order) => setFilters({ sort, order })} /> : null}
+          {count > 0 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              aria-label={`Xóa lọc (${count})`}
+              className="shrink-0 text-foreground-muted pointer-coarse:h-10"
+            >
+              <X />
+              <span className="max-sm:hidden">Xóa lọc</span> ({count})
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -114,7 +128,7 @@ const SearchField = ({ value, onChange }: { value: string; onChange: (value: str
   }, [debounced]);
 
   return (
-    <div className="relative flex h-7 w-44 shrink-0 items-center pointer-coarse:h-9 sm:w-56">
+    <div className="relative flex h-7 w-44 shrink-0 items-center pointer-coarse:h-10 sm:w-56">
       <Search className="pointer-events-none absolute left-2 size-3.5 text-foreground-subtle" aria-hidden="true" />
       <input
         type="search"
@@ -128,7 +142,7 @@ const SearchField = ({ value, onChange }: { value: string; onChange: (value: str
         }}
         placeholder="Tìm công việc hoặc mã…"
         aria-label="Tìm công việc"
-        className="h-7 w-full rounded-md border border-input bg-transparent pr-7 pl-7 text-[13px] pointer-coarse:h-9 outline-none placeholder:text-foreground-subtle focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 dark:bg-input/30 [&::-webkit-search-cancel-button]:hidden"
+        className="h-7 w-full rounded-md border border-input bg-transparent pr-7 pl-7 text-[13px] pointer-coarse:h-10 outline-none placeholder:text-foreground-subtle focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 dark:bg-input/30 [&::-webkit-search-cancel-button]:hidden"
       />
       {draft ? (
         <button
@@ -150,7 +164,8 @@ const FilterButton = ({
   active,
   summary,
   children,
-  widthClass = "w-64"
+  widthClass = "w-64",
+  compact = false
 }: {
   icon: LucideIcon;
   label: string;
@@ -158,6 +173,8 @@ const FilterButton = ({
   summary?: ReactNode;
   children: ReactNode;
   widthClass?: string;
+  /** Phones: icon only (the label stays for screen readers). */
+  compact?: boolean;
 }) => (
   <Popover>
     <PopoverTrigger
@@ -166,14 +183,14 @@ const FilterButton = ({
           variant="outline"
           size="sm"
           className={cn(
-            "shrink-0 border-dashed font-normal text-foreground-muted",
+            "shrink-0 border-dashed font-normal text-foreground-muted pointer-coarse:h-10",
             active && "border-solid border-brand/40 bg-brand-soft text-brand-text hover:bg-brand-soft hover:text-brand-text"
           )}
         />
       }
     >
       <Icon />
-      <span>
+      <span className={cn(compact && "max-sm:sr-only")}>
         {label}
         {summary ? <span className="font-medium">{summary}</span> : null}
       </span>
@@ -378,6 +395,7 @@ const SortControl = ({
   <FilterButton
     icon={ArrowDownWideNarrow}
     label="Sắp xếp"
+    compact
     active={filters.sort !== "rank"}
     summary={filters.sort !== "rank" ? `: ${sortOptions.find((option) => option.value === filters.sort)?.label ?? ""} ${filters.order === "desc" ? "↓" : "↑"}` : null}
     widthClass="w-56"

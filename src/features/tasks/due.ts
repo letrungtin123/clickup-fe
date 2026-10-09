@@ -120,3 +120,27 @@ export const dueBucket = (task: DueSubject, now: Date = new Date()): DueBucket =
   const weekEnd = addDays(startOfWeek(now, { weekStartsOn: 1 }), 7);
   return due.getTime() < weekEnd.getTime() ? "week" : "later";
 };
+
+const datedBuckets: readonly DueBucket[] = ["overdue", "today", "week", "later"];
+
+/**
+ * Buckets the next "My tasks" page can still add to, for the "+" marker (WK-58). Pages arrive sorted
+ * by due date ascending with undated work last, so only the bucket of the last loaded deadline and the
+ * ones after it can grow — plus "Đã xong", whose tasks are spread over every date when included.
+ */
+export const growableBuckets = (
+  loaded: readonly DueSubject[],
+  hasMore: boolean,
+  includeDone: boolean,
+  now: Date = new Date()
+): ReadonlySet<DueBucket> => {
+  const grow = new Set<DueBucket>();
+  if (!hasMore) return grow;
+  grow.add("none");
+  if (includeDone) grow.add("done");
+  const lastDue = loaded.at(-1)?.dueAt;
+  if (!lastDue) return grow;
+  const from = dueBucket({ dueAt: lastDue, completedAt: null, status: { category: "active" } }, now);
+  for (const bucket of datedBuckets.slice(datedBuckets.indexOf(from))) grow.add(bucket);
+  return grow;
+};

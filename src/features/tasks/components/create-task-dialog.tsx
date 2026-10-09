@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { RichTextDoc } from "@/contracts/rich-text";
 import type { List, Project, TaskPriority, TaskStatus, UserRef } from "@/contracts/work";
+import { useInFlightGuard } from "@/hooks/use-in-flight-guard";
 import { isModKey } from "@/lib/keyboard";
 
 import { prepareDoc } from "@/components/shared/rich-text/helpers";
@@ -61,6 +62,7 @@ const CreateTaskForm = ({
   const abilities = useTaskAbilities(project);
   const mentionSource = useMentionSource(project.id);
   const create = useCreateTask();
+  const guard = useInFlightGuard();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState<RichTextDoc | null>(null);
   const [statusId, setStatusId] = useState<string | undefined>(initialStatusId);
@@ -75,6 +77,8 @@ const CreateTaskForm = ({
     statuses.find((item) => item.id === statusId) ?? statuses.find((item) => item.isInitial) ?? statuses[0];
 
   const submit = () => {
+    // Enter + Ctrl+Enter / double clicks while the request is in flight create one task (BUG-WK-15).
+    if (guard.active) return;
     const trimmed = title.trim();
     if (!trimmed) {
       setError("Nhập tên công việc.");
@@ -90,6 +94,7 @@ const CreateTaskForm = ({
       return;
     }
     const doc = prepared?.ok && prepared.text.trim() ? prepared.doc : null;
+    if (!guard.tryEnter()) return;
     create.mutate(
       {
         projectId: project.id,
@@ -111,7 +116,8 @@ const CreateTaskForm = ({
             description: task.title,
             action: { label: "Mở", onClick: () => openTask(task.id) }
           });
-        }
+        },
+        onSettled: guard.release
       }
     );
   };

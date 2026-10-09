@@ -10,6 +10,7 @@ import { useRealtimeConnection } from "@/lib/realtime/hooks";
 import { useEndSession, useSession } from "../hooks";
 import { SessionValueContext } from "../session-context";
 import { loginPath } from "../redirect";
+import { useCrossTabSession } from "../use-session-sync";
 
 const AppShell = lazy(() =>
   import("@/components/layout/app-shell").then((module) => ({ default: module.AppShell }))
@@ -43,6 +44,9 @@ export const AppSplash = ({ label = "Đang mở không gian làm việc" }: { la
 export const AuthGate = () => {
   const session = useSession();
   const location = useLocation();
+  const endSession = useEndSession();
+  // Another tab signed in as someone else / signed out, or the cookies changed while this tab slept.
+  useCrossTabSession(session.data?.user.id ?? null, () => endSession(loginPath(window.location)));
 
   if (session.isPending) {
     return <AppSplash />;

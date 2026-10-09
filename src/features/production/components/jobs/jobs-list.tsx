@@ -145,10 +145,10 @@ const JobTable = ({
             Đã giao
           </span>
           <span role="columnheader" className="px-3">
-            Đã done
+            Đã xong
           </span>
           <span role="columnheader" className="px-3">
-            Đã checked
+            Đã kiểm
           </span>
           <span role="columnheader" className="px-3" title="Feedback đang mở">
             FB
@@ -296,13 +296,13 @@ const JobCards = ({
                 </span>
                 <span className="flex flex-col gap-1">
                   <span className="text-foreground-muted">
-                    Done <b className="font-semibold text-foreground tabular-nums">{job.qtyDone}</b>
+                    Xong <b className="font-semibold text-foreground tabular-nums">{job.qtyDone}</b>
                   </span>
                   <MiniBar value={progress.done} />
                 </span>
                 <span className="flex flex-col gap-1">
                   <span className="text-foreground-muted">
-                    Checked{" "}
+                    Đã kiểm{" "}
                     <b className="font-semibold text-foreground tabular-nums">{job.qtyChecked}</b>
                   </span>
                   <MiniBar value={progress.checked} tone="success" />

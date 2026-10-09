@@ -73,7 +73,8 @@ export const MembersSettingsRoute = () => {
   const canView = can(P.MemberView);
   const canManage = can(P.MemberManage);
   const members = useAdminMembers(canView);
-  const roles = useAdminRoles(canView);
+  // Roles only feed the role pickers, which need member.manage — GET /roles is refused otherwise (WK-62).
+  const roles = useAdminRoles(canView && canManage);
   const [term, setTerm] = useState("");
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<{ name: string; password: string } | null>(null);

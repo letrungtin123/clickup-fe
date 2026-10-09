@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { chatLimits, type ChatAttachment } from "@/contracts/chat";
 
 import { chatApi } from "../api";
-import { chatErrorMessage } from "../errors";
+import { chatErrorMessage, isRetryableUploadError } from "../errors";
 import { chatKeys } from "../keys";
 
 // Signed download URLs ------------------------------------------------------------------------------
@@ -68,6 +68,8 @@ export type UploadItem = {
   progress: number;
   status: "uploading" | "done" | "error";
   error?: string | undefined;
+  /** False when the server rejected the file itself (type, size…): no "Tải lại" (WK-51). */
+  retryable?: boolean | undefined;
   attachment?: ChatAttachment | undefined;
   /** Object URL for image previews (revoked on removal). */
   previewUrl?: string | undefined;
@@ -155,7 +157,8 @@ export const useUploads = (channelId: string) => {
         if (controller.signal.aborted) return;
         patch(item.localId, {
           status: "error",
-          error: chatErrorMessage(error, "Tải tệp lên thất bại.")
+          error: chatErrorMessage(error, "Tải tệp lên thất bại."),
+          retryable: isRetryableUploadError(error)
         });
       } finally {
         controllers.current.delete(item.localId);
@@ -213,7 +216,7 @@ export const useUploads = (channelId: string) => {
   const retry = useCallback(
     (localId: string) => {
       const item = itemsRef.current.find((entry) => entry.localId === localId);
-      if (!item) return;
+      if (!item || item.retryable === false) return;
       patch(localId, { status: "uploading", progress: 0, error: undefined });
       void upload({ ...item, status: "uploading", progress: 0 });
     },

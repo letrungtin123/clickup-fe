@@ -7,6 +7,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Spinner } from "@/components/ui/spinner";
 import { useTouchPrimary } from "@/hooks/use-pointer";
 
+/**
+ * Emoji data pinned to an exact emojibase-data release (SEC-INF-15): frimousse defaults to `@latest`,
+ * which would change (or be swapped) under us. Bump deliberately; the CSP allows this CDN for
+ * connect-src only.
+ */
+const EMOJIBASE_URL = "https://cdn.jsdelivr.net/npm/emojibase-data@17.0.0";
+
 /** Quick reactions offered in the message toolbar. */
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"] as const;
 
@@ -23,6 +30,7 @@ export const EmojiPickerPanel = ({
 }) => (
   <Frimousse.Root
     locale="vi"
+    emojibaseUrl={EMOJIBASE_URL}
     columns={8}
     onEmojiSelect={({ emoji }) => onSelect(emoji)}
     className={cn("isolate flex h-[340px] w-[18.5rem] flex-col", className)}

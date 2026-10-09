@@ -12,7 +12,7 @@ import { vi } from "date-fns/locale";
 import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, FilterX, MoreHorizontal, SearchX, TableProperties } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { EmptyState, ErrorState } from "@/components/shared/states";
+import { EmptyState, ErrorState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,6 +25,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import type { TaskSort, TaskSummary } from "@/contracts/work";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { canAutoLoadNextPage, pagedErrorKind } from "@/lib/paging";
 
 import { flattenPages } from "../cache";
 import { ConfirmHost } from "../components/confirm-host";
@@ -200,10 +201,11 @@ const TableView = ({ project, list, openTask }: TaskViewProps) => {
   });
   const virtualItems = virtualizer.getVirtualItems();
   const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = pages;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = pages;
+  const autoLoad = canAutoLoadNextPage({ hasNextPage, isFetchingNextPage, isFetchNextPageError });
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && lastIndex >= rows.length - 10) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, lastIndex, rows.length, fetchNextPage]);
+    if (autoLoad && lastIndex >= rows.length - 10) void fetchNextPage();
+  }, [autoLoad, lastIndex, rows.length, fetchNextPage]);
 
   const sortBy = useCallback(
     (sort: TaskSort) => {
@@ -235,7 +237,9 @@ const TableView = ({ project, list, openTask }: TaskViewProps) => {
   };
 
   if (pages.isPending) return <ViewSkeleton view="table" />;
-  if (pages.isError) {
+  // Only a failed first page replaces the table; a failed next page keeps the loaded rows (BUG-WK-01).
+  const errorKind = pagedErrorKind(pages);
+  if (errorKind === "initial") {
     return <ErrorState error={pages.error} onRetry={() => void pages.refetch()} retrying={pages.isFetching} />;
   }
 
@@ -360,7 +364,13 @@ const TableView = ({ project, list, openTask }: TaskViewProps) => {
                   );
                 })}
               </div>
-              {pages.isFetchingNextPage ? (
+              {errorKind === "next" ? (
+                <LoadMoreError
+                  className="sticky left-0 w-fit justify-start"
+                  onRetry={() => void fetchNextPage()}
+                  retrying={isFetchingNextPage}
+                />
+              ) : isFetchingNextPage ? (
                 <div className="flex h-10 items-center justify-center gap-2 text-xs text-foreground-muted">
                   <Spinner className="size-3.5" />
                   Đang tải thêm…

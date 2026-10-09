@@ -16,12 +16,14 @@ import { cn } from "cn";
 import { MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
-import { ErrorState } from "@/components/shared/states";
+import { ErrorState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { List, Project, TaskStatus, TaskSummary } from "@/contracts/work";
 import { toneClass } from "@/lib/colors";
+import { canAutoLoadNextPage, pagedErrorKind } from "@/lib/paging";
+import { useMeasureAfterCommit } from "@/lib/virtual";
 import { qk, type TaskQueryParams } from "@/lib/query-keys";
 
 import { flattenPages } from "../cache";
@@ -213,12 +215,15 @@ const BoardColumn = memo(function BoardColumn({
     gap: 8,
     getItemKey: (index) => items[index]?.id ?? index
   });
+  const measureRef = useMeasureAfterCommit(virtualizer);
   const virtualItems = virtualizer.getVirtualItems();
   const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = pages;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = pages;
+  const autoLoad = canAutoLoadNextPage({ hasNextPage, isFetchingNextPage, isFetchNextPageError });
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && lastIndex >= items.length - 4) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, lastIndex, items.length, fetchNextPage]);
+    if (autoLoad && lastIndex >= items.length - 4) void fetchNextPage();
+  }, [autoLoad, lastIndex, items.length, fetchNextPage]);
+  const errorKind = pagedErrorKind(pages);
 
   useEffect(() => {
     registry.current.set(status.id, { status, queryKey, items });
@@ -291,7 +296,7 @@ const BoardColumn = memo(function BoardColumn({
               </div>
             ))}
           </div>
-        ) : pages.isError ? (
+        ) : errorKind === "initial" ? (
           <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed p-3 text-[13px] text-foreground-muted" role="alert">
             Không tải được cột này.
             <Button variant="outline" size="xs" onClick={() => void pages.refetch()}>
@@ -309,7 +314,7 @@ const BoardColumn = memo(function BoardColumn({
                   <div
                     key={virtualItem.key}
                     data-index={virtualItem.index}
-                    ref={virtualizer.measureElement}
+                    ref={measureRef}
                     className="absolute inset-x-0 top-0"
                     style={{ transform: `translateY(${virtualItem.start}px)` }}
                   >
@@ -332,7 +337,9 @@ const BoardColumn = memo(function BoardColumn({
                 {abilities.canEdit ? "Kéo thẻ vào đây" : "Không có công việc"}
               </p>
             ) : null}
-            {pages.isFetchingNextPage ? (
+            {errorKind === "next" ? (
+              <LoadMoreError className="px-0" onRetry={() => void fetchNextPage()} retrying={isFetchingNextPage} />
+            ) : isFetchingNextPage ? (
               <div className="flex justify-center py-2">
                 <Spinner className="size-4 text-foreground-subtle" />
               </div>

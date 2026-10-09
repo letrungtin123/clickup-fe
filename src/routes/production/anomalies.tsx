@@ -34,9 +34,9 @@ const isKind = (value: string | null): value is AnomalyKind =>
 /** Short tab labels (the contract labels are sentences). */
 const tabLabels: Record<AnomalyKind, string> = {
   QTY_MISMATCH: "Lệch số lượng",
-  QC_FAIL_REPEAT: "QC fail ≥ 2 lần",
+  QC_FAIL_REPEAT: "QC trả lại ≥ 2 lần",
   WORKER_FAIL_RATE: "Tỉ lệ lỗi cao",
-  FAST_DONE: "Done quá nhanh",
+  FAST_DONE: "Xong quá nhanh",
   MISSING_CREDIT_RULE: "Thiếu đơn giá"
 };
 

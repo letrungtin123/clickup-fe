@@ -15,7 +15,10 @@ import { GoogleSignInButton } from "@/features/auth/components/google-sign-in-bu
 import { googleLoginErrorMessage } from "@/features/auth/google";
 import { sessionQueryOptions, useAuthProviders } from "@/features/auth/hooks";
 import { safeReturnPath } from "@/features/auth/redirect";
+import { useCrossTabSession } from "@/features/auth/use-session-sync";
 import { getErrorMessage, isApiError } from "@/lib/api/errors";
+
+const noop = () => undefined;
 
 const schema = z.object({
   email: z.string().trim().min(1, "Nhập email công việc.").email("Email chưa đúng định dạng."),
@@ -51,6 +54,8 @@ export const LoginRoute = () => {
 
   // If the cookies are still valid (or refreshable), skip the form.
   const session = useQuery({ ...sessionQueryOptions, retry: false });
+  // Signed in from another tab meanwhile: re-read the session and move on (BUG-WK-16).
+  useCrossTabSession(null, noop);
   if (session.data && !session.isFetching) {
     return <Navigate to={next} replace />;
   }

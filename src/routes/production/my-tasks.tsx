@@ -11,23 +11,31 @@ import {
   type DragStartEvent
 } from "@dnd-kit/core";
 import { cn } from "cn";
-import { CheckCheck, ClipboardList, Columns3, List } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CheckCheck, ChevronsDown, ClipboardList, Columns3, List } from "lucide-react";
+import { memo, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { SegmentedControl } from "@/components/shared/radio-controls";
-import { EmptyState, ErrorState } from "@/components/shared/states";
+import { EmptyState, ErrorState, LoadMoreError } from "@/components/shared/states";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { TaskCard } from "@/features/production/components/jobs/task-card";
 import { TransitionButtons } from "@/features/production/components/jobs/transition-controls";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
+import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
 import { useProductionMe } from "@/features/production/hooks";
 import type { MyTasksRole } from "@/features/production/jobs-api";
 import { useMyTasks } from "@/features/production/jobs-hooks";
-import { boardColumns, type BoardColumn } from "@/features/production/jobs-model";
+import {
+  boardColumns,
+  flattenPages,
+  pagedCountLabel,
+  type BoardColumn
+} from "@/features/production/jobs-model";
 import { useOpenTask } from "@/features/production/task-link";
 import { touchTargets } from "@/features/production/ui";
 import { toneClass } from "@/lib/colors";
@@ -43,10 +51,20 @@ const readView = (): View => {
   }
 };
 
+type Paging = {
+  count: number;
+  hasMore: boolean;
+  loading: boolean;
+  failed: boolean;
+  loadMore: () => void;
+};
+
 /**
  * /production/my-tasks — tasks I do or check (PLAN §7). Kanban by status: a card can only be dropped
  * on statuses its own capabilities offer (anything else snaps back); Done asks for the quantity
  * (and OT hours), QC fail and overrides ask for a note. Phones get a status tab bar instead.
+ * Tasks load in pages (deadline order) with "Tải thêm" (BUG-PR-18); without the workflow the tasks
+ * stay readable as a list and the screen offers a retry.
  */
 export const ProductionMyTasksRoute = () => {
   const me = useProductionMe();
@@ -58,8 +76,9 @@ export const ProductionMyTasksRoute = () => {
   const [view, setView] = useState<View>(readView);
   const tasks = useMyTasks(role, includeFinished);
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
-  const items = useMemo(() => tasks.data?.pages.flatMap((page) => page.items) ?? [], [tasks.data]);
+  const items = useMemo(() => flattenPages(tasks.data?.pages), [tasks.data]);
   const statuses = mover.lookup.statuses;
+  const noWorkflow = mover.lookup.isError;
 
   const columns = useMemo(() => {
     const reachable = new Set(
@@ -91,9 +110,16 @@ export const ProductionMyTasksRoute = () => {
     }
   };
 
-  const move = (task: ProductionTask, option: TaskTransitionOption, optimistic = false) =>
+  const move: MoveFn = (task, option, optimistic = false) =>
     mover.start(task, option, { optimistic });
   const mobile = breakpoint === "mobile";
+  const paging: Paging = {
+    count: items.length,
+    hasMore: tasks.hasNextPage,
+    loading: tasks.isFetchingNextPage,
+    failed: tasks.isFetchNextPageError,
+    loadMore: () => void tasks.fetchNextPage()
+  };
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col", touchTargets)}>
@@ -132,7 +158,7 @@ export const ProductionMyTasksRoute = () => {
         </div>
       </PageHeader>
 
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         {tasks.isPending || mover.lookup.isPending ? (
           <div className="flex gap-3 p-4 md:px-6" aria-busy="true" aria-label="Đang tải task">
             {[0, 1, 2].map((index) => (
@@ -161,6 +187,18 @@ export const ProductionMyTasksRoute = () => {
                 : "Bạn đã xong hết việc được giao. Bật “Hiện việc đã xong” để xem lại."
             }
           />
+        ) : noWorkflow ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
+            <WorkflowUnavailable
+              onRetry={mover.lookup.retry}
+              retrying={mover.lookup.retrying}
+              className="mx-4 md:mx-6"
+            >
+              Không tải được luồng trạng thái nên chưa hiện bảng và nút chuyển trạng thái. Bạn vẫn
+              mở được từng task.
+            </WorkflowUnavailable>
+            <ListView tasks={items} timeZone={timeZone} onOpen={openTask} paging={paging} />
+          </div>
         ) : mobile ? (
           <PhoneStatusList
             columns={columns}
@@ -168,9 +206,13 @@ export const ProductionMyTasksRoute = () => {
             onOpen={openTask}
             onMove={move}
             busyTaskId={mover.pendingTaskId}
+            paging={paging}
           />
         ) : view === "board" ? (
-          <Board columns={columns} timeZone={timeZone} onOpen={openTask} onMove={move} />
+          <>
+            <Board columns={columns} timeZone={timeZone} onOpen={openTask} onMove={move} />
+            <PagingBar paging={paging} className="border-t px-4 md:px-6" />
+          </>
         ) : (
           <ListView
             tasks={items}
@@ -178,6 +220,7 @@ export const ProductionMyTasksRoute = () => {
             onOpen={openTask}
             onMove={move}
             busyTaskId={mover.pendingTaskId}
+            paging={paging}
           />
         )}
       </div>
@@ -187,6 +230,33 @@ export const ProductionMyTasksRoute = () => {
 };
 
 type MoveFn = (task: ProductionTask, option: TaskTransitionOption, optimistic?: boolean) => void;
+
+/** "Đang hiện 200 task đầu" + "Tải thêm" while more pages exist; nothing for a complete list. */
+const PagingBar = ({ paging, className }: { paging: Paging; className?: string }) =>
+  paging.hasMore ? (
+    <div
+      className={cn(
+        "flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 py-2 text-xs text-foreground-muted",
+        className
+      )}
+    >
+      <span aria-live="polite">{pagedCountLabel(paging.count, true)}</span>
+      {paging.failed && !paging.loading ? (
+        <LoadMoreError onRetry={paging.loadMore} className="px-0 py-0" />
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={paging.loadMore}
+          disabled={paging.loading}
+          className="max-sm:min-h-10"
+        >
+          {paging.loading ? <Spinner /> : <ChevronsDown />}
+          Tải thêm task
+        </Button>
+      )}
+    </div>
+  ) : null;
 
 const Board = ({
   columns,
@@ -232,7 +302,7 @@ const Board = ({
       onDragCancel={() => setActive(null)}
     >
       <div
-        className="flex h-full min-h-0 gap-3 overflow-x-auto overscroll-x-contain px-4 py-4 md:px-6"
+        className="flex min-h-0 flex-1 gap-3 overflow-x-auto overscroll-x-contain px-4 py-4 md:px-6"
         aria-label="Bảng task theo trạng thái"
       >
         {columns.map((column) => (
@@ -268,7 +338,8 @@ const Board = ({
   );
 };
 
-const BoardColumnView = ({
+/** Memoized: a column only re-renders when its cards or its drop state change (PERF-16). */
+const BoardColumnView = memo(function BoardColumnView({
   column,
   timeZone,
   onOpen,
@@ -278,7 +349,7 @@ const BoardColumnView = ({
   timeZone: string;
   onOpen: (taskId: string) => void;
   dropState: "idle" | "home" | "allowed" | "blocked";
-}) => {
+}) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.status.id,
     disabled: dropState === "blocked"
@@ -313,9 +384,15 @@ const BoardColumnView = ({
       </ul>
     </section>
   );
-};
+});
 
-const DraggableCard = ({
+const cardClass = "cursor-grab active:cursor-grabbing";
+
+/**
+ * The draggable wrapper re-renders with the drag state (dnd-kit context); the memoized TaskCard
+ * inside does not unless its task changed.
+ */
+const DraggableCard = memo(function DraggableCard({
   task,
   timeZone,
   onOpen
@@ -323,7 +400,7 @@ const DraggableCard = ({
   task: ProductionTask;
   timeZone: string;
   onOpen: (taskId: string) => void;
-}) => {
+}) {
   const draggable = task.capabilities.transitions.length > 0;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
@@ -342,26 +419,29 @@ const DraggableCard = ({
         task={task}
         timeZone={timeZone}
         onOpen={onOpen}
-        className={draggable ? "cursor-grab active:cursor-grabbing" : undefined}
+        className={draggable ? cardClass : undefined}
       />
     </li>
   );
-};
+});
 
 const ListView = ({
   tasks,
   timeZone,
   onOpen,
   onMove,
-  busyTaskId
+  busyTaskId,
+  paging
 }: {
   tasks: ProductionTask[];
   timeZone: string;
   onOpen: (taskId: string) => void;
-  onMove: MoveFn;
-  busyTaskId: string | null | undefined;
+  /** Without it (no workflow) the cards are read-only. */
+  onMove?: MoveFn | undefined;
+  busyTaskId?: string | null | undefined;
+  paging: Paging;
 }) => (
-  <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
     <ul className="mx-auto grid max-w-5xl gap-2.5 lg:grid-cols-2">
       {tasks.map((task) => (
         <li key={task.id}>
@@ -371,16 +451,19 @@ const ListView = ({
             onOpen={onOpen}
             showStatus
             footer={
-              <TransitionButtons
-                task={task}
-                busy={busyTaskId === task.id}
-                onMove={(option) => onMove(task, option)}
-              />
+              onMove ? (
+                <TransitionButtons
+                  task={task}
+                  busy={busyTaskId === task.id}
+                  onMove={(option) => onMove(task, option)}
+                />
+              ) : undefined
             }
           />
         </li>
       ))}
     </ul>
+    <PagingBar paging={paging} className="mx-auto mt-3 max-w-5xl" />
   </div>
 );
 
@@ -390,13 +473,15 @@ const PhoneStatusList = ({
   timeZone,
   onOpen,
   onMove,
-  busyTaskId
+  busyTaskId,
+  paging
 }: {
   columns: BoardColumn<ProductionTask>[];
   timeZone: string;
   onOpen: (taskId: string) => void;
   onMove: MoveFn;
   busyTaskId: string | null | undefined;
+  paging: Paging;
 }) => {
   const withTasks = columns.filter((column) => column.tasks.length > 0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -458,6 +543,7 @@ const PhoneStatusList = ({
             Không có task.
           </p>
         )}
+        <PagingBar paging={paging} className="mt-3" />
       </div>
     </div>
   );

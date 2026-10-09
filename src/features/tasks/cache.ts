@@ -159,12 +159,104 @@ export type ReconcileOptions = {
   anchor?: { queryKey: QueryKey; placement: Placement | null | undefined } | undefined;
   /** Keep the current position when the rank did not change (default true). */
   keepPosition?: boolean | undefined;
+  /** The task was just created: when it was not cached yet, its parent gains a subtask. */
+  created?: boolean | undefined;
+};
+
+const isOpen = (task: Pick<TaskSummary, "status">) => task.status.category === "active";
+
+type CountDelta = { total: number; open: number };
+
+/**
+ * Keeps a parent's subtask counters ("2/5" on its row) in step with its children (BUG-WK-19). A cached
+ * parent detail is authoritative (its counters were recomputed from its subtask list); otherwise the
+ * delta is applied to every cached row of the parent.
+ */
+const propagateParentCounts = (client: QueryClient, projectId: string, parentId: string, delta: CountDelta) => {
+  if (delta.total === 0 && delta.open === 0) return;
+  const detail = client.getQueryData<TaskDetail>(qk.task(parentId));
+  patchTaskRows(client, projectId, parentId, (row) =>
+    detail && "subtasks" in detail
+      ? { subtaskCount: detail.subtaskCount, openSubtaskCount: detail.openSubtaskCount }
+      : {
+          subtaskCount: Math.max(0, row.subtaskCount + delta.total),
+          openSubtaskCount: Math.max(0, row.openSubtaskCount + delta.open)
+        }
+  );
+};
+
+/** Parent counter changes implied by `next` replacing `previous` (undefined = not cached before). */
+export const subtaskCountDeltas = (
+  previous: Pick<TaskSummary, "parentTaskId" | "status"> | undefined,
+  next: Pick<TaskSummary, "parentTaskId" | "status"> | null,
+  created = false
+): Map<string, CountDelta> => {
+  const deltas = new Map<string, CountDelta>();
+  const add = (parentId: string | null, total: number, open: number) => {
+    if (!parentId) return;
+    const current = deltas.get(parentId) ?? { total: 0, open: 0 };
+    deltas.set(parentId, { total: current.total + total, open: current.open + open });
+  };
+  if (!previous) {
+    if (created && next) add(next.parentTaskId, 1, isOpen(next) ? 1 : 0);
+    return deltas;
+  }
+  if (!next) {
+    add(previous.parentTaskId, -1, isOpen(previous) ? -1 : 0);
+    return deltas;
+  }
+  if (previous.parentTaskId !== next.parentTaskId) {
+    add(previous.parentTaskId, -1, isOpen(previous) ? -1 : 0);
+    add(next.parentTaskId, 1, isOpen(next) ? 1 : 0);
+  } else if (isOpen(previous) !== isOpen(next)) {
+    add(next.parentTaskId, 0, isOpen(next) ? 1 : -1);
+  }
+  return deltas;
+};
+
+/**
+ * Patches a task's rows (lists, boards, tables, My Tasks, its parent's subtask list) without touching
+ * its own detail. `fn` returns the fields to change.
+ */
+export const patchTaskRows = (
+  client: QueryClient,
+  projectId: string,
+  taskId: string,
+  fn: (task: TaskSummary) => Partial<TaskSummary>
+) => {
+  const apply = (items: TaskSummary[]) =>
+    items.some((item) => item.id === taskId)
+      ? items.map((item) => (item.id === taskId ? { ...item, ...fn(item) } : item))
+      : items;
+  for (const prefix of [qk.tasks(projectId), qk.myTasks()]) {
+    for (const [key, data] of client.getQueriesData<CachedTaskData>({ queryKey: prefix })) {
+      if (!data || !("pages" in data || "items" in data) || !containsTask(data, taskId)) continue;
+      client.setQueryData(key, mapItems(data, apply));
+    }
+  }
+  for (const [key, detail] of client.getQueriesData<TaskDetail>({ queryKey: ["task"] })) {
+    if (!detail || key.length !== 2 || !("subtasks" in detail) || detail.id === taskId) continue;
+    const subtasks = apply(detail.subtasks);
+    if (subtasks !== detail.subtasks) client.setQueryData<TaskDetail>(key, { ...detail, subtasks });
+  }
+};
+
+/** Patches a task everywhere it is cached: its rows and its own detail (comment / attachment counters). */
+export const patchTaskEverywhere = (
+  client: QueryClient,
+  projectId: string,
+  taskId: string,
+  fn: (task: TaskSummary) => Partial<TaskSummary>
+) => {
+  patchTaskRows(client, projectId, taskId, fn);
+  client.setQueryData<TaskDetail>(qk.task(taskId), (detail) => (detail ? { ...detail, ...fn(detail) } : detail));
 };
 
 /** Places an up-to-date summary in every cached task query, the detail and the parent's subtasks. */
 export const reconcileTask = (client: QueryClient, task: TaskSummary, options: ReconcileOptions = {}) => {
   const insert = options.insert ?? true;
   const anchorKey = options.anchor ? JSON.stringify(options.anchor.queryKey) : null;
+  const previous = findCachedTask(client, task.id, task.projectId);
 
   for (const [key, data] of client.getQueriesData<CachedTaskData>({ queryKey: qk.tasks(task.projectId) })) {
     if (!data) continue;
@@ -225,6 +317,10 @@ export const reconcileTask = (client: QueryClient, task: TaskSummary, options: R
       client.setQueryData<TaskDetail>(key, { ...detail, subtasks, ...subtaskCounts(subtasks) });
     }
   }
+
+  for (const [parentId, delta] of subtaskCountDeltas(previous, task, options.created)) {
+    propagateParentCounts(client, task.projectId, parentId, delta);
+  }
 };
 
 const subtaskCounts = (subtasks: TaskSummary[]) => ({
@@ -234,6 +330,7 @@ const subtaskCounts = (subtasks: TaskSummary[]) => ({
 
 /** Removes a task (deleted / moved away) from every cached list, board, table and detail. */
 export const removeTaskEverywhere = (client: QueryClient, projectId: string, taskId: string) => {
+  const previous = findCachedTask(client, taskId, projectId);
   for (const [key, data] of client.getQueriesData<CachedTaskData>({ queryKey: qk.tasks(projectId) })) {
     if (data && containsTask(data, taskId)) {
       client.setQueryData(key, mapItems(data, (items) => withoutTask(items, taskId)));
@@ -250,6 +347,9 @@ export const removeTaskEverywhere = (client: QueryClient, projectId: string, tas
       const subtasks = detail.subtasks.filter((item) => item.id !== taskId);
       client.setQueryData<TaskDetail>(key, { ...detail, subtasks, ...subtaskCounts(subtasks) });
     }
+  }
+  for (const [parentId, delta] of subtaskCountDeltas(previous, null)) {
+    propagateParentCounts(client, projectId, parentId, delta);
   }
 };
 

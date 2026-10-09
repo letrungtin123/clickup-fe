@@ -76,6 +76,8 @@ export const ProductionTimeline = ({
   entity,
   id,
   people,
+  mentionable,
+  readOnly = false,
   onOpenTask,
   className
 }: {
@@ -83,6 +85,10 @@ export const ProductionTimeline = ({
   id: string;
   /** People that can be mentioned / resolved by id. */
   people: { people: Person[]; nameOf: (id: string) => string | undefined };
+  /** Only people who can read this timeline may be mentioned (canSeeTask / canSeeJob). */
+  mentionable?: ((personId: string) => boolean) | undefined;
+  /** Archived job: comments can be read but not added, edited or deleted (the API refuses). */
+  readOnly?: boolean;
   onOpenTask?: ((taskId: string) => void) | undefined;
   className?: string | undefined;
 }) => {
@@ -148,7 +154,19 @@ export const ProductionTimeline = ({
         />
       </div>
 
-      <CommentComposer entity={entity} id={id} people={people.people} />
+      {readOnly ? (
+        <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-foreground-muted">
+          Job đã lưu trữ — không thêm bình luận được.
+        </p>
+      ) : (
+        <CommentComposer
+          entity={entity}
+          id={id}
+          people={
+            mentionable ? people.people.filter((person) => mentionable(person.id)) : people.people
+          }
+        />
+      )}
 
       {timeline.isPending ? (
         <div className="flex flex-col gap-4 py-2" aria-hidden="true">
@@ -179,7 +197,12 @@ export const ProductionTimeline = ({
         <ol className="flex flex-col">
           {visible.map((item) =>
             item.kind === "comment" ? (
-              <CommentRow key={itemKey(item)} comment={item.comment} timeZone={timeZone} />
+              <CommentRow
+                key={itemKey(item)}
+                comment={item.comment}
+                timeZone={timeZone}
+                readOnly={readOnly}
+              />
             ) : (
               <LogRow key={itemKey(item)} log={item.log} names={names} onOpenTask={onOpenTask} />
             )
@@ -293,14 +316,23 @@ const CommentBody = ({ body }: { body: string }) => {
   );
 };
 
-const CommentRow = ({ comment, timeZone }: { comment: ProductionComment; timeZone: string }) => {
+const CommentRow = ({
+  comment,
+  timeZone,
+  readOnly
+}: {
+  comment: ProductionComment;
+  timeZone: string;
+  readOnly: boolean;
+}) => {
   const session = useSessionContext();
   const access = useProductionAccess();
   const mutations = useCommentMutations();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
   const [confirm, setConfirm] = useState(false);
-  const canDelete = comment.canEdit || access.isAdmin;
+  const canEdit = comment.canEdit && !readOnly;
+  const canDelete = (comment.canEdit || access.isAdmin) && !readOnly;
   const mine = comment.author?.id === session.user.id;
 
   const save = () => {
@@ -338,7 +370,7 @@ const CommentRow = ({ comment, timeZone }: { comment: ProductionComment; timeZon
             {formatDateTime(comment.createdAt, timeZone)}
             {comment.editedAt ? " · đã sửa" : ""}
           </time>
-          {comment.canEdit || canDelete ? (
+          {canEdit || canDelete ? (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -353,7 +385,7 @@ const CommentRow = ({ comment, timeZone }: { comment: ProductionComment; timeZon
                 <Ellipsis />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                {comment.canEdit ? (
+                {canEdit ? (
                   <DropdownMenuItem
                     onClick={() => {
                       setDraft(comment.body);

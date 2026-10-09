@@ -54,7 +54,11 @@ describe("organization time", () => {
   });
 
   it("formats deadlines in the organization timezone", () => {
-    expect(formatDateTime("2026-10-09T10:30:00.000Z", VN)).toBe("17:30 · 09/10");
+    const now = new Date("2026-10-10T03:00:00.000Z");
+    expect(formatDateTime("2026-10-09T10:30:00.000Z", VN, false, now)).toBe("17:30 · 09/10");
+    // Another year: the short form names it (BUG-PR-26).
+    expect(formatDateTime("2025-12-31T10:30:00.000Z", VN, false, now)).toBe("17:30 · 31/12/2025");
+    expect(formatDateTime("2027-01-02T10:30:00.000Z", VN, false, now)).toBe("17:30 · 02/01/2027");
     expect(formatDateTime("2026-10-09T10:30:00.000Z", VN, true)).toBe("17:30, 09/10/2026");
     expect(formatDateTime(null, VN)).toBe("—");
   });
@@ -315,7 +319,7 @@ describe("timeline sentences", () => {
           names
         )
       )
-    ).toBe("chuyển #7 từ Đang làm sang Done · 5 tấm · 1.5 giờ OT");
+    ).toBe("chuyển #7 từ Đang làm sang Done · 5 tấm · 1,5 giờ OT");
     expect(
       text(
         describeTaskLog(
@@ -323,7 +327,7 @@ describe("timeline sentences", () => {
           names
         )
       )
-    ).toBe("chuyển #7 từ Chờ QC sang Đang làm · QC không đạt");
+    ).toBe("chuyển #7 từ Chờ QC sang Đang làm · QC trả lại");
     expect(
       text(describeTaskLog(log("STATUS", { name: "A" }, { name: "B", override: true }), names))
     ).toContain("ngoài luồng");

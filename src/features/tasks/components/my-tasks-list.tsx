@@ -3,7 +3,7 @@ import { CheckCircle2, ChevronRight, ListTodo, RefreshCw } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
 import { ColorDot } from "@/components/shared/color-dot";
-import { EmptyState, ErrorState } from "@/components/shared/states";
+import { EmptyState, ErrorState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,10 +11,11 @@ import type { Project, TaskSummary } from "@/contracts/work";
 import { P, accessAtLeast } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { pagedErrorKind } from "@/lib/paging";
 import { useRealtimeRoom } from "@/lib/realtime/hooks";
 
 import { flattenPages } from "../cache";
-import { dueBucket, dueBuckets, type DueBucket } from "../due";
+import { dueBucket, dueBuckets, growableBuckets, type DueBucket } from "../due";
 import { useMyTasks } from "../hooks";
 import { useTaskPanel } from "../use-task-panel";
 import { ConfirmHost } from "./confirm-host";
@@ -81,9 +82,17 @@ export const MyTasksList = ({ includeDone }: { includeDone: boolean }) => {
     }
     return dueBuckets.map((bucket) => ({ ...bucket, items: map.get(bucket.key) ?? [] })).filter((bucket) => bucket.items.length > 0);
   }, [items]);
+  const growable = useMemo(
+    () => growableBuckets(items, query.hasNextPage, includeDone),
+    [items, query.hasNextPage, includeDone]
+  );
 
   if (query.isPending) return <MyTasksSkeleton />;
-  if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />;
+  // A failed next page keeps the loaded groups; only a failed first page replaces them (BUG-WK-01).
+  const errorKind = pagedErrorKind(query);
+  if (errorKind === "initial") {
+    return <ErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />;
+  }
   if (items.length === 0) {
     return (
       <EmptyState
@@ -99,10 +108,10 @@ export const MyTasksList = ({ includeDone }: { includeDone: boolean }) => {
       <ConfirmHost />
       <ProjectRooms tasks={items} />
       <div className="flex flex-col gap-5">
-        {groups.map((group, index) => {
+        {groups.map((group) => {
           const isCollapsed = collapsed[group.key] ?? false;
-          // Pages arrive in due-date order: only the last loaded bucket can still grow.
-          const mayGrow = query.hasNextPage && index === groups.length - 1;
+          // Pages arrive in due-date order: "+" only where the next page can still add work (WK-58).
+          const mayGrow = growable.has(group.key);
           return (
             <section key={group.key} aria-label={`${group.label}: ${group.items.length} công việc`}>
               <button
@@ -135,8 +144,10 @@ export const MyTasksList = ({ includeDone }: { includeDone: boolean }) => {
             </section>
           );
         })}
-        {query.hasNextPage ? (
-          <Button variant="outline" size="sm" className="self-center" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
+        {errorKind === "next" ? (
+          <LoadMoreError onRetry={() => void query.fetchNextPage()} retrying={query.isFetchingNextPage} />
+        ) : query.hasNextPage ? (
+          <Button variant="outline" size="sm" className="self-center pointer-coarse:h-10" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
             {query.isFetchingNextPage ? <Spinner /> : <RefreshCw />}
             Tải thêm việc
           </Button>
@@ -248,7 +259,10 @@ export const MyTasksWidget = () => {
       </div>
     );
   }
-  if (query.isError) return <ErrorState size="sm" error={query.error} onRetry={() => void query.refetch()} />;
+  // The widget only shows the first page: later failures (next page / background refresh) keep it.
+  if (pagedErrorKind(query) === "initial") {
+    return <ErrorState size="sm" error={query.error} onRetry={() => void query.refetch()} />;
+  }
   if (items.length === 0) {
     return (
       <EmptyState

@@ -1,22 +1,31 @@
 import { cn } from "cn";
-import { BadgeCheck, CornerDownRight, ListX, TriangleAlert } from "lucide-react";
+import { BadgeCheck, ChevronsDown, CornerDownRight, ListX, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
 import { SegmentedControl } from "@/components/shared/radio-controls";
-import { EmptyState } from "@/components/shared/states";
+import { EmptyState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import type { ScoreEntry } from "@/contracts/production-scores";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
-import { formatCredit, formatInteger, formatMoney } from "../../format";
+import { formatCredit, formatInteger, formatMoney, formatNumber } from "../../format";
 import { formatSignedCredit } from "../forecast";
 
 /**
  * Score ledger of the signed-in user (SPEC Phase 3 §5 "bảng score_entries có link task"). Entries are
  * immutable; a quantity corrected after Done shows as a separate correction row carrying the signed
- * delta. Table on tablet/desktop, stacked cards on phones (one tree per tier).
+ * delta. Table on tablet/desktop, stacked cards on phones (one tree per tier). The API pages the
+ * ledger (newest first); "Tải thêm" loads older rows, the filters count the rows loaded so far.
  */
+
+export type EntriesPaging = {
+  hasMore: boolean;
+  loading: boolean;
+  failed: boolean;
+  loadMore: () => void;
+};
 
 type Filter = "all" | "worker" | "qc" | "khoan" | "adjust";
 
@@ -42,10 +51,10 @@ const taskHref = (entry: ScoreEntry) => `/production/tasks/${entry.task.id}`;
 
 export const EntriesList = ({
   entries,
-  truncated
+  paging
 }: {
   entries: readonly ScoreEntry[];
-  truncated: boolean;
+  paging: EntriesPaging;
 }) => {
   const breakpoint = useBreakpoint();
   const [filter, setFilter] = useState<Filter>("all");
@@ -77,7 +86,7 @@ export const EntriesList = ({
         size="sm"
         icon={ListX}
         title="Chưa có điểm trong kỳ này"
-        description="Điểm được ghi ngay khi bạn chuyển task sang Done hoặc khi QC chuyển Checked."
+        description="Điểm được ghi ngay khi bạn chuyển task sang trạng thái xong, hoặc khi QC kiểm xong."
       />
     );
   }
@@ -142,14 +151,36 @@ export const EntriesList = ({
           </table>
         </div>
       )}
-      {rows.length > visible.length || truncated ? (
+      {rows.length > visible.length || paging.hasMore ? (
         <div className="flex flex-wrap items-center justify-center gap-3 border-t px-4 py-3 text-xs text-foreground-muted">
           {rows.length > visible.length ? (
-            <Button variant="outline" size="sm" onClick={() => setLimit((current) => current + PAGE)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="max-sm:min-h-10"
+              onClick={() => setLimit((current) => current + PAGE)}
+            >
               Hiện thêm ({rows.length - visible.length})
             </Button>
+          ) : paging.failed && !paging.loading ? (
+            <LoadMoreError onRetry={paging.loadMore} className="px-0 py-0" />
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="max-sm:min-h-10"
+              onClick={paging.loadMore}
+              disabled={paging.loading}
+            >
+              {paging.loading ? <Spinner /> : <ChevronsDown />}
+              Tải thêm dòng cũ hơn
+            </Button>
+          )}
+          {paging.hasMore ? (
+            <span>
+              Đã tải {formatNumber(entries.length)} dòng mới nhất; tổng điểm vẫn tính đủ cả kỳ.
+            </span>
           ) : null}
-          {truncated ? <span>Chỉ hiện 1.000 dòng mới nhất; tổng điểm vẫn tính đủ cả kỳ.</span> : null}
         </div>
       ) : null}
     </div>

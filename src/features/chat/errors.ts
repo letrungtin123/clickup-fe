@@ -59,3 +59,13 @@ export const isChannelGone = (error: unknown) =>
   (error.status === 404 ||
     error.code === "CHANNEL_NOT_FOUND" ||
     error.code === "CHANNEL_MEMBERSHIP_REQUIRED");
+
+/**
+ * Is a failed upload worth "Tải lại" (WK-51)? Network / server / storage hiccups are; a file the API
+ * rejected (blocked type, too large, empty, no permission) fails the same way every time.
+ */
+export const isRetryableUploadError = (error: unknown) => {
+  if (!isApiError(error)) return true; // storage PUT failures and other transport errors
+  if (error.status === 0 || error.status >= 500 || error.status === 429) return true;
+  return error.code === "CHAT_ATTACHMENT_NOT_UPLOADED";
+};

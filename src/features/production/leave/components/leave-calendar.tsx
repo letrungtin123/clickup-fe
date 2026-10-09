@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import type { LeaveRequest } from "@/contracts/production-leave";
 
+import { formatNumber } from "../../format";
 import {
   formatLeaveDates,
   isSunday,
@@ -27,7 +28,7 @@ const dayTitle = (day: string) =>
 
 const peopleCount = (entries: readonly LeaveDayEntry[]) => {
   const load = leaveLoad(entries);
-  return `${entries.length} người nghỉ${load !== entries.length ? ` (${new Intl.NumberFormat("vi-VN").format(load)} ngày công)` : ""}`;
+  return `${entries.length} người nghỉ${load !== entries.length ? ` (${formatNumber(load)} ngày công)` : ""}`;
 };
 
 /**

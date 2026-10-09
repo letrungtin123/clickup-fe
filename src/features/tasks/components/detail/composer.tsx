@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { RichTextDoc } from "@/contracts/rich-text";
 import type { TaskDetail } from "@/contracts/work";
+import { useInFlightGuard } from "@/hooks/use-in-flight-guard";
 import { modKeyLabel } from "@/lib/keyboard";
 
 import { useUploads } from "../../attachments";
@@ -47,6 +48,7 @@ export const CommentComposer = ({
   const latest = useRef<RichTextDoc | null>(initial);
   const uploads = useUploads(task.id, "comment");
   const create = useCreateComment(task.id);
+  const guard = useInFlightGuard();
   const mentionSource = useMentionSource(task.projectId);
 
   useEffect(
@@ -59,6 +61,8 @@ export const CommentComposer = ({
   );
 
   const send = (doc?: RichTextDoc) => {
+    // A second Ctrl+Enter / click while the first post is in flight is ignored (BUG-WK-15).
+    if (guard.active) return;
     const body = doc ?? editor.current?.getDoc();
     if (!body || isEmptyDoc(body)) {
       editor.current?.focus();
@@ -68,6 +72,7 @@ export const CommentComposer = ({
       toast("Đang tải tệp lên — gửi lại khi tải xong nhé.");
       return;
     }
+    if (!guard.tryEnter()) return;
     const attachmentIds = uploads.items.flatMap((item) => (item.status === "done" && item.attachment ? [item.attachment.id] : []));
     create.mutate(
       { body, parentCommentId: parentCommentId ?? null, attachmentIds },
@@ -79,7 +84,8 @@ export const CommentComposer = ({
           uploads.clear();
           setEmpty(true);
           onPosted?.();
-        }
+        },
+        onSettled: guard.release
       }
     );
   };

@@ -33,6 +33,7 @@ import type { RichTextDoc } from "@/contracts/rich-text";
 import type { Activity, Comment, TaskDetail, TimelineItem } from "@/contracts/work";
 import { useSessionContext } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/hooks";
+import { useInFlightGuard } from "@/hooks/use-in-flight-guard";
 
 import { describeActivity, type ActivityIcon, type ActivityPart } from "../../activity";
 import { confirmAction } from "../../confirm-store";
@@ -399,10 +400,11 @@ const CommentEditor = ({ task, comment, onDone }: { task: TaskDetail; comment: C
   const update = useUpdateComment(task.id);
   const mentionSource = useMentionSource(task.projectId);
   const [doc, setDoc] = useState<RichTextDoc | null>(null);
+  const guard = useInFlightGuard();
   const save = (next?: RichTextDoc) => {
     const prepared = prepareDoc(next ?? doc ?? comment.body, "comment");
-    if (!prepared.ok) return;
-    update.mutate({ commentId: comment.id, body: prepared.doc }, { onSuccess: onDone });
+    if (!prepared.ok || !guard.tryEnter()) return;
+    update.mutate({ commentId: comment.id, body: prepared.doc }, { onSuccess: onDone, onSettled: guard.release });
   };
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border bg-surface focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25">

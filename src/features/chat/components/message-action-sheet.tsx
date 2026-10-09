@@ -14,7 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { ActionSheet, ActionSheetItem } from "@/components/shared/action-sheet";
-import { docToPlainText } from "@/components/shared/rich-text";
+import { docToPlainText } from "@/components/shared/rich-text/helpers";
 import type { ChatMessage } from "@/contracts/chat";
 
 import { EmojiPickerPanel, QUICK_REACTIONS } from "./emoji-picker";

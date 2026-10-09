@@ -114,6 +114,36 @@ export const ErrorState = ({
   );
 };
 
+/**
+ * Inline failure where the next page would load (BUG-WK-01): the rows already on screen stay, only
+ * "more" failed. `retrying` shows progress while the page is requested again.
+ */
+export const LoadMoreError = ({
+  onRetry,
+  retrying = false,
+  message = "Không tải thêm được",
+  className
+}: {
+  onRetry: () => void;
+  retrying?: boolean | undefined;
+  message?: string | undefined;
+  className?: string | undefined;
+}) => (
+  <div
+    role="alert"
+    className={cn("flex min-h-10 flex-wrap items-center justify-center gap-x-2 gap-y-1 px-3 py-1.5 text-xs text-foreground-muted", className)}
+  >
+    <span className="inline-flex items-center gap-1.5">
+      <TriangleAlert className="size-3.5 text-warning" aria-hidden="true" />
+      {message}
+    </span>
+    <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying} className="pointer-coarse:h-10">
+      <RefreshCw className={cn(retrying && "animate-spin")} />
+      Thử lại
+    </Button>
+  </div>
+);
+
 /** Stack of skeleton rows for list-like content. */
 export const SkeletonRows = ({ rows = 6, className }: { rows?: number; className?: string }) => (
   <div className={cn("flex flex-col gap-2", className)} aria-hidden="true">

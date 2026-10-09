@@ -237,7 +237,7 @@ export const ProductionCreditRulesRoute = () => {
               <span aria-hidden="true" className="size-1.5 rounded-full bg-brand" /> Phiên bản bắt
               đầu đúng ngày {formatDay(at)}
             </span>
-            <span>Số trên: credit/tấm · số dưới: tiền/tấm (— = không có tiền)</span>
+            <span>Số trên: điểm/tấm · số dưới: tiền/tấm (— = không có tiền)</span>
             <span className="hidden md:inline">Phím mũi tên để di chuyển, Enter để sửa.</span>
           </div>
         ) : null}
@@ -248,7 +248,7 @@ export const ProductionCreditRulesRoute = () => {
           <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
             <DialogHeader className="sr-only">
               <DialogTitle>Đơn giá</DialogTitle>
-              <DialogDescription>Đặt credit và tiền mỗi tấm cho ô đã chọn.</DialogDescription>
+              <DialogDescription>Đặt điểm và tiền mỗi tấm cho ô đã chọn.</DialogDescription>
             </DialogHeader>
             {editor}
           </DialogContent>

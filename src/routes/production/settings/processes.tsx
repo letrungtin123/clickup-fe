@@ -153,7 +153,7 @@ export const ProductionProcessesRoute = () => {
             QC
           </TooltipTrigger>
           <TooltipContent>
-            Credit của quy trình QC là điểm QC nhận cho mỗi tấm được kiểm
+            Điểm của quy trình QC là điểm người QC nhận cho mỗi tấm được kiểm
           </TooltipContent>
         </Tooltip>
       ) : (

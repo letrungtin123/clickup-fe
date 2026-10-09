@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { requestScoresRefresh } from "../live-sync";
 import { retryUnlessClientError } from "../scores/hooks";
 import { leaveKeys } from "../scores/keys";
 import { leaveApi, type CreateLeaveInput, type DecideLeaveInput } from "./api";
@@ -34,9 +35,16 @@ export const usePendingLeave = (enabled: boolean) =>
     enabled
   });
 
-const useInvalidateLeave = () => {
+/**
+ * Leave changes refresh the calendar and lists; approved leave also prorates KPI targets, so
+ * decisions and cancellations refresh the score / KPI views too (throttled, BUG-PR-19).
+ */
+const useInvalidateLeave = (scores = false) => {
   const client = useQueryClient();
-  return () => client.invalidateQueries({ queryKey: leaveKeys.all() });
+  return () => {
+    if (scores) requestScoresRefresh(client);
+    return client.invalidateQueries({ queryKey: leaveKeys.all() });
+  };
 };
 
 export const useCreateLeave = () => {
@@ -49,7 +57,7 @@ export const useCreateLeave = () => {
 };
 
 export const useCancelLeave = () => {
-  const invalidate = useInvalidateLeave();
+  const invalidate = useInvalidateLeave(true);
   return useMutation({
     mutationFn: (leaveId: string) => leaveApi.cancel(leaveId),
     meta: { errorMessage: false },
@@ -58,7 +66,7 @@ export const useCancelLeave = () => {
 };
 
 export const useDecideLeave = () => {
-  const invalidate = useInvalidateLeave();
+  const invalidate = useInvalidateLeave(true);
   return useMutation({
     mutationFn: ({ leaveId, input }: { leaveId: string; input: DecideLeaveInput }) =>
       leaveApi.decide(leaveId, input),

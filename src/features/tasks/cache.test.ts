@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { TaskPage, TaskSummary } from "@/contracts/work";
 import { qk } from "@/lib/query-keys";
 
-import { flattenPages, reconcileTask, removeTaskEverywhere, taskMatchesQuery, type TaskPages } from "./cache";
+import { flattenPages, patchTaskEverywhere, reconcileTask, removeTaskEverywhere, taskMatchesQuery, type TaskPages } from "./cache";
 
 const projectId = "p1";
 const listId = "l1";
@@ -106,5 +106,54 @@ describe("reconcileTask", () => {
     const { client, todoKey } = setup();
     removeTaskEverywhere(client, projectId, "a");
     expect(ids(client, todoKey)).toEqual(["b"]);
+  });
+});
+
+describe("parent counters (BUG-WK-19)", () => {
+  const withParentRow = () => {
+    const { client, todoKey } = setup();
+    // "a" is a parent with 2 subtasks, 1 still open; its detail is not cached.
+    client.setQueryData(todoKey, pages(page([task("a", "a1", todo, { subtaskCount: 2, openSubtaskCount: 1 }), task("b", "a3")])));
+    const childKey = qk.tasks(projectId, { listId, parent: "a" });
+    client.setQueryData(childKey, { items: [task("k1", "a1", todo, { parentTaskId: "a" }), task("k2", "a2", done, { parentTaskId: "a" })], pageInfo: { hasMore: false, nextCursor: null } });
+    const parentRow = () => flattenPages(client.getQueryData<TaskPages>(todoKey)).find((item) => item.id === "a");
+    return { client, parentRow };
+  };
+
+  it("counts a newly created subtask on the parent's row", () => {
+    const { client, parentRow } = withParentRow();
+    reconcileTask(client, task("k3", "a3", todo, { parentTaskId: "a" }), { created: true });
+    expect(parentRow()).toMatchObject({ subtaskCount: 3, openSubtaskCount: 2 });
+    // Applying the same task again (realtime echo) does not count it twice.
+    reconcileTask(client, task("k3", "a3", todo, { parentTaskId: "a" }), { created: true });
+    expect(parentRow()).toMatchObject({ subtaskCount: 3, openSubtaskCount: 2 });
+  });
+
+  it("follows completion, reopening and deletion of a subtask", () => {
+    const { client, parentRow } = withParentRow();
+    reconcileTask(client, task("k1", "a1", done, { parentTaskId: "a" }));
+    expect(parentRow()).toMatchObject({ subtaskCount: 2, openSubtaskCount: 0 });
+    reconcileTask(client, task("k2", "a2", todo, { parentTaskId: "a" }));
+    expect(parentRow()).toMatchObject({ subtaskCount: 2, openSubtaskCount: 1 });
+    removeTaskEverywhere(client, projectId, "k2");
+    expect(parentRow()).toMatchObject({ subtaskCount: 1, openSubtaskCount: 0 });
+  });
+
+  it("uses the parent's detail as the source of truth when it is cached", () => {
+    const { client, parentRow } = withParentRow();
+    client.setQueryData(qk.task("a"), {
+      ...task("a", "a1", todo, { subtaskCount: 2, openSubtaskCount: 1 }),
+      subtasks: [task("k1", "a1", todo, { parentTaskId: "a" }), task("k2", "a2", done, { parentTaskId: "a" })]
+    });
+    reconcileTask(client, task("k3", "a3", todo, { parentTaskId: "a" }), { created: true });
+    expect(parentRow()).toMatchObject({ subtaskCount: 3, openSubtaskCount: 2 });
+  });
+
+  it("patches comment counters on rows and the detail", () => {
+    const { client, parentRow } = withParentRow();
+    client.setQueryData(qk.task("a"), { ...task("a", "a1"), subtasks: [] });
+    patchTaskEverywhere(client, projectId, "a", (item) => ({ commentCount: item.commentCount + 1 }));
+    expect(parentRow()?.commentCount).toBe(1);
+    expect(client.getQueryData<TaskSummary>(qk.task("a"))?.commentCount).toBe(1);
   });
 });

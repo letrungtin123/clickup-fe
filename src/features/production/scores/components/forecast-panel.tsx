@@ -4,7 +4,7 @@ import { CircleCheck, CircleDashed, Info, TrendingUp, TriangleAlert } from "luci
 import { Skeleton } from "@/components/ui/skeleton";
 import type { KpiProgress, ScoreForecast } from "@/contracts/production-scores";
 
-import { formatCredit } from "../../format";
+import { formatCredit, formatNumber } from "../../format";
 import {
   forecastLabel,
   forecastSentence,
@@ -94,8 +94,9 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
           </span>
           {forecast.daysLeft > 0 ? (
             <span>
-              Còn {forecast.daysLeft} ngày ({forecast.workingDaysLeft} ngày làm việc) tới ngày chốt{" "}
-              {forecast.closeDay}
+              {forecast.daysLeft === 1
+                ? "Hôm nay là ngày chốt"
+                : `Còn ${forecast.daysLeft} ngày, tính cả hôm nay (${forecast.workingDaysLeft} ngày làm việc), tới ngày chốt ${forecast.closeDay}`}
             </span>
           ) : (
             <span>Kỳ đã kết thúc ngày {forecast.to.slice(8, 10)}/{forecast.to.slice(5, 7)}</span>
@@ -108,7 +109,7 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
       {prorated ? (
         <p className="flex items-start gap-1.5 text-xs text-foreground-muted">
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          Chỉ tiêu đã trừ {forecast.leaveDays} ngày nghỉ được duyệt (gốc{" "}
+          Chỉ tiêu đã trừ {formatNumber(forecast.leaveDays)} ngày nghỉ được duyệt (gốc{" "}
           {formatCredit(forecast.targetBase)} điểm).
         </p>
       ) : null}

@@ -5,6 +5,8 @@ import {
   type LeaveStatus
 } from "@/contracts/production-leave";
 
+import { formatNumber } from "../format";
+
 /**
  * Leave calendar helpers (SPEC §6.3, PLAN §10 "Lịch nghỉ"). Days are business calendar days
  * (YYYY-MM-DD, Asia/Ho_Chi_Minh) and are handled as plain strings with UTC arithmetic, so the
@@ -122,7 +124,11 @@ export const leavePartLabels: Record<LeavePart, string> = {
 };
 
 /** One-letter marker for half days on dense cells: S(áng) / C(hiều). */
-export const leavePartShort: Record<LeavePart, string> = { FULL_DAY: "", MORNING: "S", AFTERNOON: "C" };
+export const leavePartShort: Record<LeavePart, string> = {
+  FULL_DAY: "",
+  MORNING: "S",
+  AFTERNOON: "C"
+};
 
 export const leaveStatusLabels: Record<LeaveStatus, string> = {
   PENDING: "Chờ duyệt",
@@ -142,8 +148,38 @@ export const formatLeaveDates = (fromDate: string, toDate: string) => {
     : `${fullDay(fromDate)} – ${fullDay(toDate)}`;
 };
 
-const dayCountFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
-export const formatLeaveDays = (days: number) => `${dayCountFormatter.format(days)} ngày`;
+export const formatLeaveDays = (days: number) => `${formatNumber(days)} ngày`;
+
+/**
+ * Working days (Monday–Saturday) a request covers — what KPI proration counts (BE
+ * leaveDaysBetween with workdaysOnly). A half day is 0.5 on a working day, 0 on a Sunday.
+ */
+export const leaveWorkdays = (span: Pick<LeaveRequest, "fromDate" | "toDate" | "part">) => {
+  if (span.toDate < span.fromDate) return 0;
+  if (span.part !== "FULL_DAY") return isSunday(span.fromDate) ? 0 : 0.5;
+  let count = 0;
+  for (let day = span.fromDate; day <= span.toDate; day = shiftDay(day, 1)) {
+    if (!isSunday(day)) count += 1;
+  }
+  return count;
+};
+
+/**
+ * Length of a request: calendar days, plus the working days KPI counts when they differ
+ * ("1 ngày · 0 ngày làm việc", BUG-PR-26: a Sunday-only request does not lower the KPI target).
+ */
+export const formatLeaveSpan = (
+  span: Pick<LeaveRequest, "fromDate" | "toDate" | "part">,
+  days: number
+) => {
+  const workdays = leaveWorkdays(span);
+  return workdays === days
+    ? formatLeaveDays(days)
+    : `${formatLeaveDays(days)} · ${formatNumber(workdays)} ngày làm việc`;
+};
+
+/** Hint under a request whose calendar and working days differ. */
+export const KPI_WORKDAY_HINT = "Chủ nhật không phải ngày làm việc nên không trừ vào chỉ tiêu KPI.";
 
 // Request form ------------------------------------------------------------------------------------
 

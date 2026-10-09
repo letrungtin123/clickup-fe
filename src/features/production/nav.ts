@@ -48,7 +48,7 @@ export type ProductionNavEntry = {
 
 export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
-  { to: "/production/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["LEADER"] },
+  { to: "/production/dashboard", label: "Bảng điều khiển", icon: LayoutDashboard, roles: ["LEADER"] },
   { to: "/production/admin", label: "Quản trị số liệu", icon: Gauge, roles: ["ADMIN"] },
   { to: "/production/jobs", label: "Job", icon: Briefcase, roles: ["ACCOUNT", "LEADER"] },
   { to: "/production/my-tasks", label: "Việc của tôi", icon: ClipboardList, roles: ["STAFF", "QC", "LEADER"] },
@@ -144,7 +144,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "credit-rules",
     label: "Bảng đơn giá",
-    description: "Credit và tiền mỗi tấm theo dự án × quy trình, có lịch sử phiên bản.",
+    description: "Điểm và tiền mỗi tấm theo dự án × quy trình, có lịch sử phiên bản.",
     icon: Coins,
     group: "catalog",
     roles: ["ADMIN"]

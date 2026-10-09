@@ -74,7 +74,7 @@ const ScoresBody = ({ scores }: { scores: TaskScores }) => {
               <Person user={total.user} size="xs" />
             </span>
             <span className="flex shrink-0 flex-col items-end tabular-nums">
-              <span className="font-semibold">{formatCredit(total.credits)} credit</span>
+              <span className="font-semibold">{formatCredit(total.credits)} điểm</span>
               <span className="text-[11px] text-foreground-muted">
                 {total.qty} tấm
                 {total.money ? ` · ${formatMoney(total.money)}` : ""}
@@ -86,7 +86,7 @@ const ScoresBody = ({ scores }: { scores: TaskScores }) => {
       {missingRule ? (
         <p className="flex items-start gap-1.5 text-xs text-warning">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          Có dòng chưa có đơn giá lúc ghi nhận nên tính 0 credit.
+          Có dòng chưa có đơn giá lúc ghi nhận nên tính 0 điểm.
         </p>
       ) : null}
       <button
@@ -141,7 +141,7 @@ const ScoreRow = ({ item }: { item: TaskScoreEntry }) => {
         </span>
         <span className="font-medium text-foreground">
           {item.credits > 0 ? "+" : ""}
-          {formatCredit(item.credits)} credit
+          {formatCredit(item.credits)} điểm
         </span>
         {item.money !== null && (item.money !== 0 || item.payMode === "MONEY_IF_KPI") ? (
           <span>{formatMoney(item.money)}</span>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dayToIso, datesValid, dueBucket, dueTone, formatShortDate } from "./due";
+import { dayToIso, datesValid, dueBucket, dueTone, formatShortDate, growableBuckets } from "./due";
 
 // Friday 9 Oct 2026, 15:30 local time (week = Mon 5 – Sun 11).
 const now = new Date(2026, 9, 9, 15, 30);
@@ -59,5 +59,23 @@ describe("date helpers", () => {
     expect(datesValid(at(5, 0, 0), at(6))).toBe(true);
     expect(datesValid(at(6, 0, 0), at(5))).toBe(false);
     expect(datesValid(null, at(5))).toBe(true);
+  });
+});
+
+describe("growableBuckets (WK-58)", () => {
+  const task = (dueAt: string | null) => ({ dueAt, completedAt: null, status: active });
+
+  it("marks the last loaded deadline's bucket and every later one", () => {
+    const grow = growableBuckets([task(at(7)), task(at(11))], true, false, now);
+    expect([...grow].sort()).toEqual(["later", "none", "week"]);
+    expect(grow.has("overdue")).toBe(false);
+  });
+
+  it("only undated (and done) work can follow an undated last item", () => {
+    expect([...growableBuckets([task(at(7)), task(null)], true, true, now)].sort()).toEqual(["done", "none"]);
+  });
+
+  it("marks nothing when every page is loaded", () => {
+    expect(growableBuckets([task(at(7))], false, true, now).size).toBe(0);
   });
 });

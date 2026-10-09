@@ -1,12 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useLocation } from "react-router";
 import { toast } from "sonner";
 
 import { useActiveChannelStore } from "@/features/chat/model/ui-state";
+import { qk } from "@/lib/query-keys";
 import { useRealtimeEvent } from "@/lib/realtime/hooks";
+import { onUntypedServerEvent, scheduleInvalidate } from "@/lib/realtime/socket";
 
 import { describeNotification, sentenceText } from "./describe";
+import { parseArchivedEvent } from "./feeds";
 import {
+  applyArchive,
   applyRead,
   prependNotification,
   setUnreadCount,
@@ -31,6 +36,8 @@ export const NotificationsRuntime = () => {
   useRealtimeEvent("notification:new", ({ notification, unreadCount }) => {
     prependNotification(queryClient, notification);
     setUnreadCount(queryClient, unreadCount);
+    // My Tasks never fetches tasks it does not show (PERF-07): a new assignment refreshes it.
+    if (notification.type === "task.assigned") scheduleInvalidate(qk.myTasks());
 
     if (location.pathname === "/inbox") return;
     const active = useActiveChannelStore.getState();
@@ -53,10 +60,25 @@ export const NotificationsRuntime = () => {
     });
   });
 
-  useRealtimeEvent("notification:read", ({ ids, unreadCount }) => {
-    applyRead(queryClient, ids, new Date().toISOString());
-    setUnreadCount(queryClient, unreadCount);
+  useRealtimeEvent("notification:read", (event) => {
+    // An archive may arrive as a read event flagged `archived: true`: drop the items then.
+    const { ids } = event;
+    if ((event as { archived?: unknown }).archived === true && ids !== "all") applyArchive(queryClient, ids);
+    else applyRead(queryClient, ids, new Date().toISOString());
+    setUnreadCount(queryClient, event.unreadCount);
   });
+
+  // Archived on another tab / device (BUG-WK-48): remove it here too, like read sync.
+  useEffect(
+    () =>
+      onUntypedServerEvent("notification:archived", (payload) => {
+        const event = parseArchivedEvent(payload);
+        if (!event) return;
+        applyArchive(queryClient, event.ids);
+        if (event.unreadCount !== null) setUnreadCount(queryClient, event.unreadCount);
+      }),
+    [queryClient]
+  );
 
   return null;
 };

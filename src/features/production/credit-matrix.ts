@@ -5,7 +5,7 @@ import type {
   ProductionProject
 } from "@/contracts/production-catalog";
 
-import { dayInRange } from "./format";
+import { addDays, dayInRange } from "./format";
 
 /**
  * Pure helpers for the credit-rule matrix (projects × processes) and the CSV import/export
@@ -141,4 +141,16 @@ export const hasCreditHeader = (text: string) => {
   if (!first) return false;
   const cells = first.split(",").map((cell) => cell.trim().toLowerCase().replace(/^"|"$/g, ""));
   return ["project_code", "process_name", "credit"].every((name) => cells.includes(name));
+};
+
+/**
+ * First day a new price version may start after the API refused one (409 CREDIT_RULE_IN_USE: the
+ * price in force already priced scores up to the day named in its message, "… đến ngày 12/10/2026 …").
+ * The day after that, never before `today`; without a date in the message, the day after `from`.
+ */
+export const nextFreeVersionDay = (message: string, from: string, today: string) => {
+  const match = /(\d{2})\/(\d{2})\/(\d{4})/.exec(message);
+  const lastPriced = match ? `${match[3]}-${match[2]}-${match[1]}` : from;
+  const next = addDays(lastPriced, 1);
+  return next > today ? next : today;
 };

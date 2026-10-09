@@ -1,6 +1,15 @@
 import { cn } from "cn";
 import { AnimatePresence, motion } from "motion/react";
-import { Bookmark, Ellipsis, Pin, PinOff, Share2, Trash2, UsersRound } from "lucide-react";
+import {
+  Bookmark,
+  Ellipsis,
+  Pin,
+  PinOff,
+  Share2,
+  ShieldCheck,
+  Trash2,
+  UsersRound
+} from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -54,6 +63,7 @@ import {
 } from "@/contracts/production-reports";
 import { useSessionContext } from "@/features/auth/hooks";
 
+import { useProductionAccess } from "../../hooks";
 import { touchTargets } from "../../ui";
 import { reportErrorMessage } from "../errors";
 import {
@@ -271,6 +281,16 @@ const SavedItem = ({
             Ghim
           </Badge>
         ) : null}
+        {report.adminOnly ? (
+          <Badge
+            variant="outline"
+            className="h-4.5 gap-0.5 px-1.5 text-[10px]"
+            title="Dùng chỉ số tiền khoán: chỉ Quản trị xem và chạy được"
+          >
+            <ShieldCheck aria-hidden="true" />
+            Chỉ Quản trị
+          </Badge>
+        ) : null}
         {report.shared && !report.pinned && mine ? (
           <Badge variant="outline" className="h-4.5 gap-0.5 px-1.5 text-[10px]">
             <Share2 aria-hidden="true" />
@@ -337,13 +357,15 @@ export const SavedReportsSheet = ({
   onDeleted: (id: string) => void;
 }) => {
   const session = useSessionContext();
+  const access = useProductionAccess();
   const saved = useSavedReports(open);
   const update = useUpdateSavedReport();
   const remove = useDeleteSavedReport();
   const [tab, setTab] = useState<Tab>("mine");
   const [confirm, setConfirm] = useState<SavedReport | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const items = saved.data?.items ?? [];
+  // Reports using an Admin-only measure (money) are listed and runnable for Admins only.
+  const items = (saved.data?.items ?? []).filter((item) => access.isAdmin || !item.adminOnly);
   const mine = items.filter((item) => item.owner.id === session.user.id);
   const shared = items.filter((item) => item.owner.id !== session.user.id);
   const list = tab === "mine" ? mine : shared;

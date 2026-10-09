@@ -4,16 +4,16 @@ import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { useSearchParams } from "react-router";
 
 import { PageHeader } from "@/components/shared/page-header";
-import { EmptyState, ErrorState } from "@/components/shared/states";
+import { EmptyState, ErrorState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { Notification } from "@/contracts/notifications";
 import { formatCount } from "@/features/chat/model/channels";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { canAutoLoadNextPage, pagedErrorKind } from "@/lib/paging";
 import { cn } from "cn";
 
-import { mentionTypes } from "../describe";
 import { groupByDay } from "../group";
 import {
   useArchiveNotifications,
@@ -113,7 +113,8 @@ export const InboxPage = () => {
 };
 
 const InboxFeed = ({ tab }: { tab: InboxTab }) => {
-  const feed = useNotificationFeed(tab === "unread" ? "unread" : "all");
+  // Each tab is its own server-filtered feed ("Nhắc đến" = types=…mentioned, BUG-WK-47).
+  const feed = useNotificationFeed(tab);
   const open = useOpenNotification();
   const markRead = useMarkNotificationsRead();
   const archive = useArchiveNotifications();
@@ -121,35 +122,25 @@ const InboxFeed = ({ tab }: { tab: InboxTab }) => {
   const sentinel = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const items = useMemo(() => {
-    const all = feed.data?.pages.flatMap((page) => page.items) ?? [];
-    return tab === "mentions" ? all.filter((item) => mentionTypes.has(item.type)) : all;
-  }, [feed.data, tab]);
+  const items = useMemo(() => feed.data?.pages.flatMap((page) => page.items) ?? [], [feed.data]);
   const groups = useMemo(() => groupByDay(items), [items]);
 
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = feed;
+  const autoLoad = canAutoLoadNextPage({ hasNextPage, isFetchingNextPage, isFetchNextPageError });
 
-  // Infinite scroll.
+  // Infinite scroll (stops after a failed page until "Thử lại").
   useEffect(() => {
     const node = sentinel.current;
-    if (!node || !hasNextPage) return undefined;
+    if (!node || !autoLoad) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage)
-          void fetchNextPage();
+        if (entries.some((entry) => entry.isIntersecting)) void fetchNextPage();
       },
       { rootMargin: "400px" }
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
-
-  // "Nhắc đến" filters client side: keep paging while a page yields too few mentions.
-  const pagesLoaded = feed.data?.pages.length ?? 0;
-  useEffect(() => {
-    if (tab !== "mentions" || !hasNextPage || isFetchingNextPage) return;
-    if (items.length < 15 && pagesLoaded < 6) void fetchNextPage();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, items.length, pagesLoaded, tab]);
+  }, [fetchNextPage, autoLoad]);
 
   // ↑ / ↓ move between entries.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -184,7 +175,8 @@ const InboxFeed = ({ tab }: { tab: InboxTab }) => {
       </div>
     );
   }
-  if (feed.isError) {
+  const errorKind = pagedErrorKind(feed);
+  if (errorKind === "initial") {
     return (
       <ErrorState
         error={feed.error}
@@ -242,8 +234,12 @@ const InboxFeed = ({ tab }: { tab: InboxTab }) => {
             </ul>
           </section>
         ))}
-        <div ref={sentinel} className="flex h-10 items-center justify-center">
-          {isFetchingNextPage ? <Spinner className="size-4 text-foreground-muted" /> : null}
+        <div ref={sentinel} className="flex min-h-10 items-center justify-center">
+          {errorKind === "next" ? (
+            <LoadMoreError onRetry={() => void fetchNextPage()} retrying={isFetchingNextPage} />
+          ) : isFetchingNextPage ? (
+            <Spinner className="size-4 text-foreground-muted" />
+          ) : null}
           {!hasNextPage && items.length > 0 ? (
             <span className="text-xs text-foreground-subtle">Đã hiển thị tất cả thông báo</span>
           ) : null}

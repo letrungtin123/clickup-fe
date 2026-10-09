@@ -13,12 +13,22 @@ import { TransitionDialog, type PendingMove } from "./transition-dialog";
 /** Workflow statuses by id (names, colours, flags) for labelling transition options. */
 export const useStatusLookup = () => {
   const workflow = useWorkflow();
+  const { data, isPending, isError, error, isFetching, refetch } = workflow;
   return useMemo(() => {
     const byId = new Map<string, ProductionStatus>(
-      (workflow.data?.statuses ?? []).map((status) => [status.id, status])
+      (data?.statuses ?? []).map((status) => [status.id, status])
     );
-    return { byId, statuses: workflow.data?.statuses ?? [], isPending: workflow.isPending };
-  }, [workflow.data, workflow.isPending]);
+    return {
+      byId,
+      statuses: data?.statuses ?? [],
+      isPending,
+      /** No workflow (request failed): moves cannot be labelled; screens explain and offer a retry. */
+      isError: isError && !data,
+      error,
+      retrying: isFetching,
+      retry: () => void refetch()
+    };
+  }, [data, isPending, isError, error, isFetching, refetch]);
 };
 
 /**

@@ -13,7 +13,7 @@ import type { Anomaly } from "@/contracts/production-reports";
 import { toneClass } from "@/lib/colors";
 
 import { touchTargets } from "../../ui";
-import { formatDay, formatInteger } from "../../format";
+import { formatDay, formatInteger, formatNumber } from "../../format";
 import { formatDeadline } from "../dashboard";
 import { reportErrorMessage } from "../errors";
 import { formatReportValue } from "../format";
@@ -90,7 +90,7 @@ const Details = ({
       return (
         <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
           <Metric label="Giao" value={`${formatInteger(item.qtyAssigned)} tấm`} />
-          <Metric label="Done" value={`${formatInteger(item.qtyDone)} tấm`} />
+          <Metric label="Đã xong" value={`${formatInteger(item.qtyDone)} tấm`} />
           <Metric
             label="Chênh lệch"
             value={`${item.difference > 0 ? "+" : ""}${formatInteger(item.difference)}`}
@@ -99,7 +99,7 @@ const Details = ({
           {item.changedBy ? (
             <span className="flex min-w-0 flex-col">
               <span className="text-[11px] text-foreground-subtle">
-                {item.source === "CORRECTION" ? "Leader sửa số lượng" : "Nhập lúc Done"}
+                {item.source === "CORRECTION" ? "Leader sửa số lượng" : "Nhập lúc báo xong"}
               </span>
               <span className="flex min-w-0 items-center gap-1.5 text-xs">
                 <UserAvatar user={item.changedBy} size="xs" />
@@ -117,7 +117,7 @@ const Details = ({
     case "QC_FAIL_REPEAT":
       return (
         <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
-          <Metric label="QC fail" value={`${item.qcFailCount} lần`} alert />
+          <Metric label="QC trả lại" value={`${item.qcFailCount} lần`} alert />
           <span className="flex flex-col">
             <span className="text-[11px] text-foreground-subtle">Trạng thái hiện tại</span>
             <span
@@ -134,14 +134,14 @@ const Details = ({
     case "WORKER_FAIL_RATE":
       return (
         <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
-          <Metric label="Task Done" value={formatInteger(item.taskCount)} />
+          <Metric label="Task đã xong" value={formatInteger(item.taskCount)} />
           <Metric
             label={`Tỉ lệ FB sai (${item.fbWrongCount})`}
             value={percent(item.fbRate)}
             alert={item.fbRate > threshold}
           />
           <Metric
-            label={`Tỉ lệ QC fail (${item.qcFailedCount})`}
+            label={`Tỉ lệ QC trả lại (${item.qcFailedCount})`}
             value={percent(item.qcFailRate)}
             alert={item.qcFailRate > threshold}
           />
@@ -152,16 +152,16 @@ const Details = ({
       return (
         <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
           <Metric
-            label="Done sau khi giao"
+            label="Xong sau khi giao"
             value={
               item.minutes < 1
                 ? "dưới 1 phút"
-                : `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(item.minutes)} phút`
+                : `${formatNumber(item.minutes)} phút`
             }
             alert
           />
           <Metric label="Giao lúc" value={formatDeadline(item.assignedAt, timeZone)} />
-          <Metric label="Done lúc" value={formatDeadline(item.doneAt, timeZone)} />
+          <Metric label="Xong lúc" value={formatDeadline(item.doneAt, timeZone)} />
           {item.qtyDone !== null ? (
             <Metric label="Số tấm" value={formatInteger(item.qtyDone)} />
           ) : null}

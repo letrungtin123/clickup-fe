@@ -29,7 +29,7 @@ import {
   type ReportResult
 } from "@/contracts/production-reports";
 
-import { formatCredit, formatInteger } from "../../format";
+import { formatCredit, formatInteger, formatPercent } from "../../format";
 import { periodLabel } from "../../scores/periods";
 import { formatDeadline } from "../dashboard";
 import { reportErrorMessage } from "../errors";
@@ -211,7 +211,7 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
         index={1}
         icon={Briefcase}
         title={lateJobs.title}
-        subtitle="Job có task quá hạn mà chưa Done"
+        subtitle="Job có task quá hạn mà chưa xong"
         href={reportBuilderHref(lateJobs.config, lateJobs.title)}
       >
         <Headline
@@ -314,7 +314,7 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
           {formatInteger(productivityByShift.result.totals.task_count ?? 0)} task
         </Headline>
         {productivityByShift.result.rows.length === 0 ? (
-          <Empty text="Chưa có task Done nào trong tháng." />
+          <Empty text="Chưa có task nào xong trong tháng." />
         ) : (
           <MiniBars
             caption="Năng suất theo ca"
@@ -337,9 +337,7 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
       >
         <Headline
           value={
-            kpiAttainment.averagePercent === null
-              ? "—"
-              : `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(kpiAttainment.averagePercent)}%`
+            formatPercent(kpiAttainment.averagePercent)
           }
         >
           Trung bình của {kpiAttainment.members - kpiAttainment.withoutTarget} người có KPI

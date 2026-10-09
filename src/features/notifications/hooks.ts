@@ -3,28 +3,43 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  type InfiniteData,
   type QueryClient
 } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 
-import type { Notification, NotificationPage } from "@/contracts/notifications";
+import type { Notification } from "@/contracts/notifications";
 import { TASK_PANEL_PARAM } from "@/features/tasks/use-task-panel";
 import { getErrorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/query-keys";
 
-import { notificationsApi, type NotificationFilter } from "./api";
+import { notificationsApi } from "./api";
 import { notificationTarget } from "./describe";
+import {
+  feedNames,
+  mapFeed,
+  mentionTypeList,
+  prependToFeed,
+  removeFromFeed,
+  type Feed,
+  type FeedName
+} from "./feeds";
 
-type Feed = InfiniteData<NotificationPage, string | null>;
-
-export const useNotificationFeed = (filter: NotificationFilter, enabled = true) =>
+/** One inbox tab. "mentions" asks the server for mention types only (no client-side filtering). */
+export const useNotificationFeed = (feed: FeedName, enabled = true) =>
   useInfiniteQuery({
-    queryKey: qk.notifications.feed(filter),
+    queryKey: qk.notifications.feed(feed),
     queryFn: ({ signal, pageParam }) =>
-      notificationsApi.list({ filter, cursor: pageParam, limit: 30 }, signal),
+      notificationsApi.list(
+        {
+          filter: feed === "unread" ? "unread" : "all",
+          types: feed === "mentions" ? mentionTypeList : undefined,
+          cursor: pageParam,
+          limit: 30
+        },
+        signal
+      ),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => (page.pageInfo.hasMore ? page.pageInfo.nextCursor : null),
     enabled,
@@ -46,24 +61,8 @@ const mapFeeds = (
   queryClient: QueryClient,
   update: (item: Notification) => Notification | null
 ) => {
-  for (const filter of ["all", "unread"] as const) {
-    queryClient.setQueryData<Feed>(qk.notifications.feed(filter), (feed) => {
-      if (!feed) return feed;
-      let changed = false;
-      const pages = feed.pages.map((page) => {
-        let pageChanged = false;
-        const items: Notification[] = [];
-        for (const item of page.items) {
-          const next = update(item);
-          if (next !== item) pageChanged = true;
-          if (next) items.push(next);
-        }
-        if (!pageChanged) return page;
-        changed = true;
-        return { ...page, items };
-      });
-      return changed ? { ...feed, pages } : feed;
-    });
+  for (const name of feedNames) {
+    queryClient.setQueryData<Feed>(qk.notifications.feed(name), (feed) => mapFeed(feed, update));
   }
 };
 
@@ -71,18 +70,10 @@ export const setUnreadCount = (queryClient: QueryClient, unreadCount: number) =>
   queryClient.setQueryData(qk.notifications.unreadCount(), unreadCount);
 
 export const prependNotification = (queryClient: QueryClient, notification: Notification) => {
-  for (const filter of ["all", "unread"] as const) {
-    queryClient.setQueryData<Feed>(qk.notifications.feed(filter), (feed) => {
-      const first = feed?.pages[0];
-      if (!feed || !first) return feed;
-      if (feed.pages.some((page) => page.items.some((item) => item.id === notification.id))) {
-        return feed;
-      }
-      return {
-        ...feed,
-        pages: [{ ...first, items: [notification, ...first.items] }, ...feed.pages.slice(1)]
-      };
-    });
+  for (const name of feedNames) {
+    queryClient.setQueryData<Feed>(qk.notifications.feed(name), (feed) =>
+      prependToFeed(name, feed, notification)
+    );
   }
 };
 
@@ -98,8 +89,9 @@ export const applyRead = (
 };
 
 export const applyArchive = (queryClient: QueryClient, ids: readonly string[]) => {
-  const idSet = new Set(ids);
-  mapFeeds(queryClient, (item) => (idSet.has(item.id) ? null : item));
+  for (const name of feedNames) {
+    queryClient.setQueryData<Feed>(qk.notifications.feed(name), (feed) => removeFromFeed(feed, ids));
+  }
 };
 
 // Mutations ----------------------------------------------------------------------------------------

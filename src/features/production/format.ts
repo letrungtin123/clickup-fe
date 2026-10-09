@@ -31,6 +31,39 @@ export const formatMoney = (value: number | null | undefined) =>
 
 export const formatInteger = (value: number) => integerFormatter.format(value);
 
+const decimalFormatters = new Map<number, Intl.NumberFormat>();
+const decimalFormatter = (maxFractionDigits: number) => {
+  let formatter = decimalFormatters.get(maxFractionDigits);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: maxFractionDigits });
+    decimalFormatters.set(maxFractionDigits, formatter);
+  }
+  return formatter;
+};
+
+/**
+ * The one Vietnamese number format for quantities with decimals (BUG-PR-22): hours, days, rates —
+ * 1.5 → "1,5", 1234.5 → "1.234,5", 2 → "2". At most `maxFractionDigits` (default 1); null → "—".
+ */
+export const formatNumber = (value: number | null | undefined, maxFractionDigits = 1) =>
+  value === null || value === undefined || !Number.isFinite(value)
+    ? EMPTY_VALUE
+    : decimalFormatter(maxFractionDigits).format(value);
+
+/** KPI / progress percents already ×100, one decimal everywhere (BUG-PR-24): 94.65 → "94,7%". */
+export const formatPercent = (value: number | null | undefined) =>
+  value === null || value === undefined || !Number.isFinite(value)
+    ? EMPTY_VALUE
+    : `${decimalFormatter(1).format(value)}%`;
+
+/** Number typed with either decimal separator ("1,5" or "1.5"); null when it is not a number. */
+export const parseDecimalInput = (text: string) => {
+  const raw = text.trim().replace(/\s/g, "");
+  if (!/^\d+([.,]\d+)?$/.test(raw)) return null;
+  const value = Number(raw.replace(",", "."));
+  return Number.isFinite(value) ? value : null;
+};
+
 type ParseResult = { ok: true; value: number | null } | { ok: false; error: string };
 
 /**
@@ -144,7 +177,8 @@ export const formatVersionRange = (effectiveFrom: string, effectiveTo: string | 
 
 /**
  * KPI period containing `today` (PLAN §6): from the day after the close day of the previous month
- * through the close day of this month (close day 1–28, so it exists in every month).
+ * through the close day of this month (close day 1–28, so it exists in every month). `daysLeft`
+ * counts today, like the API forecast (BUG-PR-24): 1 on the close day itself.
  */
 export const kpiPeriod = (today: string, closeDay: number) => {
   const date = dayToDate(today);
@@ -155,7 +189,12 @@ export const kpiPeriod = (today: string, closeDay: number) => {
   const endMonth = date.getDate() <= day ? month : month + 1;
   const end = new Date(year, endMonth, day);
   const start = new Date(end.getFullYear(), end.getMonth() - 1, day + 1);
-  const daysLeft = Math.round((end.getTime() - date.getTime()) / 86_400_000);
+  const daysLeft =
+    Math.round(
+      (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) -
+        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())) /
+        86_400_000
+    ) + 1;
   return { start: dateToDay(start), end: dateToDay(end), daysLeft };
 };
 

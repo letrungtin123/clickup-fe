@@ -18,6 +18,7 @@ import {
 import type { Notification, NotificationType } from "@/contracts/notifications";
 
 import { describeProductionNotification, productionPath } from "./describe-production";
+import { mentionTypeList } from "./feeds";
 
 /**
  * Turns a notification into a Vietnamese sentence (product §30), e.g.
@@ -221,12 +222,8 @@ export const describeNotification = (notification: Notification): NotificationDe
 export const sentenceText = (description: NotificationDescription) =>
   description.segments.map((segment) => segment.text).join("");
 
-/** Types shown under the "Nhắc đến" tab. */
-export const mentionTypes: ReadonlySet<NotificationType> = new Set([
-  "task.mentioned",
-  "chat.mentioned",
-  "production.mentioned"
-]);
+/** Types shown under the "Nhắc đến" tab (the inbox asks the server for exactly these). */
+export const mentionTypes: ReadonlySet<NotificationType> = new Set(mentionTypeList);
 
 /**
  * Where a notification leads. Tasks open in the detail panel on top of the current page

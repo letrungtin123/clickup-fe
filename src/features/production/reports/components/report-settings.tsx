@@ -199,7 +199,7 @@ export const TaskDateControl = ({ config, onChange }: SettingsProps) => {
     return scores ? (
       <p className="flex items-start gap-1.5 self-end pb-2 text-xs text-foreground-muted">
         <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-        Điểm được tính theo ngày ghi điểm (ngày task Done hoặc QC xong).
+        Điểm được tính theo ngày ghi điểm (ngày task xong hoặc được QC kiểm xong).
       </p>
     ) : null;
   }
@@ -332,7 +332,7 @@ export const SortControl = ({ config, onChange }: SettingsProps) => {
 
 // Filters -------------------------------------------------------------------------------------------
 
-const singleChoice: ReadonlySet<FilterKey> = new Set<FilterKey>(["taskState"]);
+const singleChoice: ReadonlySet<FilterKey> = new Set<FilterKey>(["taskState", "jobState"]);
 
 const applicable = (key: FilterKey, measures: readonly ReportMeasure[]) => {
   if (key === "scoreRole") return usesSource(measures, "SCORES");
@@ -475,6 +475,8 @@ const FilterPill = ({
 const setValues = (config: ReportConfig, key: FilterKey, values: string[]): ReportConfig => {
   if (key === "taskState")
     return withFilter(config, "taskState", (values[0] as ReportFilters["taskState"]) ?? undefined);
+  if (key === "jobState")
+    return withFilter(config, "jobState", (values[0] as ReportFilters["jobState"]) ?? undefined);
   return withFilter(config, key, values as never);
 };
 

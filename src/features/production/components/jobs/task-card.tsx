@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { MessageSquareWarning } from "lucide-react";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 import type { ProductionTask } from "@/contracts/production-jobs";
 
@@ -9,9 +9,10 @@ import { KindBadge, LateBadge, Person, StatusChip } from "./job-bits";
 
 /**
  * Compact task card for the kanban, the list view and the QC queue. The whole card opens the task;
- * `footer` holds move buttons (they stop propagation).
+ * `footer` holds move buttons (they stop propagation). Memoized: while a card is dragged the board
+ * re-renders its draggable wrappers, but cards whose task did not change are skipped (PERF-16).
  */
-export const TaskCard = ({
+export const TaskCard = memo(function TaskCard({
   task,
   timeZone,
   onOpen,
@@ -29,7 +30,7 @@ export const TaskCard = ({
   meta?: ReactNode;
   className?: string | undefined;
   dragging?: boolean;
-}) => {
+}) {
   const deadline = relativeDeadline(task.deadline);
   return (
     <div
@@ -78,7 +79,7 @@ export const TaskCard = ({
         {task.qcFailCount > 0 ? (
           <span className="inline-flex items-center gap-1 text-danger">
             <MessageSquareWarning className="size-3" aria-hidden="true" />
-            QC trả {task.qcFailCount}
+            QC trả lại {task.qcFailCount}
           </span>
         ) : null}
       </div>
@@ -95,4 +96,4 @@ export const TaskCard = ({
       {footer}
     </div>
   );
-};
+});

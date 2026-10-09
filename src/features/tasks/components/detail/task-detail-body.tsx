@@ -9,6 +9,7 @@ import { qk } from "@/lib/query-keys";
 
 import { useUploads } from "../../attachments";
 import { reconcileTask } from "../../cache";
+import { markLocalTaskMutation } from "../../local-mutations";
 import { ConfirmHost } from "../confirm-host";
 import { InlineEditorHost } from "../inline-editor-host";
 import { AttachmentsSection } from "./attachments-section";
@@ -34,6 +35,7 @@ const TaskDetailBody = ({ task }: { task: TaskDetail }) => {
     (attachment: Attachment) => {
       const detail = client.getQueryData<TaskDetail>(qk.task(attachment.taskId));
       if (!detail || detail.attachments.some((item) => item.id === attachment.id)) return;
+      markLocalTaskMutation(attachment.taskId);
       const next = { ...detail, attachments: [attachment, ...detail.attachments], attachmentCount: detail.attachmentCount + 1 };
       client.setQueryData(qk.task(attachment.taskId), next);
       reconcileTask(client, next, { selfId: session.user.id });

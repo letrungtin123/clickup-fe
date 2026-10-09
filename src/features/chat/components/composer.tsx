@@ -10,16 +10,12 @@ import {
   SendHorizontal,
   X
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 
-import {
-  isEmptyDoc,
-  prepareDoc,
-  RichTextEditor,
-  type RichTextEditorHandle
-} from "@/components/shared/rich-text";
+import { isEmptyDoc, prepareDoc } from "@/components/shared/rich-text/helpers";
+import type { RichTextEditorHandle } from "@/components/shared/rich-text/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -41,6 +37,20 @@ import { formatBytes } from "../model/files";
 import { FileTypeIcon } from "./file-type-icon";
 
 const TYPING_EMIT_MS = 3000;
+
+/**
+ * The editor (Tiptap, ~100 kB gz) is its own chunk: the conversation renders while it loads and the
+ * fallback keeps the composer's shape (PERF-16).
+ */
+const RichTextEditor = lazy(() =>
+  import("@/components/shared/rich-text/rich-text-editor").then((module) => ({ default: module.RichTextEditor }))
+);
+
+const EditorFallback = ({ label }: { label: string }) => (
+  <div className="min-h-9 px-3 pt-2.5 pb-1 text-sm text-foreground-subtle" aria-busy="true">
+    {label}
+  </div>
+);
 
 type ComposerProps = {
   channel: ChatChannelDetail;
@@ -158,22 +168,24 @@ export const Composer = ({
         }}
       >
         {uploads.items.length > 0 ? <UploadTray uploads={uploads} /> : null}
-        <RichTextEditor
-          ref={handle}
-          variant="message"
-          value={initialDraft}
-          submitOnEnter={!touch}
-          autoFocus={autoFocus}
-          toolbar={showToolbar}
-          placeholder={placeholder ?? label}
-          aria-label={label}
-          mentionSource={mentionSource}
-          onChange={onChange}
-          onSubmit={(doc) => submit(doc)}
-          onPasteFiles={uploads.addFiles}
-          className={cn(showToolbar && "px-2 pt-1.5")}
-          contentClassName="px-3 pt-2.5 pb-1 text-sm"
-        />
+        <Suspense fallback={<EditorFallback label={placeholder ?? label} />}>
+          <RichTextEditor
+            ref={handle}
+            variant="message"
+            value={initialDraft}
+            submitOnEnter={!touch}
+            autoFocus={autoFocus}
+            toolbar={showToolbar}
+            placeholder={placeholder ?? label}
+            aria-label={label}
+            mentionSource={mentionSource}
+            onChange={onChange}
+            onSubmit={(doc) => submit(doc)}
+            onPasteFiles={uploads.addFiles}
+            className={cn(showToolbar && "px-2 pt-1.5")}
+            contentClassName="px-3 pt-2.5 pb-1 text-sm"
+          />
+        </Suspense>
         <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
           <ComposerIconButton label="Đính kèm tệp" onClick={() => fileInput.current?.click()}>
             <Paperclip />
@@ -312,12 +324,12 @@ const UploadChip = ({
               : formatBytes(item.size)}
         </span>
       </span>
-      {item.status === "error" ? (
+      {item.status === "error" && item.retryable !== false ? (
         <button
           type="button"
           onClick={onRetry}
           aria-label={`Tải lại ${item.name}`}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex size-6 shrink-0 items-center pointer-coarse:size-10 justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <RotateCcw className="size-3.5" />
         </button>

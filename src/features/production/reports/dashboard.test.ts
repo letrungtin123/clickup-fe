@@ -113,6 +113,10 @@ describe("teamPointsModel", () => {
 
 describe("formatDeadline", () => {
   it("shows time and day in the organization timezone", () => {
-    expect(formatDeadline("2026-05-12T07:30:00.000Z", "Asia/Ho_Chi_Minh")).toBe("14:30 · 12/05");
+    const now = new Date("2026-10-10T03:00:00.000Z");
+    expect(formatDeadline("2026-05-12T07:30:00.000Z", "Asia/Ho_Chi_Minh", now)).toBe("14:30 · 12/05");
+    expect(formatDeadline("2025-05-12T07:30:00.000Z", "Asia/Ho_Chi_Minh", now)).toBe(
+      "14:30 · 12/05/2025"
+    );
   });
 });

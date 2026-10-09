@@ -43,9 +43,9 @@ const payModeLabels: Record<PayMode, string> = {
 };
 
 const payModeHelp: Record<PayMode, string> = {
-  POINTS: "Chỉ ghi credit và cộng vào KPI tháng (ca chính thức, OT).",
+  POINTS: "Chỉ ghi điểm và cộng vào KPI tháng (ca chính thức, OT).",
   MONEY_IF_KPI:
-    "Hiện song song credit và tiền tạm tính; ngày chốt KPI quyết định nhận tiền (đủ KPI) hay quy về điểm."
+    "Hiện song song điểm và tiền tạm tính; ngày chốt KPI quyết định nhận tiền (đủ KPI) hay quy về điểm."
 };
 
 /** Work shifts and how they pay (PLAN §5): points, or money if the monthly KPI is met. */

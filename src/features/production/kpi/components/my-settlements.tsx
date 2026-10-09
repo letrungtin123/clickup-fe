@@ -7,7 +7,7 @@ import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { KpiSettlement } from "@/contracts/production-scores";
 
-import { formatCredit, formatMoney } from "../../format";
+import { formatCredit, formatMoney, formatNumber } from "../../format";
 import { formatPercent } from "../../scores/forecast";
 import { Panel } from "../../scores/components/kit";
 import { formatDayRange, periodLabel, rollupLabel, shiftPeriod } from "../../scores/periods";
@@ -49,7 +49,7 @@ export const MySettlements = ({
         .map((row) => ({
           key: row.period,
           label: periodLabel(row.period),
-          sublabel: row.leaveDays > 0 ? `${row.leaveDays} ngày nghỉ được duyệt` : undefined,
+          sublabel: row.leaveDays > 0 ? `${formatNumber(row.leaveDays)} ngày nghỉ được duyệt` : undefined,
           target: row.target,
           pointsOfficial: row.pointsOfficial,
           khoanPointsConverted: row.khoanPointsConverted,
@@ -201,7 +201,7 @@ const LatestSettlement = ({ settlement }: { settlement: KpiSettlement }) => {
           : converted
             ? `Thiếu KPI nên ${formatCredit(settlement.khoanPointsConverted)} điểm Khoán được quy về điểm KPI (tổng ${formatCredit(settlement.totalPoints)}); tiền Khoán = 0.`
             : "Thiếu KPI; kỳ này không có điểm Khoán để quy đổi."}
-        {settlement.leaveDays > 0 ? ` Nghỉ được duyệt: ${settlement.leaveDays} ngày.` : ""}
+        {settlement.leaveDays > 0 ? ` Nghỉ được duyệt: ${formatNumber(settlement.leaveDays)} ngày.` : ""}
         {settlement.note ? ` Ghi chú: ${settlement.note}` : ""}
       </p>
     </section>

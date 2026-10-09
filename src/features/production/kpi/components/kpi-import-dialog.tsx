@@ -277,6 +277,11 @@ export const KpiImportDialog = ({
                     </span>
                   </Field>
                 )}
+                <p className="text-xs text-foreground-muted">
+                  Chỉ tiêu nhận số kiểu Việt Nam (2.472,5) hoặc kiểu Anh (2,472.5), tối đa 2 chữ số
+                  thập phân. Trong tệp CSV, số có dấu phẩy cần nằm trong ngoặc kép (&quot;2472,5&quot;);
+                  dán từ bảng tính thì không cần.
+                </p>
                 {!headerOk ? (
                   <InfoNote icon={TriangleAlert} tone="warning">
                     Dòng đầu tiên chưa có cột user_email và target. Máy chủ sẽ từ chối nếu thiếu cột.

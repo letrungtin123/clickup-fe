@@ -30,14 +30,17 @@ import { qk, type DirectoryParams, type TaskQueryParams } from "@/lib/query-keys
 import { tasksApi, type CreateTaskInput, type MyTasksParams, type ReplaceWorkflowInput } from "./api";
 import {
   cancelTaskQueries,
+  patchTaskEverywhere,
   reconcileTask,
   removeTaskEverywhere,
   restoreTaskCaches,
   snapshotTaskCaches,
   type TaskCacheSnapshot
 } from "./cache";
+import { markLocalTaskMutation } from "./local-mutations";
 import { rankPeople } from "./people";
 import { toastTaskError } from "./errors";
+import { refreshTaskSummary } from "./summary-sync";
 
 /**
  * Data hooks for the task views and detail panel. Reads use the shared query keys (`qk`); writes
@@ -226,6 +229,7 @@ export const useUpdateTask = () => {
     mutationFn: ({ task, patch }: UpdateVariables) => tasksApi.update(task.id, patch),
     meta: { errorMessage: false },
     onMutate: async ({ task, patch, optimistic }) => {
+      markLocalTaskMutation(task.id);
       await cancelTaskQueries(client, task.projectId);
       const snapshot = snapshotTaskCaches(client, task.projectId);
       const next: TaskSummary = {
@@ -247,6 +251,7 @@ export const useUpdateTask = () => {
       toastTaskError(error, "Không lưu được thay đổi.");
     },
     onSuccess: (detail) => {
+      markLocalTaskMutation(detail.id);
       client.setQueryData<TaskDetail>(qk.task(detail.id), detail);
       reconcileTask(client, detail, { selfId });
     }
@@ -270,6 +275,7 @@ export const useMoveTask = () => {
     mutationFn: ({ task, input }: MoveVariables) => tasksApi.move(task.id, input),
     meta: { errorMessage: false },
     onMutate: async ({ task, optimistic, anchor }) => {
+      markLocalTaskMutation(task.id);
       await cancelTaskQueries(client, task.projectId);
       const snapshot = snapshotTaskCaches(client, task.projectId);
       const next: TaskSummary = { ...task, ...optimistic, updatedAt: new Date().toISOString() };
@@ -281,6 +287,7 @@ export const useMoveTask = () => {
       toastTaskError(error, "Không di chuyển được công việc. Đã hoàn tác.");
     },
     onSuccess: (summary) => {
+      markLocalTaskMutation(summary.id);
       reconcileTask(client, summary, { selfId, keepPosition: false });
       void client.invalidateQueries({ queryKey: qk.task(summary.id), exact: true });
     }
@@ -302,7 +309,9 @@ export const useCreateTask = () => {
     meta: { errorMessage: false },
     onError: (error) => toastTaskError(error, "Không tạo được công việc."),
     onSuccess: (summary, { anchor }) => {
-      reconcileTask(client, summary, { selfId, anchor });
+      markLocalTaskMutation(summary.id);
+      // `created`: a new subtask bumps its parent's "done/total" counter on every row (BUG-WK-19).
+      reconcileTask(client, summary, { selfId, anchor, created: true });
     }
   });
 };
@@ -314,6 +323,7 @@ export const useDeleteTask = () => {
   return useMutation({
     mutationFn: (task: TaskSummary) => tasksApi.remove(task.id),
     onMutate: async (task) => {
+      markLocalTaskMutation(task.id);
       await cancelTaskQueries(client, task.projectId);
       const snapshot: TaskCacheSnapshot = snapshotTaskCaches(client, task.projectId);
       removeTaskEverywhere(client, task.projectId, task.id);
@@ -338,7 +348,8 @@ export const useRestoreTask = () => {
   return useMutation({
     mutationFn: (task: Pick<TaskSummary, "id" | "projectId">) => tasksApi.restore(task.id),
     onSuccess: (summary) => {
-      reconcileTask(client, summary, { selfId });
+      markLocalTaskMutation(summary.id);
+      reconcileTask(client, summary, { selfId, created: true });
       void client.invalidateQueries({ queryKey: qk.tasks(summary.projectId) });
       void client.invalidateQueries({ queryKey: qk.task(summary.id) });
       void client.invalidateQueries({ queryKey: ["trash"] });
@@ -373,14 +384,37 @@ const patchTimeline = (
 const patchComment = (items: TimelinePage["items"], commentId: string, fn: (comment: Comment) => Comment) =>
   items.map((item) => (item.kind === "comment" && item.comment.id === commentId ? { ...item, comment: fn(item.comment) } : item));
 
+/**
+ * Comment counters on the task's rows and detail (BUG-WK-19): the comment itself is counted exactly;
+ * anything the client cannot know (files attached through the comment, replies removed with a
+ * deleted comment) is re-read once from the server.
+ */
+const syncCommentCounters = (
+  client: QueryClient,
+  taskId: string,
+  selfId: string,
+  delta: number,
+  needsServerCount: boolean
+) => {
+  // Our own comment: its task:timeline echo needs no detail refetch (PERF-07).
+  markLocalTaskMutation(taskId);
+  const projectId = client.getQueryData<TaskDetail>(qk.task(taskId))?.projectId;
+  if (projectId) {
+    patchTaskEverywhere(client, projectId, taskId, (task) => ({ commentCount: Math.max(0, task.commentCount + delta) }));
+  }
+  if (needsServerCount || !projectId) refreshTaskSummary(client, taskId, selfId);
+};
+
 export const useCreateComment = (taskId: string) => {
   const client = useQueryClient();
+  const selfId = useSelfId();
   return useMutation({
     mutationFn: (input: { body: RichTextDoc; parentCommentId?: string | null; attachmentIds?: string[] }) =>
       tasksApi.createComment(taskId, input),
     meta: { errorMessage: false },
     onError: (error) => toastTaskError(error, "Không gửi được bình luận."),
     onSuccess: (comment) => {
+      syncCommentCounters(client, taskId, selfId, 1, comment.attachments.length > 0);
       if (comment.parentCommentId) {
         const parentId = comment.parentCommentId;
         client.setQueryData<{ items: Comment[]; pageInfo: TaskPage["pageInfo"] }>(
@@ -411,6 +445,7 @@ export const useUpdateComment = (taskId: string) => {
     meta: { errorMessage: false },
     onError: (error) => toastTaskError(error, "Không lưu được bình luận."),
     onSuccess: (comment) => {
+      markLocalTaskMutation(taskId);
       patchTimeline(client, taskId, (items) => patchComment(items, comment.id, () => comment));
       if (comment.parentCommentId) {
         client.setQueryData<{ items: Comment[] }>(taskKeys.replies(taskId, comment.parentCommentId), (data) =>
@@ -423,10 +458,12 @@ export const useUpdateComment = (taskId: string) => {
 
 export const useDeleteComment = (taskId: string) => {
   const client = useQueryClient();
+  const selfId = useSelfId();
   return useMutation({
     mutationFn: (comment: Comment) => tasksApi.deleteComment(taskId, comment.id),
     meta: { successMessage: "Đã xóa bình luận" },
     onSuccess: (_result, comment) => {
+      syncCommentCounters(client, taskId, selfId, -1, comment.replyCount > 0 || comment.attachments.length > 0);
       if (comment.parentCommentId) {
         const parentId = comment.parentCommentId;
         client.setQueryData<{ items: Comment[] }>(taskKeys.replies(taskId, parentId), (data) =>

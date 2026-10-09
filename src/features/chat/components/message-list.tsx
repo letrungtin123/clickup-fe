@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useMeasureAfterCommit } from "@/lib/virtual";
 
 import {
   buildTimeline,
@@ -127,6 +128,7 @@ export const MessageList = memo(function MessageList({
     paddingStart: 4,
     paddingEnd: 12
   });
+  const measureRef = useMeasureAfterCommit(virtualizer);
 
   // --- Scroll bookkeeping ---------------------------------------------------------------------------
   const stick = useRef(true);
@@ -165,8 +167,10 @@ export const MessageList = memo(function MessageList({
   }, [rows, virtualizer]);
 
   const syncScroll = (element: HTMLDivElement) => {
-    // Let the virtualizer read the new offset synchronously (no blank frame).
-    element.dispatchEvent(new Event("scroll"));
+    // Let the virtualizer read the new offset before the next paint (no blank frame). In a microtask:
+    // it re-renders with flushSync, which React refuses (and warns about) inside the layout effects
+    // that call this (WK-52); a microtask still runs before the browser paints.
+    queueMicrotask(() => element.dispatchEvent(new Event("scroll")));
   };
 
   const scrollToBottom = useCallback(() => {
@@ -354,7 +358,7 @@ export const MessageList = memo(function MessageList({
                 <div
                   key={item.key}
                   data-index={item.index}
-                  ref={virtualizer.measureElement}
+                  ref={measureRef}
                   className="absolute top-0 left-0 w-full"
                   style={{ transform: `translateY(${item.start}px)` }}
                 >

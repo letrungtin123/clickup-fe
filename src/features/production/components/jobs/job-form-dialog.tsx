@@ -1,4 +1,5 @@
 import { cn } from "cn";
+import { TriangleAlert } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -105,6 +106,13 @@ export const JobFormDialog = ({
       ? [job.leader, ...leaders]
       : leaders;
   const pending = create.isPending || update.isPending;
+  // Warn (never block) when a new or changed deadline is already over (BUG-PR-26). The dialog is
+  // re-keyed on every open, so "now" is when it opened.
+  const [openedAt] = useState(() => Date.now());
+  const deadlineInPast =
+    deadline !== null &&
+    deadline !== (job?.deadline ?? null) &&
+    new Date(deadline).getTime() < openedAt;
 
   const submit = () => {
     const problems: Errors = {};
@@ -277,6 +285,12 @@ export const JobFormDialog = ({
               />
               {errors.deadline ? (
                 <FieldError>{errors.deadline}</FieldError>
+              ) : deadlineInPast ? (
+                <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
+                  <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                  Deadline này đã qua — task chia từ job sẽ bị tính trễ ngay. Vẫn lưu được nếu bạn
+                  chắc chắn.
+                </p>
               ) : (
                 <FieldDescription className="text-xs">
                   Deadline mặc định của task = deadline job − buffer QC của dự án ({timeZone}).

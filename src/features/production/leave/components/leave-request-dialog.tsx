@@ -25,8 +25,10 @@ import { sheetOnPhone } from "../../ui";
 import {
   draftDays,
   formatLeaveDates,
-  formatLeaveDays,
+  formatLeaveSpan,
+  KPI_WORKDAY_HINT,
   leavePartLabels,
+  leaveWorkdays,
   validateLeaveDraft
 } from "../calendar";
 import { useCreateLeave } from "../hooks";
@@ -172,8 +174,12 @@ export const LeaveRequestDialog = ({
             <span>
               {days > 0 ? (
                 <>
-                  <span className="font-medium text-foreground">{formatLeaveDays(days)}</span> ·{" "}
-                  {formatLeaveDates(fromDate, toDate)} · {leavePartLabels[draft.part].toLocaleLowerCase("vi")}.{" "}
+                  <span className="font-medium text-foreground">
+                    {formatLeaveSpan(draft, days)}
+                  </span>{" "}
+                  · {formatLeaveDates(fromDate, toDate)} ·{" "}
+                  {leavePartLabels[draft.part].toLocaleLowerCase("vi")}.{" "}
+                  {leaveWorkdays(draft) !== days ? `${KPI_WORKDAY_HINT} ` : null}
                 </>
               ) : null}
               Tối đa {leaveLimits.maxRequestDays} ngày mỗi đơn; xin cho ngày đã qua tối đa {leaveLimits.maxPastDays} ngày.

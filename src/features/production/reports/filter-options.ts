@@ -30,7 +30,7 @@ export type FilterOption = {
   search: string;
 };
 
-export type ChoiceFilterKey = "taskKind" | "scoreRole" | "taskState";
+export type ChoiceFilterKey = "taskKind" | "scoreRole" | "taskState" | "jobState";
 export type FilterKey = Exclude<IdFilterKey, "job"> | ChoiceFilterKey;
 
 export const filterKeys: readonly FilterKey[] = [
@@ -44,7 +44,8 @@ export const filterKeys: readonly FilterKey[] = [
   "taskKind",
   "tag",
   "scoreRole",
-  "taskState"
+  "taskState",
+  "jobState"
 ];
 
 const option = (
@@ -68,8 +69,13 @@ export const scoreRoleLabels: Record<"WORKER" | "QC", string> = {
   QC: "QC kiểm"
 };
 export const taskStateLabels: Record<"OPEN" | "DONE", string> = {
-  OPEN: "Chưa Done",
-  DONE: "Đã Done"
+  OPEN: "Chưa xong",
+  DONE: "Đã xong"
+};
+/** Archived jobs are read-only; reports include them unless filtered. */
+export const jobStateLabels: Record<"ACTIVE" | "ARCHIVED", string> = {
+  ACTIVE: "Job chưa lưu trữ",
+  ARCHIVED: "Job đã lưu trữ"
 };
 
 export const useFilterOptions = (enabled = true) => {
@@ -141,7 +147,10 @@ export const useFilterOptions = (enabled = true) => {
         option(kind, taskKindLabels[kind])
       ),
       scoreRole: (["WORKER", "QC"] as const).map((role) => option(role, scoreRoleLabels[role])),
-      taskState: (["OPEN", "DONE"] as const).map((state) => option(state, taskStateLabels[state]))
+      taskState: (["OPEN", "DONE"] as const).map((state) => option(state, taskStateLabels[state])),
+      jobState: (["ACTIVE", "ARCHIVED"] as const).map((state) =>
+        option(state, jobStateLabels[state])
+      )
     };
     return options;
   }, [

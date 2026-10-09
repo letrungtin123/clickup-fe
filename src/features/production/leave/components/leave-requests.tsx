@@ -30,7 +30,13 @@ import { leaveLimits, type LeaveRequest } from "@/contracts/production-leave";
 import { FormAlert } from "../../components/settings-kit";
 import { scoreErrorMessage } from "../../scores/errors";
 import { sheetOnPhone, touchTargets } from "../../ui";
-import { formatLeaveDates, formatLeaveDays, leavePartLabels } from "../calendar";
+import {
+  formatLeaveDates,
+  formatLeaveSpan,
+  KPI_WORKDAY_HINT,
+  leavePartLabels,
+  leaveWorkdays
+} from "../calendar";
 import { useDecideLeave } from "../hooks";
 import { LeaveStatusBadge } from "./leave-bits";
 
@@ -74,10 +80,13 @@ export const LeaveRequestRow = ({
             {formatLeaveDates(request.fromDate, request.toDate)}
           </span>
           <span className="text-xs text-foreground-muted">
-            {leavePartLabels[request.part]} · {formatLeaveDays(request.days)}
+            {leavePartLabels[request.part]} · {formatLeaveSpan(request, request.days)}
           </span>
           <LeaveStatusBadge status={request.status} />
         </p>
+        {leaveWorkdays(request) !== request.days ? (
+          <p className="text-[11px] text-foreground-subtle">{KPI_WORKDAY_HINT}</p>
+        ) : null}
         {request.note ? (
           <p className="text-xs break-words whitespace-pre-line text-foreground-muted">{request.note}</p>
         ) : null}
@@ -168,7 +177,7 @@ export const DecideDialog = ({
           <DialogTitle>{approve ? "Duyệt đơn nghỉ" : "Từ chối đơn nghỉ"}</DialogTitle>
           <DialogDescription>
             {target
-              ? `${target.request.user.displayName} · ${formatLeaveDates(target.request.fromDate, target.request.toDate)} · ${leavePartLabels[target.request.part].toLocaleLowerCase("vi")} (${formatLeaveDays(target.request.days)}).`
+              ? `${target.request.user.displayName} · ${formatLeaveDates(target.request.fromDate, target.request.toDate)} · ${leavePartLabels[target.request.part].toLocaleLowerCase("vi")} (${formatLeaveSpan(target.request, target.request.days)}).`
               : ""}
           </DialogDescription>
         </DialogHeader>

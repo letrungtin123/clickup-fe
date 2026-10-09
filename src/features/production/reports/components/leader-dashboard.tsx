@@ -145,7 +145,7 @@ export const DashboardTaskList = ({
           </h2>
           <p className="text-xs text-foreground-muted">
             {late
-              ? "Quá hạn chót mà chưa Done — trễ nhất ở trên"
+              ? "Quá hạn chót mà chưa xong — trễ nhất ở trên"
               : `Đến hạn trong ${dueSoonHours} giờ tới — gần nhất ở trên`}
           </p>
         </div>
@@ -248,7 +248,7 @@ const LeaveBadge = ({ leave }: { leave: WorkloadRow["leaveToday"] }) =>
 
 const sortItems: { value: WorkloadSort; label: string }[] = [
   { value: "load", label: "Đang tải" },
-  { value: "done", label: "Done hôm nay" },
+  { value: "done", label: "Xong hôm nay" },
   { value: "name", label: "Tên" }
 ];
 
@@ -361,7 +361,7 @@ export const WorkloadPanel = ({
                   <dd className="font-medium">{formatInteger(row.qtyProcessing)} tấm</dd>
                 </div>
                 <div>
-                  <dt className="text-foreground-muted">Done hôm nay</dt>
+                  <dt className="text-foreground-muted">Xong hôm nay</dt>
                   <dd className="font-medium">
                     {formatInteger(row.qtyDoneToday)} tấm · {row.tasksDoneToday} task
                   </dd>
@@ -375,7 +375,7 @@ export const WorkloadPanel = ({
           <table className="w-full min-w-[40rem] border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-xs text-foreground-muted">
-                {["Nhân viên", "Tải việc", "Chưa làm", "Đang làm", "Task mở", "Done hôm nay"].map(
+                {["Nhân viên", "Tải việc", "Chưa làm", "Đang làm", "Task mở", "Xong hôm nay"].map(
                   (label, index) => (
                     <th
                       key={label}
@@ -519,7 +519,7 @@ export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["t
           size="sm"
           icon={UsersRound}
           title="Chưa có điểm trong 8 tuần gần nhất"
-          description="Điểm xuất hiện khi task được Done hoặc QC xong."
+          description="Điểm xuất hiện khi task xong hoặc được QC kiểm xong."
         />
       ) : (
         <div className="p-4">

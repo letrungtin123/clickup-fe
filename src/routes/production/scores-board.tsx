@@ -19,7 +19,7 @@ import {
   TeamSelect
 } from "@/features/production/scores/components/kit";
 import { isScoresPrivate } from "@/features/production/scores/errors";
-import { useLiveScores, useScoreBoard } from "@/features/production/scores/hooks";
+import { useScoreBoard } from "@/features/production/scores/hooks";
 import { isPeriod, periodLabel, periodOfDay } from "@/features/production/scores/periods";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
@@ -36,7 +36,6 @@ export const ProductionScoreBoardRoute = () => {
   const session = useSessionContext();
   const breakpoint = useBreakpoint();
   const [params, setParams] = useSearchParams();
-  useLiveScores();
 
   const settings = me.data?.settings;
   const closeDay = settings?.kpiCloseDay ?? 25;

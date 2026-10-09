@@ -18,7 +18,7 @@ export const productionRoleDescriptions: Record<ProductionRole, string> = {
   ADMIN: "Toàn quyền cấu hình, gán vai trò và xem mọi báo cáo.",
   ACCOUNT: "Tạo khách hàng và job, xác nhận giao hàng cho khách.",
   LEADER: "Chia task, gán QC và theo dõi tiến độ của team.",
-  QC: "Kiểm tra task chờ QC, Pass hoặc Fail kèm ghi chú.",
+  QC: "Kiểm tra task chờ QC: Đạt, hoặc trả lại kèm ghi chú.",
   STAFF: "Nhận task, cập nhật tiến độ và xem điểm của mình."
 };
 

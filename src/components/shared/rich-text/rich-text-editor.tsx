@@ -141,6 +141,8 @@ const buildExtensions = (
   const submit = (editor: Editor) => {
     const onSubmit = bridge.callbacks.onSubmit;
     if (!onSubmit) return false;
+    // Disabled while a previous submit is in flight: swallow the shortcut (callers also guard).
+    if (!editor.isEditable) return true;
     const prepared = prepareDoc(editor.getJSON() as RichTextDoc, variant);
     if (!prepared.ok) {
       if (prepared.reason === "too-large") toast.error(prepared.message);

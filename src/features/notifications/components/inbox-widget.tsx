@@ -2,6 +2,7 @@ import { Bell } from "lucide-react";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
+import { pagedErrorKind } from "@/lib/paging";
 
 import { useNotificationFeed, useOpenNotification } from "../hooks";
 import { NotificationItem } from "./notification-item";
@@ -29,7 +30,8 @@ export const InboxWidgetContent = () => {
       </div>
     );
   }
-  if (feed.isError) {
+  // Only a failed first load replaces the widget; a failed background refresh keeps what it shows.
+  if (pagedErrorKind(feed) === "initial") {
     return <ErrorState size="sm" error={feed.error} onRetry={() => void feed.refetch()} />;
   }
   if (items.length === 0) {

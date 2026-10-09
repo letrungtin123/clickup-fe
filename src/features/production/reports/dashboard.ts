@@ -1,6 +1,7 @@
 import type { LeaderDashboard } from "@/contracts/production-reports";
 
 import { formatDay } from "../format";
+import { formatDateTime } from "../jobs-model";
 import { maxSeries, type ChartModel } from "./pivot";
 
 /** Pure helpers of the Leader / Admin dashboards. Unit tested in dashboard.test.ts. */
@@ -92,22 +93,9 @@ export const teamPointsModel = (
   };
 };
 
-/** "14:30 · 12/05" in the organization timezone. */
-export const formatDeadline = (iso: string, timeZone: string) => {
-  const date = new Date(iso);
-  try {
-    const parts = new Intl.DateTimeFormat("vi-VN", {
-      timeZone,
-      hour: "2-digit",
-      minute: "2-digit",
-      day: "2-digit",
-      month: "2-digit",
-      hour12: false
-    }).formatToParts(date);
-    const get = (type: Intl.DateTimeFormatPartTypes) =>
-      parts.find((part) => part.type === type)?.value ?? "";
-    return `${get("hour")}:${get("minute")} · ${get("day")}/${get("month")}`;
-  } catch {
-    return date.toLocaleString("vi-VN");
-  }
-};
+/**
+ * "14:30 · 12/05" in the organization timezone; the year is added when it is not the current one
+ * ("14:30 · 12/05/2025", BUG-PR-26). Same format as the job and task screens.
+ */
+export const formatDeadline = (iso: string, timeZone: string, now: Date = new Date()) =>
+  formatDateTime(iso, timeZone, false, now);

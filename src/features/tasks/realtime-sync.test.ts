@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TaskChangedEvent } from "@/contracts/realtime";
@@ -8,7 +8,8 @@ import { qk } from "@/lib/query-keys";
 
 import { tasksApi } from "./api";
 import { flattenPages, type TaskPages } from "./cache";
-import { applyTaskChanges, maxTargetedFetches } from "./realtime-sync";
+import { clearLocalTaskMutations, markLocalTaskMutation } from "./local-mutations";
+import { applyTaskChanges, maxTargetedFetches, planTaskEvent } from "./realtime-sync";
 
 vi.mock("./api", () => ({ tasksApi: { get: vi.fn() } }));
 const invalidations: unknown[] = [];
@@ -105,10 +106,65 @@ describe("applyTaskChanges", () => {
   });
 
   it("falls back to one listing refetch for large bursts", async () => {
-    const { client } = setup();
-    const burst = Array.from({ length: maxTargetedFetches + 1 }, (_, index) => change(uuid(500 + index), "updated"));
+    const { client, todoKey } = setup();
+    const many = Array.from({ length: maxTargetedFetches + 1 }, (_, index) => task(500 + index, `b${index}`));
+    client.setQueryData(todoKey, pages(page(many)));
+    const burst = many.map((item) => change(item.id, "updated"));
     await applyTaskChanges(client, burst, self);
     expect(tasksApi.get).not.toHaveBeenCalled();
     expect(invalidations[0]).toEqual(qk.tasks(projectId));
+  });
+});
+
+describe("planTaskEvent (PERF-07)", () => {
+  beforeEach(() => {
+    vi.mocked(tasksApi.get).mockReset();
+    invalidations.length = 0;
+    clearLocalTaskMutations();
+  });
+
+  it("skips the echo of this tab's own change but applies the same user's other tabs", async () => {
+    const { client } = setup();
+    markLocalTaskMutation(uuid(101));
+    const own = { ...event(uuid(101), "updated"), actorId: self };
+    expect(planTaskEvent(client, own, self)).toBe("skip");
+    await applyTaskChanges(client, [{ event: own, moved: false }], self);
+    expect(tasksApi.get).not.toHaveBeenCalled();
+
+    // Same user, a task this tab never touched (changed from another tab / device).
+    expect(planTaskEvent(client, { ...event(uuid(102), "updated"), actorId: self }, self)).toBe("fetch");
+    // The echo window expires.
+    expect(planTaskEvent(client, own, self, Date.now() + 60_000)).toBe("fetch");
+  });
+
+  it("only marks listings stale for tasks nothing on screen shows", async () => {
+    const { client, todoKey } = setup();
+    const unseen = event(uuid(700), "created");
+    expect(planTaskEvent(client, unseen, self)).toBe("stale");
+    await applyTaskChanges(client, [{ event: unseen, moved: false }], self);
+    expect(tasksApi.get).not.toHaveBeenCalled();
+    expect(client.getQueryState(todoKey)?.isInvalidated).toBe(true);
+  });
+
+  it("fetches a new task when an active listing could include it", () => {
+    const { client, todoKey } = setup();
+    const observer = new QueryObserver(client, { queryKey: todoKey, queryFn: () => pages(page([])), staleTime: Infinity });
+    const unsubscribe = observer.subscribe(() => undefined);
+    expect(planTaskEvent(client, event(uuid(700), "created"), self)).toBe("fetch");
+    // Another list of the project: nothing on screen can show it.
+    expect(planTaskEvent(client, { ...event(uuid(701), "created"), listId: uuid(77) }, self)).toBe("stale");
+    unsubscribe();
+  });
+
+  it("bumps the parent's subtask counter for a new subtask created elsewhere", async () => {
+    const { client, todoKey } = setup();
+    const parentId = uuid(101);
+    client.setQueryData(qk.task(parentId), { ...task(1, "a1"), subtasks: [], attachments: [] });
+    const child = task(9, "c1", todo, { parentTaskId: parentId });
+    vi.mocked(tasksApi.get).mockResolvedValue(child as unknown as TaskDetail);
+    await applyTaskChanges(client, [{ event: { ...event(child.id, "created"), parentTaskId: parentId }, moved: false }], self);
+    const row = flattenPages(client.getQueryData<TaskPages>(todoKey)).find((item) => item.id === parentId);
+    expect(row).toMatchObject({ subtaskCount: 1, openSubtaskCount: 1 });
+    expect(client.getQueryData<TaskDetail>(qk.task(parentId))?.subtasks.map((item) => item.id)).toEqual([child.id]);
   });
 });

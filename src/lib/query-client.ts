@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { getErrorMessage, isApiError } from "@/lib/api/errors";
 import { qk } from "@/lib/query-keys";
+import { realtimeMissedSince } from "@/lib/realtime/gap";
 
 declare module "@tanstack/react-query" {
   interface Register {
@@ -25,6 +26,19 @@ const shouldRetry = (failureCount: number, error: unknown) => {
   return failureCount < 1;
 };
 
+/** Focus refetches are a safety net for missed realtime events, not the primary sync (PERF-16). */
+export const focusRefetchMaxAgeMs = 5 * 60_000;
+
+/**
+ * Refetch a stale query on window focus only when realtime may have missed something for it (the
+ * socket is down, or dropped after the data was fetched) or the data is older than a few minutes.
+ * While the socket stays connected, events keep the cache current and a focus costs no requests.
+ */
+export const shouldRefetchOnFocus = (dataUpdatedAt: number, now: number = Date.now()) =>
+  dataUpdatedAt === 0 ||
+  now - dataUpdatedAt > focusRefetchMaxAgeMs ||
+  realtimeMissedSince(dataUpdatedAt);
+
 /** The server can start requiring a password change mid-session (admin reset): re-read the session. */
 const isPasswordChangeRequired = (error: unknown) =>
   isApiError(error) && error.code === "PASSWORD_CHANGE_REQUIRED";
@@ -37,7 +51,7 @@ export const createQueryClient = () => {
         gcTime: 5 * 60_000,
         retry: shouldRetry,
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus: (query) => shouldRefetchOnFocus(query.state.dataUpdatedAt),
         refetchOnReconnect: true
       },
       mutations: {

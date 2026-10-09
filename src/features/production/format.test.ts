@@ -10,8 +10,11 @@ import {
   formatMoney,
   formatVersionRange,
   isDay,
+  formatNumber,
+  formatPercent,
   kpiPeriod,
   parseCreditInput,
+  parseDecimalInput,
   parseMoneyInput,
   todayIn
 } from "./format";
@@ -126,15 +129,16 @@ describe("calendar days", () => {
 
 describe("kpiPeriod", () => {
   it("runs from the day after the previous close day through this month's close day", () => {
+    // daysLeft counts today, like the API forecast (BUG-PR-24): 1 on the close day.
     expect(kpiPeriod("2026-10-09", 25)).toEqual({
       start: "2026-09-26",
       end: "2026-10-25",
-      daysLeft: 16
+      daysLeft: 17
     });
     expect(kpiPeriod("2026-10-25", 25)).toEqual({
       start: "2026-09-26",
       end: "2026-10-25",
-      daysLeft: 0
+      daysLeft: 1
     });
   });
 
@@ -142,12 +146,12 @@ describe("kpiPeriod", () => {
     expect(kpiPeriod("2026-10-26", 25)).toEqual({
       start: "2026-10-26",
       end: "2026-11-25",
-      daysLeft: 30
+      daysLeft: 31
     });
     expect(kpiPeriod("2026-12-30", 20)).toEqual({
       start: "2026-12-21",
       end: "2027-01-20",
-      daysLeft: 21
+      daysLeft: 22
     });
   });
 
@@ -156,7 +160,7 @@ describe("kpiPeriod", () => {
     expect(kpiPeriod("2026-03-01", 0)).toEqual({
       start: "2026-02-02",
       end: "2026-03-01",
-      daysLeft: 0
+      daysLeft: 1
     });
     expect(kpiPeriod("bad", 25)).toBeNull();
   });
@@ -173,5 +177,34 @@ describe("credit version ranges", () => {
     expect(dayInRange("2026-10-15", "2026-10-01", "2026-10-15")).toBe(false);
     expect(dayInRange("2027-01-01", "2026-10-15", null)).toBe(true);
     expect(dayInRange("2026-09-30", "2026-10-01", null)).toBe(false);
+  });
+});
+
+describe("Vietnamese numbers (BUG-PR-22)", () => {
+  it("uses the comma decimal and dot grouping everywhere", () => {
+    expect(formatNumber(1.5)).toBe("1,5");
+    expect(formatNumber(2.5)).toBe("2,5");
+    expect(formatNumber(2)).toBe("2");
+    expect(formatNumber(1234.5)).toBe("1.234,5");
+    expect(formatNumber(13.75)).toBe("13,8");
+    expect(formatNumber(13.756, 2)).toBe("13,76");
+    expect(formatNumber(null)).toBe("—");
+    expect(formatNumber(Number.NaN)).toBe("—");
+  });
+
+  it("shows KPI percents with one decimal", () => {
+    expect(formatPercent(94.65)).toBe("94,7%");
+    expect(formatPercent(100)).toBe("100%");
+    expect(formatPercent(0)).toBe("0%");
+    expect(formatPercent(null)).toBe("—");
+  });
+
+  it("reads typed decimals with either separator", () => {
+    expect(parseDecimalInput("1,5")).toBe(1.5);
+    expect(parseDecimalInput(" 1.5 ")).toBe(1.5);
+    expect(parseDecimalInput("2")).toBe(2);
+    expect(parseDecimalInput("1,2,3")).toBeNull();
+    expect(parseDecimalInput("abc")).toBeNull();
+    expect(parseDecimalInput("")).toBeNull();
   });
 });

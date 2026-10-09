@@ -2,12 +2,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useMemo } from "react";
 
 import { roomName, type RealtimeRoomRef } from "@/contracts/realtime";
+import { SocketTicketSchema } from "@/contracts/schemas";
 import { api } from "@/lib/api/client";
 import { qk } from "@/lib/query-keys";
 
 import {
   connectRealtime,
   onServerEvent,
+  refreshSocketSession,
   queryPresence,
   retainRoom,
   useRealtimeStore,
@@ -25,8 +27,12 @@ export const useRealtimeConnection = (onSessionLost: () => void) => {
     connectRealtime({
       queryClient,
       refreshSession: api.refreshSession,
-      onSessionLost: () => handleSessionLost()
+      onSessionLost: () => handleSessionLost(),
+      issueSocketTicket: () => api.post("/auth/socket-ticket", SocketTicketSchema)
     });
+    // Every session refresh (HTTP 401 retry or the gateway's expiry warning) is handed to the open
+    // socket in place, so token rotation never drops the connection (PERF-02).
+    return api.onSessionRefreshed(() => void refreshSocketSession());
   }, [queryClient]);
 };
 

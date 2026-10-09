@@ -86,8 +86,9 @@ export const tasksApi = {
     api.post(apiPath`/projects/${projectId}/tasks`, TaskSummarySchema, input),
   get: (taskId: string, signal?: AbortSignal) =>
     api.get(apiPath`/tasks/${taskId}`, TaskDetailSchema, { signal }),
-  update: (taskId: string, input: UpdateTaskRequest) =>
-    api.patch(apiPath`/tasks/${taskId}`, TaskDetailSchema, input),
+  /** `keepalive`: the save must survive the page going away (unload-time description flush). */
+  update: (taskId: string, input: UpdateTaskRequest, options: { keepalive?: boolean } = {}) =>
+    api.patch(apiPath`/tasks/${taskId}`, TaskDetailSchema, input, { keepalive: options.keepalive }),
   move: (taskId: string, input: MoveTaskRequest) =>
     api.post(apiPath`/tasks/${taskId}/move`, TaskSummarySchema, input),
   remove: (taskId: string) => api.delete(apiPath`/tasks/${taskId}`, OkResponseSchema),
