@@ -26,6 +26,19 @@ const vendorChunk = (id: string) => {
   return undefined;
 };
 
+/**
+ * Paths with dot segments or encoded separators are refused before proxying: the upstream gateway
+ * normalises them, so "/storage/v1/object/sign/../../x" would otherwise escape the allowed prefix
+ * (security audit SEC-INF-01). Only the path is checked; signed tokens live in the query string.
+ */
+const unsafeProxyPath = (url: string | undefined) => {
+  const path = (url ?? "").split("?")[0] ?? "";
+  return /(^|\/)(\.|%2e){2}(\/|$)|%2f|%5c|%25|\\/i.test(path);
+};
+
+/** Images may render inline; every other stored file is a download and can never run as a page (SEC-INF-03). */
+const inlineImageType = /^image\/(png|jpe?g|gif|webp|avif)(;|$)/i;
+
 export default defineConfig(({ mode }) => {
   /** The API runs on its own port; the SPA talks to it same-origin through this proxy in dev. */
   const env = loadEnv(mode, process.cwd(), "");
@@ -63,7 +76,8 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: apiTarget,
           changeOrigin: false,
-          xfwd: true
+          xfwd: true,
+          bypass: (req) => (unsafeProxyPath(req.url) ? false : undefined)
         },
         "/socket.io": {
           target: apiTarget,
@@ -75,10 +89,22 @@ export default defineConfig(({ mode }) => {
         "^/storage/v1/object/(upload/sign|sign)/": {
           target: storageTarget,
           changeOrigin: true,
+          bypass: (req) => (unsafeProxyPath(req.url) ? false : undefined),
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq) => {
-              proxyReq.removeHeader("cookie");
-              proxyReq.removeHeader("x-csrf-token");
+              // Signed URLs carry their own token: never forward app cookies, CSRF or client credentials.
+              for (const header of ["cookie", "x-csrf-token", "authorization", "apikey"]) {
+                proxyReq.removeHeader(header);
+              }
+            });
+            proxy.on("proxyRes", (proxyRes) => {
+              proxyRes.headers["x-content-type-options"] = "nosniff";
+              proxyRes.headers["content-security-policy"] = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+              const type = String(proxyRes.headers["content-type"] ?? "");
+              const disposition = String(proxyRes.headers["content-disposition"] ?? "");
+              if (!inlineImageType.test(type) && !/^attachment/i.test(disposition)) {
+                proxyRes.headers["content-disposition"] = disposition ? disposition.replace(/^inline/i, "attachment") : "attachment";
+              }
             });
           }
         }
