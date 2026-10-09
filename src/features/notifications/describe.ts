@@ -17,6 +17,8 @@ import {
 
 import type { Notification, NotificationType } from "@/contracts/notifications";
 
+import { describeProductionNotification, productionPath } from "./describe-production";
+
 /**
  * Turns a notification into a Vietnamese sentence (product §30), e.g.
  *   "Linh đã giao cho bạn WEB-12", "WEB-101 sắp đến hạn lúc 17:00, 10/10",
@@ -65,6 +67,11 @@ export const describeNotification = (notification: Notification): NotificationDe
   const key: SentenceSegment = { text: taskKeyOf(notification), strong: true };
   const excerpt = notification.body?.trim() ? notification.body.trim() : null;
   const type: NotificationType = notification.type;
+
+  if (type.startsWith("production.")) {
+    const production = describeProductionNotification(notification);
+    if (production) return production;
+  }
 
   switch (type) {
     case "task.assigned":
@@ -217,7 +224,8 @@ export const sentenceText = (description: NotificationDescription) =>
 /** Types shown under the "Nhắc đến" tab. */
 export const mentionTypes: ReadonlySet<NotificationType> = new Set([
   "task.mentioned",
-  "chat.mentioned"
+  "chat.mentioned",
+  "production.mentioned"
 ]);
 
 /**
@@ -229,6 +237,10 @@ export type NotificationTarget =
 
 export const notificationTarget = (notification: Notification): NotificationTarget => {
   const { target } = notification;
+  if (notification.type.startsWith("production.")) {
+    const path = productionPath(notification);
+    return path ? { kind: "path", path } : { kind: "none" };
+  }
   if (notification.type.startsWith("task.") && target.taskId) {
     return { kind: "task", taskId: target.taskId };
   }

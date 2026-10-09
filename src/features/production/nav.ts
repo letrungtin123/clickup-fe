@@ -1,16 +1,28 @@
 import {
+  Briefcase,
   Building2,
+  CalendarCheck2,
   CalendarClock,
+  CalendarDays,
+  ChartColumnBig,
+  ChartNoAxesCombined,
+  ClipboardList,
   Coins,
   Factory,
   FolderKanban,
+  Gauge,
   GitBranch,
+  LayoutDashboard,
   MailCheck,
   Network,
+  ScanSearch,
   Settings2,
+  ShieldCheck,
   SlidersHorizontal,
   Tags,
+  Target,
   TextCursorInput,
+  Trophy,
   UsersRound,
   Workflow,
   type LucideIcon
@@ -36,6 +48,16 @@ export type ProductionNavEntry = {
 
 export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
+  { to: "/production/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["LEADER"] },
+  { to: "/production/admin", label: "Quản trị số liệu", icon: Gauge, roles: ["ADMIN"] },
+  { to: "/production/jobs", label: "Job", icon: Briefcase, roles: ["ACCOUNT", "LEADER"] },
+  { to: "/production/my-tasks", label: "Việc của tôi", icon: ClipboardList, roles: ["STAFF", "QC", "LEADER"] },
+  { to: "/production/qc", label: "Hàng chờ QC", icon: ShieldCheck, roles: ["QC"] },
+  { to: "/production/scores", label: "Bảng điểm", icon: ChartColumnBig, roles: [], end: true },
+  { to: "/production/scores/board", label: "Xếp hạng", icon: Trophy, roles: [] },
+  { to: "/production/leave", label: "Lịch nghỉ", icon: CalendarDays, roles: [] },
+  { to: "/production/reports", label: "Báo cáo", icon: ChartNoAxesCombined, roles: ["LEADER"] },
+  { to: "/production/anomalies", label: "Bất thường", icon: ScanSearch, roles: ["LEADER"] },
   { to: "/production/clients", label: "Khách hàng", icon: Building2, roles: ["ACCOUNT"] },
   { to: "/production/settings", label: "Cấu hình", icon: Settings2, roles: ["ADMIN"] }
 ];
@@ -156,6 +178,22 @@ export const settingsPages: readonly SettingsPage[] = [
     label: "Cài đặt chung",
     description: "Ngày chốt KPI, minh bạch điểm/tiền, cảnh báo và chat.",
     icon: SlidersHorizontal,
+    group: "system",
+    roles: ["ADMIN"]
+  },
+  {
+    slug: "kpi",
+    label: "KPI nhân viên",
+    description: "Chỉ tiêu điểm theo tháng, quý, năm cho từng người, có lịch sử hiệu lực.",
+    icon: Target,
+    group: "people",
+    roles: ["ADMIN"]
+  },
+  {
+    slug: "kpi-settlement",
+    label: "Chốt KPI & báo cáo",
+    description: "Chạy chốt KPI theo kỳ, lịch sử các lần chạy và báo cáo % đạt.",
+    icon: CalendarCheck2,
     group: "system",
     roles: ["ADMIN"]
   }

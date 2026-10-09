@@ -21,6 +21,16 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /settings/{profile,members,roles}
  *   /production                    production (retouch) overview — production roles only (PD-011)
  *   /production/clients            clients (Account)
+ *   /production/jobs[/:jobId]      jobs (filters in the URL) / job detail; ?task=<id> opens a task sheet
+ *   /production/my-tasks, /qc      my tasks (kanban) / QC queue
+ *   /production/tasks/:taskId      shareable task page (notification and e-mail links)
+ *   /production/scores            my scores & KPI forecast (?period=&tab=settled)
+ *   /production/scores/board       public ranking (?period=&team=)
+ *   /production/leave              shared leave calendar (?month=&tab=)
+ *   /production/dashboard          Leader dashboard (?leader= for ADMIN)
+ *   /production/admin              Admin dashboard (6 cards + pinned reports)
+ *   /production/reports            report builder (?config=|?saved=, ?title=)
+ *   /production/anomalies          anomalies (?kind=&days=&reviewed=1)
  *   /production/settings/:page     production configuration (see features/production/nav.ts)
  */
 const productionSettingsPages: Record<string, NonNullable<RouteObject["lazy"]>> = {
@@ -60,6 +70,13 @@ const productionSettingsPages: Record<string, NonNullable<RouteObject["lazy"]>> 
   }),
   general: async () => ({
     Component: (await import("@/routes/production/settings/general")).ProductionGeneralRoute
+  }),
+  kpi: async () => ({
+    Component: (await import("@/routes/production/settings/kpi")).ProductionKpiTargetsRoute
+  }),
+  "kpi-settlement": async () => ({
+    Component: (await import("@/routes/production/settings/kpi-settlement"))
+      .ProductionKpiSettlementRoute
   })
 };
 
@@ -147,6 +164,79 @@ export const routes: RouteObject[] = [
                 path: "clients",
                 lazy: async () => ({
                   Component: (await import("@/routes/production/clients")).ProductionClientsRoute
+                })
+              },
+              {
+                path: "jobs",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/jobs")).ProductionJobsRoute
+                })
+              },
+              {
+                path: "jobs/:jobId",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/job")).ProductionJobRoute
+                })
+              },
+              {
+                path: "my-tasks",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/my-tasks")).ProductionMyTasksRoute
+                })
+              },
+              {
+                path: "qc",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/qc")).ProductionQcRoute
+                })
+              },
+              {
+                path: "tasks/:taskId",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/task")).ProductionTaskRoute
+                })
+              },
+              {
+                path: "scores",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/scores")).ProductionScoresRoute
+                })
+              },
+              {
+                path: "scores/board",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/scores-board"))
+                    .ProductionScoreBoardRoute
+                })
+              },
+              {
+                path: "leave",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/leave")).ProductionLeaveRoute
+                })
+              },
+              {
+                path: "dashboard",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/dashboard")).ProductionDashboardRoute
+                })
+              },
+              {
+                path: "admin",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/admin")).ProductionAdminDashboardRoute
+                })
+              },
+              {
+                path: "reports",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/reports")).ProductionReportsRoute
+                })
+              },
+              {
+                path: "anomalies",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/anomalies")).ProductionAnomaliesRoute
                 })
               },
               {

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 
 import {
   AddAllowedEmailsResultSchema,
@@ -7,6 +7,7 @@ import {
   CreditImportResultSchema,
   CreditMatrixSchema,
   CreditRuleHistorySchema,
+  CreditVersionResultSchema,
   CustomFieldCollectionSchema,
   NotificationPreferencesSchema,
   ProcessCollectionSchema,
@@ -60,9 +61,6 @@ export type NotificationPreferencesInput = z.input<
   typeof UpdateNotificationPreferencesRequestSchema
 >;
 
-/** POST /credit-rules/versions answers how many rules were copied into the new version. */
-const CreditVersionResultSchema = z.object({ created: z.number().int() });
-
 export const productionApi = {
   me: (signal?: AbortSignal) => api.get("/production/me", ProductionMeSchema, { signal }),
 
@@ -73,34 +71,34 @@ export const productionApi = {
 
   teams: (signal?: AbortSignal) => api.get("/production/teams", TeamCollectionSchema, { signal }),
   createTeam: (input: TeamInput) => api.post("/production/teams", TeamCollectionSchema, input),
-  updateTeam: (id: string, input: TeamInput) =>
+  updateTeam: (id: string, input: Partial<TeamInput>) =>
     api.patch(apiPath`/production/teams/${id}`, TeamCollectionSchema, input),
 
   clients: (signal?: AbortSignal) =>
     api.get("/production/clients", ClientCollectionSchema, { signal }),
   createClient: (input: ClientInput) =>
     api.post("/production/clients", ClientCollectionSchema, input),
-  updateClient: (id: string, input: ClientInput) =>
+  updateClient: (id: string, input: Partial<ClientInput>) =>
     api.patch(apiPath`/production/clients/${id}`, ClientCollectionSchema, input),
 
   projects: (signal?: AbortSignal) =>
     api.get("/production/projects", ProductionProjectCollectionSchema, { signal }),
   createProject: (input: ProjectInput) =>
     api.post("/production/projects", ProductionProjectCollectionSchema, input),
-  updateProject: (id: string, input: ProjectInput) =>
+  updateProject: (id: string, input: Partial<ProjectInput>) =>
     api.patch(apiPath`/production/projects/${id}`, ProductionProjectCollectionSchema, input),
 
   processes: (signal?: AbortSignal) =>
     api.get("/production/processes", ProcessCollectionSchema, { signal }),
   createProcess: (input: ProcessInput) =>
     api.post("/production/processes", ProcessCollectionSchema, input),
-  updateProcess: (id: string, input: ProcessInput) =>
+  updateProcess: (id: string, input: Partial<ProcessInput>) =>
     api.patch(apiPath`/production/processes/${id}`, ProcessCollectionSchema, input),
 
   shifts: (signal?: AbortSignal) =>
     api.get("/production/shifts", ShiftCollectionSchema, { signal }),
   createShift: (input: ShiftInput) => api.post("/production/shifts", ShiftCollectionSchema, input),
-  updateShift: (id: string, input: ShiftInput) =>
+  updateShift: (id: string, input: Partial<ShiftInput>) =>
     api.patch(apiPath`/production/shifts/${id}`, ShiftCollectionSchema, input),
 
   creditMatrix: (day: string, signal?: AbortSignal) =>
@@ -114,6 +112,9 @@ export const productionApi = {
     api.put("/production/credit-rules", CreditRuleHistorySchema, input),
   createCreditVersion: (effectiveFrom: string) =>
     api.post("/production/credit-rules/versions", CreditVersionResultSchema, { effectiveFrom }),
+  /** Removes one version (409 CREDIT_RULE_IN_USE once scores used it); answers the cell's history. */
+  deleteCreditRule: (ruleId: string) =>
+    api.delete(apiPath`/production/credit-rules/${ruleId}`, CreditRuleHistorySchema),
   importCredits: (input: CreditImportInput) =>
     api.post("/production/credit-rules/import", CreditImportResultSchema, input),
 
@@ -121,10 +122,13 @@ export const productionApi = {
     api.get("/production/workflow", StatusWorkflowSchema, { signal }),
   createStatus: (input: StatusInput) =>
     api.post("/production/statuses", StatusWorkflowSchema, input),
-  updateStatus: (id: string, input: StatusInput) =>
+  updateStatus: (id: string, input: Partial<StatusInput>) =>
     api.patch(apiPath`/production/statuses/${id}`, StatusWorkflowSchema, input),
   reorderStatuses: (ids: string[]) =>
     api.put("/production/statuses/order", StatusWorkflowSchema, { ids }),
+  /** Bulk order of processes, shifts or custom fields (ids in the new order). */
+  reorderCatalog: (segment: "processes" | "shifts" | "custom-fields", ids: string[]) =>
+    api.put(apiPath`/production/${segment}/order`, OkResponseSchema, { ids }),
   replaceTransitions: (input: TransitionsInput) =>
     api.put("/production/transitions", StatusWorkflowSchema, input),
 
@@ -132,12 +136,12 @@ export const productionApi = {
     api.get("/production/custom-fields", CustomFieldCollectionSchema, { signal }),
   createCustomField: (input: CustomFieldInput) =>
     api.post("/production/custom-fields", CustomFieldCollectionSchema, input),
-  updateCustomField: (id: string, input: CustomFieldInput) =>
+  updateCustomField: (id: string, input: Partial<CustomFieldInput>) =>
     api.patch(apiPath`/production/custom-fields/${id}`, CustomFieldCollectionSchema, input),
 
   tags: (signal?: AbortSignal) => api.get("/production/tags", TagCollectionSchema, { signal }),
   createTag: (input: TagInput) => api.post("/production/tags", TagCollectionSchema, input),
-  updateTag: (id: string, input: TagInput) =>
+  updateTag: (id: string, input: Partial<TagInput>) =>
     api.patch(apiPath`/production/tags/${id}`, TagCollectionSchema, input),
 
   settings: (signal?: AbortSignal) =>

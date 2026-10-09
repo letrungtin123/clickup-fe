@@ -1,17 +1,7 @@
 import { cn } from "cn";
 import { ArrowRight, ShieldAlert } from "lucide-react";
-import { useId, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,21 +9,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import type { ProductionStatus } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 import { toneClass } from "@/lib/colors";
 
-import { productionErrorMessage } from "../../errors";
-import { useWorkflow } from "../../hooks";
-import { useTransitionTask } from "../../jobs-hooks";
-import { needsInput, splitTransitions } from "../../jobs-model";
-import { sheetOnPhone } from "../../ui";
-import { FormAlert } from "../settings-kit";
-
+import { splitTransitions } from "../../jobs-model";
 import { useStatusLookup } from "./use-task-mover";
 
 /** Normal moves as buttons; ADMIN overrides tucked in a menu (reason required). */
@@ -59,7 +39,10 @@ export const TransitionButtons = ({
   const extra = max === undefined ? [] : normal.slice(max);
   if (normal.length === 0 && overrides.length === 0) return null;
   return (
-    <div className={cn("flex flex-wrap items-center gap-1.5", className)} onClick={(event) => event.stopPropagation()}>
+    <div
+      className={cn("flex flex-wrap items-center gap-1.5", className)}
+      onClick={(event) => event.stopPropagation()}
+    >
       {shown.map((option) => {
         const target = lookup.byId.get(option.toStatusId);
         return (
@@ -80,7 +63,9 @@ export const TransitionButtons = ({
         <DropdownMenu>
           <DropdownMenuTrigger
             disabled={busy}
-            render={<Button variant="ghost" size={size} aria-label={`Chuyển khác cho #${task.number}`} />}
+            render={
+              <Button variant="ghost" size={size} aria-label={`Chuyển khác cho #${task.number}`} />
+            }
           >
             <ArrowRight />
             {shown.length === 0 ? "Chuyển" : "Khác"}
@@ -114,6 +99,8 @@ export const TransitionButtons = ({
 };
 
 const StatusDot = ({ status }: { status: ProductionStatus | undefined }) => (
-  <span aria-hidden="true" className={cn(toneClass(status?.color ?? "gray"), "size-2 rounded-full bg-(--tone)")} />
+  <span
+    aria-hidden="true"
+    className={cn(toneClass(status?.color ?? "gray"), "size-2 rounded-full bg-(--tone)")}
+  />
 );
-

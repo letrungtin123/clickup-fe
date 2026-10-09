@@ -64,11 +64,7 @@ export const ProductionProcessesRoute = () => {
     mutations.update
       .mutateAsync({
         id: process.id,
-        input: {
-          name: patch.name ?? process.name,
-          isQc: patch.isQc ?? process.isQc,
-          active: patch.active ?? process.active
-        }
+        input: patch
       })
       .then(
         () => {

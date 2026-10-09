@@ -50,14 +50,22 @@ const kindLabels: Record<Exclude<TaskKind, "NORMAL">, string> = {
 export const KindBadge = ({ kind, className }: { kind: TaskKind; className?: string }) =>
   kind === "NORMAL" ? null : (
     <span
-      title={kind === "FB_WRONG" ? "Làm lại theo feedback sai của khách" : "Làm thêm theo yêu cầu của khách"}
+      title={
+        kind === "FB_WRONG"
+          ? "Làm lại theo feedback sai của khách"
+          : "Làm thêm theo yêu cầu của khách"
+      }
       className={cn(
         "inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold",
         kind === "FB_WRONG" ? "bg-danger-soft text-danger" : "bg-warning-soft text-foreground",
         className
       )}
     >
-      {kind === "FB_WRONG" ? <RotateCcw className="size-3" aria-hidden="true" /> : <Sparkles className="size-3" aria-hidden="true" />}
+      {kind === "FB_WRONG" ? (
+        <RotateCcw className="size-3" aria-hidden="true" />
+      ) : (
+        <Sparkles className="size-3" aria-hidden="true" />
+      )}
       {kindLabels[kind]}
     </span>
   );
@@ -109,8 +117,19 @@ export const Person = ({
   );
 
 /** Thin progress bar (value 0–100). */
-export const MiniBar = ({ value, tone = "brand", className }: { value: number; tone?: "brand" | "success" | "muted" | "warning"; className?: string }) => (
-  <span aria-hidden="true" className={cn("block h-1 w-full overflow-hidden rounded-full bg-muted", className)}>
+export const MiniBar = ({
+  value,
+  tone = "brand",
+  className
+}: {
+  value: number;
+  tone?: "brand" | "success" | "muted" | "warning";
+  className?: string;
+}) => (
+  <span
+    aria-hidden="true"
+    className={cn("block h-1 w-full overflow-hidden rounded-full bg-muted", className)}
+  >
     <span
       className={cn(
         "block h-full rounded-full transition-[width] duration-300",
@@ -125,9 +144,19 @@ export const MiniBar = ({ value, tone = "brand", className }: { value: number; t
 );
 
 /** Label/value pair used in detail headers. */
-export const Fact = ({ label, children, className }: { label: string; children: ReactNode; className?: string }) => (
+export const Fact = ({
+  label,
+  children,
+  className
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) => (
   <div className={cn("flex min-w-0 flex-col gap-0.5", className)}>
-    <dt className="text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase">{label}</dt>
+    <dt className="text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase">
+      {label}
+    </dt>
     <dd className="min-w-0 text-[13px]">{children}</dd>
   </div>
 );

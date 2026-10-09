@@ -9,7 +9,8 @@
  *   ["production", "kpi", "settlements", period]
  *   ["production", "kpi", "runs", period]
  *   ["production", "kpi", "report", from, to, teamId]
- *   ["production", "leave", "calendar", from, to]
+ *   ["production", "leave", "calendar", from, to, teamId]
+ *   ["production", "leave", "mine"]
  *   ["production", "leave", "pending"]
  */
 export const scoreKeys = {
@@ -31,6 +32,8 @@ export const kpiKeys = {
 
 export const leaveKeys = {
   all: () => ["production", "leave"] as const,
-  calendar: (from: string, to: string) => ["production", "leave", "calendar", from, to] as const,
+  calendar: (from: string, to: string, teamId: string | null) =>
+    ["production", "leave", "calendar", from, to, teamId] as const,
+  mine: () => ["production", "leave", "mine"] as const,
   pending: () => ["production", "leave", "pending"] as const
 };

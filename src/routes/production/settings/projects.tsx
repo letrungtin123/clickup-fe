@@ -83,7 +83,7 @@ export const ProductionProjectsRoute = () => {
     mutations.update.mutate(
       {
         id: project.id,
-        input: { code: project.code, name: project.name, active: !project.active }
+        input: { active: !project.active }
       },
       {
         onSuccess: () =>

@@ -37,20 +37,46 @@ describe("navigation by role", () => {
   });
 
   it("shows the union of menus for multi-role users", () => {
-    expect(paths(["STAFF"])).toEqual(["/production"]);
-    expect(paths(["ACCOUNT", "QC"])).toEqual(["/production", "/production/clients"]);
-    expect(paths(["ADMIN"])).toEqual([
+    // Every production member: overview, own scores, ranking and the leave calendar.
+    const everyone = [
       "/production",
-      "/production/clients",
-      "/production/settings"
-    ]);
+      "/production/scores",
+      "/production/scores/board",
+      "/production/leave"
+    ];
+    expect(paths(["STAFF"])).toEqual(expect.arrayContaining(everyone));
+    expect(paths(["STAFF"])).not.toContain("/production/clients");
+    expect(paths(["STAFF"])).not.toContain("/production/settings");
+    expect(paths(["ACCOUNT", "QC"])).toEqual(
+      expect.arrayContaining([...everyone, "/production/clients"])
+    );
+    expect(paths(["ACCOUNT", "QC"])).not.toContain("/production/settings");
+    expect(paths(["ADMIN"])).toEqual(
+      expect.arrayContaining([...everyone, "/production/clients", "/production/settings"])
+    );
+  });
+
+  it("shows jobs, my tasks and the QC queue by role (Phase 2)", () => {
+    expect(paths(["STAFF"])).toContain("/production/my-tasks");
+    expect(paths(["STAFF"])).not.toContain("/production/jobs");
+    expect(paths(["STAFF"])).not.toContain("/production/qc");
+    expect(paths(["QC"])).toEqual(
+      expect.arrayContaining(["/production/my-tasks", "/production/qc"])
+    );
+    expect(paths(["ACCOUNT"])).toContain("/production/jobs");
+    expect(paths(["ACCOUNT"])).not.toContain("/production/my-tasks");
+    expect(paths(["LEADER"])).toEqual(
+      expect.arrayContaining(["/production/jobs", "/production/my-tasks"])
+    );
+    expect(paths(["LEADER"])).not.toContain("/production/qc");
   });
 
   it("limits settings pages to the right roles", () => {
     expect(slugs(["LEADER", "QC"])).toEqual([]);
     expect(slugs(["ACCOUNT"])).toEqual(["clients"]);
     expect(slugs(["ADMIN"])).toContain("credit-rules");
-    expect(slugs(["ADMIN"])).toHaveLength(12);
+    expect(slugs(["ADMIN"])).toEqual(expect.arrayContaining(["kpi", "kpi-settlement"]));
+    expect(slugs(["ADMIN"])).toHaveLength(14);
   });
 });
 

@@ -1,6 +1,7 @@
 import { ChatDialogs } from "@/features/chat/components/chat-dialogs";
 import { ChatRuntime } from "@/features/chat/realtime/chat-runtime";
 import { NotificationsRuntime } from "@/features/notifications/notifications-runtime";
+import { ProductionRuntime } from "@/features/production/components/production-runtime";
 import { TaskRuntime } from "@/features/tasks/realtime";
 
 /**
@@ -13,6 +14,7 @@ export const ShellServices = () => (
     <ChatRuntime />
     <TaskRuntime />
     <NotificationsRuntime />
+    <ProductionRuntime />
     <ChatDialogs />
   </>
 );

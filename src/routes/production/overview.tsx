@@ -5,13 +5,16 @@ import { motion } from "motion/react";
 import {
   ArrowUpRight,
   BellRing,
+  CalendarDays,
   CalendarRange,
+  ChartColumnBig,
   Coins,
   Eye,
   EyeOff,
   LayoutDashboard,
   Network,
   Paperclip,
+  Trophy,
   type LucideIcon
 } from "lucide-react";
 import { Link } from "react-router";
@@ -157,6 +160,30 @@ export const ProductionOverviewRoute = () => {
             Lối tắt
           </h2>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <li>
+              <QuickLink
+                to="/production/scores"
+                icon={ChartColumnBig}
+                title="Bảng điểm"
+                description="Điểm hôm nay, tuần, kỳ; tiền Khoán tạm tính và dự báo KPI."
+              />
+            </li>
+            <li>
+              <QuickLink
+                to="/production/scores/board"
+                icon={Trophy}
+                title="Xếp hạng"
+                description="Xếp hạng điểm chính thức theo kỳ và team."
+              />
+            </li>
+            <li>
+              <QuickLink
+                to="/production/leave"
+                icon={CalendarDays}
+                title="Lịch nghỉ"
+                description="Ai nghỉ ngày nào; xin nghỉ và theo dõi đơn của bạn."
+              />
+            </li>
             {(clientsOnly ? [settingsPageBySlug("clients")] : links).map((page) =>
               page ? (
                 <li key={page.slug}>

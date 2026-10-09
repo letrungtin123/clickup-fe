@@ -180,16 +180,3 @@ export const validateLeaveDraft = (draft: LeaveDraft, today: string): string | n
   }
   return null;
 };
-
-/**
- * Query windows (≤ maxCalendarDays each) covering [from, to]: "Đơn của tôi" spans the past
- * maxPastDays through maxFutureDays ahead, more than one calendar query allows.
- */
-export const queryWindows = (from: string, to: string, size: number = leaveLimits.maxCalendarDays) => {
-  const windows: { from: string; to: string }[] = [];
-  for (let start = from; start <= to; start = shiftDay(start, size)) {
-    const end = shiftDay(start, size - 1);
-    windows.push({ from: start, to: end < to ? end : to });
-  }
-  return windows;
-};

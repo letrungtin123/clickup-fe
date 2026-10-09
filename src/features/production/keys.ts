@@ -39,11 +39,15 @@ export const productionKeys = {
 
   // Phase 2: jobs & tasks
   jobs: (query?: Record<string, unknown>) =>
-    query === undefined ? (["production", "jobs"] as const) : (["production", "jobs", query] as const),
+    query === undefined
+      ? (["production", "jobs"] as const)
+      : (["production", "jobs", query] as const),
   job: (jobId: string) => ["production", "job", jobId] as const,
   jobAll: () => ["production", "job"] as const,
   task: (taskId: string) => ["production", "task", taskId] as const,
   taskAll: () => ["production", "task"] as const,
+  /** Under the task key: refreshed with it (realtime, invalidations). */
+  taskScores: (taskId: string) => ["production", "task", taskId, "scores"] as const,
   myTasks: (role?: string, includeFinished?: boolean) =>
     role === undefined
       ? (["production", "my-tasks"] as const)

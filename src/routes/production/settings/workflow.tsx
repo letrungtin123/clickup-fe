@@ -90,16 +90,7 @@ export const ProductionWorkflowRoute = () => {
     mutations.update.mutate(
       {
         id: status.id,
-        input: {
-          code: status.code,
-          name: status.name,
-          color: status.color,
-          countsDone: status.countsDone,
-          countsChecked: status.countsChecked,
-          isTerminal: status.isTerminal,
-          setByRoles: status.setByRoles,
-          active: !status.active
-        }
+        input: { active: !status.active }
       },
       {
         onSuccess: () =>

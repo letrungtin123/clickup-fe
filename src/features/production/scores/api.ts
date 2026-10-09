@@ -3,8 +3,7 @@ import {
   ScoreBoardSchema,
   ScoreForecastSchema
 } from "@/contracts/production-scores";
-import { api, buildQueryString, type QueryValue } from "@/lib/api/client";
-import { webEnv } from "@/lib/env";
+import { api } from "@/lib/api/client";
 
 /** Production scores API (BE modules/production/scores.routes.ts, SPEC Phase 3). */
 export const scoresApi = {
@@ -15,10 +14,3 @@ export const scoresApi = {
   board: (query: { period?: string | undefined; teamId?: string | undefined }, signal?: AbortSignal) =>
     api.get("/production/scores/board", ScoreBoardSchema, { query, signal })
 };
-
-/**
- * Same-origin URL of an Excel export (production-reports contract: GET …/export, cookie-authenticated
- * attachment). Downloaded through a plain link, never fetched and re-wrapped as a blob.
- */
-export const exportUrl = (path: string, query: Record<string, QueryValue>) =>
-  `${webEnv.apiBaseUrl}${path}${buildQueryString(query)}`;

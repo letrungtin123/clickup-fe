@@ -28,7 +28,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import type { ProductionComment, ProductionTimelinePage, TaskLog } from "@/contracts/production-jobs";
+import type {
+  ProductionComment,
+  ProductionTimelinePage,
+  TaskLog
+} from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
 
 import { foldText } from "../../catalog";
@@ -36,7 +40,14 @@ import { productionErrorMessage } from "../../errors";
 import { useProcesses, useProductionAccess, useProductionMe, useShifts } from "../../hooks";
 import { useCommentMutations, useProductionTimeline } from "../../jobs-hooks";
 import type { TimelineEntity } from "../../jobs-api";
-import { describeTaskLog, formatDateTime, insertMention, mentionAt, mentionedIds, type Segment } from "../../jobs-model";
+import {
+  describeTaskLog,
+  formatDateTime,
+  insertMention,
+  mentionAt,
+  mentionedIds,
+  type Segment
+} from "../../jobs-model";
 import type { Person } from "../../people";
 import { ConfirmDialog } from "../settings-kit";
 
@@ -52,8 +63,10 @@ const logIcons: Record<TaskLog["action"], LucideIcon> = {
   FIELD: Pencil
 };
 
-const itemTime = (item: TimelineItem) => (item.kind === "comment" ? item.comment.createdAt : item.log.createdAt);
-const itemKey = (item: TimelineItem) => (item.kind === "comment" ? `c:${item.comment.id}` : `l:${item.log.id}`);
+const itemTime = (item: TimelineItem) =>
+  item.kind === "comment" ? item.comment.createdAt : item.log.createdAt;
+const itemKey = (item: TimelineItem) =>
+  item.kind === "comment" ? `c:${item.comment.id}` : `l:${item.log.id}`;
 
 /**
  * Comments and task history interleaved, newest first (PLAN §8). History rows are Vietnamese
@@ -70,8 +83,8 @@ export const ProductionTimeline = ({
   id: string;
   /** People that can be mentioned / resolved by id. */
   people: { people: Person[]; nameOf: (id: string) => string | undefined };
-  onOpenTask?: (taskId: string) => void;
-  className?: string;
+  onOpenTask?: ((taskId: string) => void) | undefined;
+  className?: string | undefined;
 }) => {
   const timeline = useProductionTimeline(entity, id);
   const processes = useProcesses();
@@ -81,7 +94,9 @@ export const ProductionTimeline = ({
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
 
   const names = useMemo(() => {
-    const processNames = new Map((processes.data?.items ?? []).map((process) => [process.id, process.name]));
+    const processNames = new Map(
+      (processes.data?.items ?? []).map((process) => [process.id, process.name])
+    );
     const shiftNames = new Map((shifts.data?.items ?? []).map((shift) => [shift.id, shift.name]));
     return {
       user: people.nameOf,
@@ -108,13 +123,18 @@ export const ProductionTimeline = ({
   const visible = filter === "comments" ? items.filter((item) => item.kind === "comment") : items;
 
   return (
-    <section aria-label="Bình luận và lịch sử" className={cn("flex min-h-0 flex-col gap-3", className)}>
+    <section
+      aria-label="Bình luận và lịch sử"
+      className={cn("flex min-h-0 flex-col gap-3", className)}
+    >
       <div className="flex items-center gap-2">
         <h3 className="flex items-center gap-2 text-[13px] font-semibold">
           <MessageSquare className="size-3.5 text-foreground-muted" aria-hidden="true" />
           Hoạt động
         </h3>
-        {timeline.isFetching && !timeline.isPending ? <Spinner className="size-3 text-foreground-subtle" /> : null}
+        {timeline.isFetching && !timeline.isPending ? (
+          <Spinner className="size-3 text-foreground-subtle" />
+        ) : null}
         <SegmentedControl<Filter>
           aria-label="Lọc hoạt động"
           size="sm"
@@ -151,7 +171,9 @@ export const ProductionTimeline = ({
         </div>
       ) : visible.length === 0 ? (
         <p className="py-3 text-[13px] text-foreground-subtle">
-          {filter === "comments" ? "Chưa có bình luận. Hãy là người đầu tiên trao đổi." : "Chưa có hoạt động."}
+          {filter === "comments"
+            ? "Chưa có bình luận. Hãy là người đầu tiên trao đổi."
+            : "Chưa có hoạt động."}
         </p>
       ) : (
         <ol className="flex flex-col">
@@ -309,14 +331,24 @@ const CommentRow = ({ comment, timeZone }: { comment: ProductionComment; timeZon
             {comment.author?.displayName ?? "Người dùng"}
             {mine ? <span className="font-normal text-foreground-muted"> (bạn)</span> : null}
           </span>
-          <time dateTime={comment.createdAt} className="shrink-0 text-[11px] text-foreground-subtle">
+          <time
+            dateTime={comment.createdAt}
+            className="shrink-0 text-[11px] text-foreground-subtle"
+          >
             {formatDateTime(comment.createdAt, timeZone)}
             {comment.editedAt ? " · đã sửa" : ""}
           </time>
           {comment.canEdit || canDelete ? (
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" size="icon-xs" className="ml-auto" aria-label="Tùy chọn bình luận" />}
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="ml-auto"
+                    aria-label="Tùy chọn bình luận"
+                  />
+                }
               >
                 <Ellipsis />
               </DropdownMenuTrigger>
@@ -396,7 +428,15 @@ const CommentRow = ({ comment, timeZone }: { comment: ProductionComment; timeZon
 };
 
 /** Plain-text composer with @mentions of production people (Ctrl/⌘+Enter sends). */
-const CommentComposer = ({ entity, id, people }: { entity: TimelineEntity; id: string; people: Person[] }) => {
+const CommentComposer = ({
+  entity,
+  id,
+  people
+}: {
+  entity: TimelineEntity;
+  id: string;
+  people: Person[];
+}) => {
   const session = useSessionContext();
   const mutations = useCommentMutations();
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -409,7 +449,11 @@ const CommentComposer = ({ entity, id, people }: { entity: TimelineEntity; id: s
     if (!mention) return [];
     const q = foldText(mention.query);
     return people
-      .filter((person) => person.id !== session.user.id && (!q || foldText(`${person.displayName} ${person.email ?? ""}`).includes(q)))
+      .filter(
+        (person) =>
+          person.id !== session.user.id &&
+          (!q || foldText(`${person.displayName} ${person.email ?? ""}`).includes(q))
+      )
       .slice(0, 6);
   }, [mention, people, session.user.id]);
 
@@ -421,7 +465,12 @@ const CommentComposer = ({ entity, id, people }: { entity: TimelineEntity; id: s
   const choose = (person: Person) => {
     const element = ref.current;
     if (!mention || !element) return;
-    const next = insertMention(text, mention.start, element.selectionStart ?? text.length, person.displayName);
+    const next = insertMention(
+      text,
+      mention.start,
+      element.selectionStart ?? text.length,
+      person.displayName
+    );
     setText(next.text);
     setPicked((current) => new Map(current).set(person.id, person.displayName));
     setMention(null);
@@ -450,7 +499,9 @@ const CommentComposer = ({ entity, id, people }: { entity: TimelineEntity; id: s
     if (mention && matches.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
-        setActive((index) => (index + (event.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length);
+        setActive(
+          (index) => (index + (event.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length
+        );
         return;
       }
       if (event.key === "Enter" || event.key === "Tab") {
@@ -483,7 +534,10 @@ const CommentComposer = ({ entity, id, people }: { entity: TimelineEntity; id: s
         className="min-h-14 resize-none border-0 bg-transparent p-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
         onChange={(event) => {
           setText(event.target.value);
-          refreshMention(event.target.value, event.target.selectionStart ?? event.target.value.length);
+          refreshMention(
+            event.target.value,
+            event.target.selectionStart ?? event.target.value.length
+          );
         }}
         onKeyDown={onKeyDown}
         onClick={(event) => refreshMention(text, event.currentTarget.selectionStart ?? text.length)}
@@ -508,15 +562,26 @@ const CommentComposer = ({ entity, id, people }: { entity: TimelineEntity; id: s
               >
                 <UserAvatar user={person} size="xs" />
                 <span className="truncate">{person.displayName}</span>
-                {person.email ? <span className="ml-auto truncate text-xs text-foreground-subtle">{person.email}</span> : null}
+                {person.email ? (
+                  <span className="ml-auto truncate text-xs text-foreground-subtle">
+                    {person.email}
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}
         </ul>
       ) : null}
       <div className="flex items-center gap-2">
-        <span className="hidden text-[11px] text-foreground-subtle sm:inline">Ctrl + Enter để gửi</span>
-        <Button size="sm" className="ml-auto" onClick={send} disabled={!text.trim() || mutations.add.isPending}>
+        <span className="hidden text-[11px] text-foreground-subtle sm:inline">
+          Ctrl + Enter để gửi
+        </span>
+        <Button
+          size="sm"
+          className="ml-auto"
+          onClick={send}
+          disabled={!text.trim() || mutations.add.isPending}
+        >
           {mutations.add.isPending ? <Spinner /> : <Send />}
           Gửi
         </Button>

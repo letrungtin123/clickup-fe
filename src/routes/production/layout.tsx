@@ -2,6 +2,7 @@ import { Outlet } from "react-router";
 
 import { RouteFallback } from "@/components/layout/route-fallback";
 import { ErrorState } from "@/components/shared/states";
+import { ProductionTaskSheet } from "@/features/production/components/jobs/task-sheet";
 import { isProductionHidden } from "@/features/production/errors";
 import { useProductionMe } from "@/features/production/hooks";
 import { NotFoundRoute } from "@/routes/errors";
@@ -28,5 +29,11 @@ export const ProductionLayoutRoute = () => {
   if (me.data.roles.length === 0) {
     return <NotFoundRoute />;
   }
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      {/* `?ptask=<id>` opens a production task over any production page. */}
+      <ProductionTaskSheet />
+    </>
+  );
 };

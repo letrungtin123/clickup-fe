@@ -46,7 +46,7 @@ export const ProductionTeamsRoute = () => {
     mutations.update.mutate(
       {
         id: team.id,
-        input: { name: input.name ?? team.name, active: input.active ?? team.active }
+        input
       },
       {
         onSuccess: () => {

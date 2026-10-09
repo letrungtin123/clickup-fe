@@ -94,7 +94,7 @@ export const ClientsPanel = () => {
 
   const toggleActive = (client: Client) =>
     mutations.update.mutate(
-      { id: client.id, input: { name: client.name, note: client.note, active: !client.active } },
+      { id: client.id, input: { active: !client.active } },
       {
         onSuccess: () =>
           toast.success(

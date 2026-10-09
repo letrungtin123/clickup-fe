@@ -21,6 +21,7 @@ import {
   mentionAt,
   mentionedIds,
   needsInput,
+  transitionAsks,
   qcActions,
   relativeDeadline,
   splitTransitions,
@@ -39,7 +40,10 @@ describe("organization time", () => {
     expect(zonedToIso("2026-10-09", "17:30", VN)).toBe("2026-10-09T10:30:00.000Z");
     expect(zonedToIso("2026-10-10", "00:00", VN)).toBe("2026-10-09T17:00:00.000Z");
     expect(zonedToIso("2026-10-09", "17:30", "UTC")).toBe("2026-10-09T17:30:00.000Z");
-    expect(isoToZoned("2026-10-09T17:00:00.000Z", VN)).toEqual({ day: "2026-10-10", time: "00:00" });
+    expect(isoToZoned("2026-10-09T17:00:00.000Z", VN)).toEqual({
+      day: "2026-10-10",
+      time: "00:00"
+    });
   });
 
   it("handles DST zones and rejects malformed input", () => {
@@ -57,9 +61,18 @@ describe("organization time", () => {
 
   it("describes time left or overdue", () => {
     const now = new Date("2026-10-09T10:00:00.000Z");
-    expect(relativeDeadline("2026-10-09T13:00:00.000Z", now)).toEqual({ late: false, label: "còn 3 giờ" });
-    expect(relativeDeadline("2026-10-07T10:00:00.000Z", now)).toEqual({ late: true, label: "trễ 2 ngày" });
-    expect(relativeDeadline("2026-10-09T10:20:00.000Z", now)).toEqual({ late: false, label: "còn 20 phút" });
+    expect(relativeDeadline("2026-10-09T13:00:00.000Z", now)).toEqual({
+      late: false,
+      label: "còn 3 giờ"
+    });
+    expect(relativeDeadline("2026-10-07T10:00:00.000Z", now)).toEqual({
+      late: true,
+      label: "trễ 2 ngày"
+    });
+    expect(relativeDeadline("2026-10-09T10:20:00.000Z", now)).toEqual({
+      late: false,
+      label: "còn 20 phút"
+    });
   });
 
   it("subtracts the QC buffer for the default task deadline", () => {
@@ -81,7 +94,12 @@ describe("progress and allocation", () => {
 
   it("totals new lines against what is already assigned", () => {
     expect(allocation(10, 4, [3, 2])).toEqual({ adding: 5, total: 9, remaining: 1, over: false });
-    expect(allocation(10, 8, [3, Number.NaN, -1])).toEqual({ adding: 3, total: 11, remaining: -1, over: true });
+    expect(allocation(10, 8, [3, Number.NaN, -1])).toEqual({
+      adding: 3,
+      total: 11,
+      remaining: -1,
+      over: true
+    });
     expect(
       assignedNormalQty([
         { kind: "NORMAL", qtyAssigned: 5 },
@@ -94,7 +112,9 @@ describe("progress and allocation", () => {
     const rule = { creditPerImage: 1.5, moneyPerImage: 7000 };
     expect(expectedEarnings(rule, 4, "MONEY_IF_KPI")).toEqual({ credit: 6, money: 28000 });
     expect(expectedEarnings(rule, 4, "POINTS")).toEqual({ credit: 6, money: null });
-    expect(expectedEarnings({ creditPerImage: 0.1, moneyPerImage: null }, 3, "MONEY_IF_KPI")).toEqual({
+    expect(
+      expectedEarnings({ creditPerImage: 0.1, moneyPerImage: null }, 3, "MONEY_IF_KPI")
+    ).toEqual({
       credit: 0.3,
       money: null
     });
@@ -120,21 +140,29 @@ describe("task lines", () => {
   });
 
   it("mirrors the API's people and catalog rules", () => {
-    expect(taskLineProblems({ ...line, assigneeId: id(4) }, context).assignee).toBe("Cần vai trò Nhân viên hoặc Leader.");
+    expect(taskLineProblems({ ...line, assigneeId: id(4) }, context).assignee).toBe(
+      "Cần vai trò Nhân viên hoặc Leader."
+    );
     expect(taskLineProblems({ ...line, qcId: id(2) }, context).qc).toBe("Người QC cần vai trò QC.");
-    expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: id(1) }, context).qc).toBe("QC phải khác người làm.");
+    expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: id(1) }, context).qc).toBe(
+      "QC phải khác người làm."
+    );
     expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: null }, context).qc).toBe(
       "Tự giao cho mình thì cần QC là người khác."
     );
-    expect(taskLineProblems({ ...line, processId: id(90) }, context).process).toBe("Quy trình QC không giao như task.");
+    expect(taskLineProblems({ ...line, processId: id(90) }, context).process).toBe(
+      "Quy trình QC không giao như task."
+    );
     expect(taskLineProblems({ ...line, qty: "0" }, context).qty).toBe("Số tấm nguyên ≥ 1.");
     expect(taskLineProblems({ ...line, qty: "2.5" }, context).qty).toBe("Số tấm nguyên ≥ 1.");
-    expect(Object.keys(taskLineProblems({ assigneeId: null, qcId: null, processId: null, shiftId: null, qty: "" }, context))).toEqual([
-      "assignee",
-      "process",
-      "shift",
-      "qty"
-    ]);
+    expect(
+      Object.keys(
+        taskLineProblems(
+          { assigneeId: null, qcId: null, processId: null, shiftId: null, qty: "" },
+          context
+        )
+      )
+    ).toEqual(["assignee", "process", "shift", "qty"]);
   });
 });
 
@@ -152,9 +180,18 @@ describe("transitions", () => {
     const split = splitTransitions([option(1), option(2, { override: true, requiresNote: true })]);
     expect(split.normal.map((item) => item.toStatusId)).toEqual([id(1)]);
     expect(split.overrides.map((item) => item.toStatusId)).toEqual([id(2)]);
-    expect(needsInput(option(1))).toBe(false);
-    expect(needsInput(option(1, { asksQty: true }))).toBe(true);
-    expect(needsInput(option(1, { requiresNote: true }))).toBe(true);
+    const fresh = { doneAt: null };
+    const doneBefore = { doneAt: "2026-10-09T03:00:00.000Z" };
+    expect(needsInput(fresh, option(1))).toBe(false);
+    expect(needsInput(fresh, option(1, { asksQty: true }))).toBe(true);
+    expect(needsInput(fresh, option(1, { requiresNote: true }))).toBe(true);
+    // Re-Done after a QC fail: qty/OT hours are locked at the first Done.
+    expect(needsInput(doneBefore, option(1, { asksQty: true, asksOtHours: true }))).toBe(false);
+    expect(transitionAsks(doneBefore, option(1, { asksQty: true }))).toEqual({
+      qty: false,
+      otHours: false,
+      note: false
+    });
   });
 
   it("finds Pass and Fail among the task's own options", () => {
@@ -166,7 +203,11 @@ describe("transitions", () => {
     const task = {
       status: { id: id(11), code: "WAITING_QC", name: "Chờ QC", color: "amber" as const },
       capabilities: {
-        transitions: [option(12), option(10, { requiresNote: true }), option(12, { override: true })],
+        transitions: [
+          option(12),
+          option(10, { requiresNote: true }),
+          option(12, { override: true })
+        ],
         canEdit: false,
         canAssign: false,
         canEditQty: false
@@ -175,7 +216,9 @@ describe("transitions", () => {
     const actions = qcActions(task, statuses);
     expect(actions.pass?.toStatusId).toBe(id(12));
     expect(actions.fail?.toStatusId).toBe(id(10));
-    expect(qcActions({ ...task, capabilities: { ...task.capabilities, transitions: [] } }, statuses)).toEqual({
+    expect(
+      qcActions({ ...task, capabilities: { ...task.capabilities, transitions: [] } }, statuses)
+    ).toEqual({
       pass: null,
       fail: null
     });
@@ -191,7 +234,9 @@ describe("board columns", () => {
       { id: id(4), name: "Gone", color: "sky" as const, code: "GONE", sortOrder: 4, active: false }
     ];
     const tasks = [{ status: { id: id(2) } }, { status: { id: id(3) } }, { status: { id: id(2) } }];
-    expect(boardColumns(tasks, statuses).map((column) => [column.status.code, column.tasks.length])).toEqual([
+    expect(
+      boardColumns(tasks, statuses).map((column) => [column.status.code, column.tasks.length])
+    ).toEqual([
       ["A", 0],
       ["B", 2],
       ["OLD", 1]
@@ -201,16 +246,27 @@ describe("board columns", () => {
 
 describe("job filters", () => {
   it("round-trips through the URL and ignores junk", () => {
-    const filters = { ...emptyJobFilters, q: " batch ", projectId: id(5), from: "2026-10-01", late: true };
+    const filters = {
+      ...emptyJobFilters,
+      q: " batch ",
+      projectId: id(5),
+      from: "2026-10-01",
+      late: true
+    };
     const params = jobFiltersToSearch(filters);
     expect(params.toString()).toBe(`q=batch&project=${id(5)}&from=2026-10-01&late=1`);
     expect(jobFiltersFromSearch(params)).toEqual({ ...filters, q: "batch" });
-    expect(jobFiltersFromSearch(new URLSearchParams("project=nope&from=10/01/2026&late=yes"))).toEqual(emptyJobFilters);
+    expect(
+      jobFiltersFromSearch(new URLSearchParams("project=nope&from=10/01/2026&late=yes"))
+    ).toEqual(emptyJobFilters);
     expect(activeFilterCount(filters)).toBe(3);
   });
 
   it("turns the day range into [from, to+1) instants in the organization timezone", () => {
-    const query = jobQueryFromFilters({ ...emptyJobFilters, from: "2026-10-01", to: "2026-10-31", archived: true }, VN);
+    const query = jobQueryFromFilters(
+      { ...emptyJobFilters, from: "2026-10-01", to: "2026-10-31", archived: true },
+      VN
+    );
     expect(query.deadlineFrom).toBe("2026-09-30T17:00:00.000Z");
     expect(query.deadlineTo).toBe("2026-10-31T17:00:00.000Z");
     expect(query.includeArchived).toBe("true");
@@ -225,7 +281,11 @@ describe("timeline sentences", () => {
     shift: () => undefined,
     timeZone: VN
   };
-  const log = (action: "CREATE" | "STATUS" | "QTY" | "ASSIGN" | "NOTE" | "FIELD", fromValue: Record<string, unknown> | null, toValue: Record<string, unknown> | null) => ({
+  const log = (
+    action: "CREATE" | "STATUS" | "QTY" | "ASSIGN" | "NOTE" | "FIELD",
+    fromValue: Record<string, unknown> | null,
+    toValue: Record<string, unknown> | null
+  ) => ({
     action,
     fromValue,
     toValue,
@@ -233,29 +293,68 @@ describe("timeline sentences", () => {
   });
 
   it("describes creation with the over-allocation warning", () => {
-    const segments = describeTaskLog(log("CREATE", null, { assigneeId: id(2), qcId: id(3), qtyAssigned: 5, kind: "NORMAL", warning: "Vượt tổng tấm" }), names);
+    const segments = describeTaskLog(
+      log("CREATE", null, {
+        assigneeId: id(2),
+        qcId: id(3),
+        qtyAssigned: 5,
+        kind: "NORMAL",
+        warning: "Vượt tổng tấm"
+      }),
+      names
+    );
     expect(text(segments)).toBe("đã tạo task #7 cho NV B · 5 tấm · QC QC C — Vượt tổng tấm");
     expect(segments.at(-1)?.tone).toBe("warning");
   });
 
   it("describes status moves with Done quantity, QC fail and overrides", () => {
-    expect(text(describeTaskLog(log("STATUS", { name: "Đang làm" }, { name: "Done", qtyDone: 5, otHours: 1.5 }), names))).toBe(
-      "chuyển #7 từ Đang làm sang Done · 5 tấm · 1.5 giờ OT"
-    );
-    expect(text(describeTaskLog(log("STATUS", { name: "Chờ QC" }, { name: "Đang làm", qcFail: true }), names))).toBe(
-      "chuyển #7 từ Chờ QC sang Đang làm · QC không đạt"
-    );
-    expect(text(describeTaskLog(log("STATUS", { name: "A" }, { name: "B", override: true }), names))).toContain("ngoài luồng");
+    expect(
+      text(
+        describeTaskLog(
+          log("STATUS", { name: "Đang làm" }, { name: "Done", qtyDone: 5, otHours: 1.5 }),
+          names
+        )
+      )
+    ).toBe("chuyển #7 từ Đang làm sang Done · 5 tấm · 1.5 giờ OT");
+    expect(
+      text(
+        describeTaskLog(
+          log("STATUS", { name: "Chờ QC" }, { name: "Đang làm", qcFail: true }),
+          names
+        )
+      )
+    ).toBe("chuyển #7 từ Chờ QC sang Đang làm · QC không đạt");
+    expect(
+      text(describeTaskLog(log("STATUS", { name: "A" }, { name: "B", override: true }), names))
+    ).toContain("ngoài luồng");
   });
 
   it("describes quantity, assignment, note and field edits", () => {
-    expect(text(describeTaskLog(log("QTY", { qtyDone: 5 }, { qtyDone: 4 }), names))).toBe("sửa số tấm hoàn thành của #7: 5 → 4 tấm");
+    expect(text(describeTaskLog(log("QTY", { qtyDone: 5 }, { qtyDone: 4 }), names))).toBe(
+      "sửa số tấm hoàn thành của #7: 5 → 4 tấm"
+    );
     expect(
-      text(describeTaskLog(log("ASSIGN", { assigneeId: id(2), qcId: null }, { assigneeId: id(2), qcId: id(3) }), names))
+      text(
+        describeTaskLog(
+          log("ASSIGN", { assigneeId: id(2), qcId: null }, { assigneeId: id(2), qcId: id(3) }),
+          names
+        )
+      )
     ).toBe("giao lại #7: QC không ai → QC C");
-    expect(text(describeTaskLog(log("NOTE", { note: "x" }, { note: null }), names))).toBe("xóa ghi chú của #7");
+    expect(text(describeTaskLog(log("NOTE", { note: "x" }, { note: null }), names))).toBe(
+      "xóa ghi chú của #7"
+    );
     expect(
-      text(describeTaskLog(log("FIELD", { qtyAssigned: 5, processId: id(81) }, { qtyAssigned: 6, processId: id(80) }), names))
+      text(
+        describeTaskLog(
+          log(
+            "FIELD",
+            { qtyAssigned: 5, processId: id(81) },
+            { qtyAssigned: 6, processId: id(80) }
+          ),
+          names
+        )
+      )
     ).toBe("sửa #7: số tấm giao 5 tấm → 6 tấm; quy trình quy trình khác → Retouch");
   });
 });
@@ -265,7 +364,10 @@ describe("mentions", () => {
     expect(mentionAt("Chào @ng", 8)).toEqual({ query: "ng", start: 5 });
     expect(mentionAt("email a@b", 9)).toBeNull();
     expect(mentionAt("@", 1)).toEqual({ query: "", start: 0 });
-    expect(insertMention("Chào @ng xem", 5, 8, "NV B")).toEqual({ text: "Chào @NV B  xem", caret: 11 });
+    expect(insertMention("Chào @ng xem", 5, 8, "NV B")).toEqual({
+      text: "Chào @NV B  xem",
+      caret: 11
+    });
   });
 
   it("keeps only mentions still present in the text", () => {

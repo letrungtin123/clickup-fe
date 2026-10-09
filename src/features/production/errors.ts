@@ -53,7 +53,21 @@ const serverWorded = new Set([
   "MENTION_INVALID",
   "SOURCE_TASK_INVALID",
   "COMMENT_NOT_FOUND",
-  "WORKFLOW_INCOMPLETE"
+  "WORKFLOW_INCOMPLETE",
+  // Specific 409s (unique names/codes, single QC process, rules already used for scores).
+  "PROJECT_CODE_TAKEN",
+  "TEAM_NAME_TAKEN",
+  "CLIENT_NAME_TAKEN",
+  "PROCESS_NAME_TAKEN",
+  "QC_PROCESS_EXISTS",
+  "SHIFT_NAME_TAKEN",
+  "STATUS_CODE_TAKEN",
+  "INITIAL_STATUS_EXISTS",
+  "FIELD_KEY_TAKEN",
+  "TAG_NAME_TAKEN",
+  "JOB_CODE_TAKEN",
+  "KPI_VERSION_EXISTS",
+  "CREDIT_RULE_IN_USE"
 ]);
 
 /** Production FORBIDDEN answers say who may do it ("Chỉ Leader của job…"); keep that wording. */

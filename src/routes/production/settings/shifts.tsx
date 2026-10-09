@@ -65,7 +65,7 @@ export const ProductionShiftsRoute = () => {
 
   const toggleActive = (shift: Shift) =>
     mutations.update.mutate(
-      { id: shift.id, input: { name: shift.name, payMode: shift.payMode, active: !shift.active } },
+      { id: shift.id, input: { active: !shift.active } },
       {
         onSuccess: () =>
           toast.success(

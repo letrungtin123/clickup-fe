@@ -11,7 +11,6 @@ import {
   leaveLoad,
   monthBounds,
   monthGrid,
-  queryWindows,
   shiftDay,
   shiftMonth,
   validateLeaveDraft,
@@ -25,6 +24,7 @@ const request = (overrides: Partial<LeaveRequest> & { name?: string }): LeaveReq
   return {
     id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
     user: { id: `user-${name}`, displayName: name, email: null, avatarUrl: null },
+    team: null,
     fromDate: "2026-10-12",
     toDate: "2026-10-12",
     part: "FULL_DAY",
@@ -165,24 +165,12 @@ describe("request form", () => {
   });
 });
 
-describe("labels and windows", () => {
+describe("labels", () => {
   it("formats date ranges compactly", () => {
     expect(formatLeaveDates("2026-10-12", "2026-10-12")).toBe("12/10/2026");
     expect(formatLeaveDates("2026-10-12", "2026-10-14")).toBe("12/10 – 14/10/2026");
     expect(formatLeaveDates("2026-12-28", "2027-01-02")).toBe("28/12/2026 – 02/01/2027");
     expect(formatLeaveDays(0.5)).toBe("0,5 ngày");
     expect(formatLeaveDays(3)).toBe("3 ngày");
-  });
-
-  it("splits long ranges into calendar-sized query windows", () => {
-    const windows = queryWindows("2026-09-09", "2027-10-10");
-    expect(windows[0]).toEqual({ from: "2026-09-09", to: "2026-12-10" });
-    expect(windows.at(-1)?.to).toBe("2027-10-10");
-    for (const window of windows) {
-      expect(daysBetween(window.from, window.to)).toBeLessThanOrEqual(93);
-    }
-    for (let index = 1; index < windows.length; index += 1) {
-      expect(windows[index]?.from).toBe(shiftDay(windows[index - 1]?.to ?? "", 1));
-    }
   });
 });

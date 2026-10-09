@@ -26,11 +26,15 @@ export const useProductionPeople = (known: readonly (Person | null | undefined)[
   const knownKey = known.map((person) => person?.id ?? "").join(",");
 
   return useMemo(() => {
-    const active = (members.data?.items ?? []).filter((member) => member.active && member.roles.length > 0);
+    const active = (members.data?.items ?? []).filter(
+      (member) => member.active && member.roles.length > 0
+    );
     const people = new Map<string, Person>();
     for (const member of active) people.set(member.userId, toPerson(member));
     for (const person of known) if (person && !people.has(person.id)) people.set(person.id, person);
-    const roles = new Map<string, readonly ProductionRole[]>(active.map((member) => [member.userId, member.roles]));
+    const roles = new Map<string, readonly ProductionRole[]>(
+      active.map((member) => [member.userId, member.roles])
+    );
     const withRole = (...wanted: ProductionRole[]) =>
       active.filter((member) => wanted.some((role) => member.roles.includes(role))).map(toPerson);
     return {

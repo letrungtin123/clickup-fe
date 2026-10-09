@@ -19,6 +19,12 @@ export const forecastToneInfo: Record<ForecastTone, { family: ToneFamily; label:
 
 export const toneFamily = (tone: ForecastTone): ToneFamily => forecastToneInfo[tone].family;
 
+/** Headline label; once the period has closed a shortfall reads "Không đạt KPI", not a pace. */
+export const forecastLabel = (forecast: Pick<ScoreForecast, "tone" | "daysLeft">) =>
+  forecast.daysLeft <= 0 && (forecast.tone === "AT_RISK" || forecast.tone === "BEHIND")
+    ? "Không đạt KPI"
+    : forecastToneInfo[forecast.tone].label;
+
 const percentFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
 
 /** API percents are already ×100 (94.65 → "94,7%"); null → "—". */

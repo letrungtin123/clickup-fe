@@ -1,4 +1,4 @@
-import { format, isSameDay, isSameYear, isToday, isYesterday } from "date-fns";
+import { format, isSameDay, isSameYear, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
 
 import type { ChatMessage } from "@/contracts/chat";
@@ -25,8 +25,9 @@ const dayKey = (date: Date) =>
 
 /** "Hôm nay", "Hôm qua", "Thứ Hai, 6 tháng 10" (+ year when not the current year). */
 export const formatDayLabel = (date: Date, now = new Date()) => {
-  if (isToday(date)) return "Hôm nay";
-  if (isYesterday(date)) return "Hôm qua";
+  // Relative to `now` (not the wall clock), so callers and tests get stable labels around midnight.
+  if (isSameDay(date, now)) return "Hôm nay";
+  if (isSameDay(date, subDays(now, 1))) return "Hôm qua";
   const label = format(
     date,
     isSameYear(date, now) ? "EEEE, d 'tháng' M" : "EEEE, d 'tháng' M, yyyy",

@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { BadgeCheck, History, Info, PencilLine } from "lucide-react";
+import { BadgeCheck, History, Info, PencilLine, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,7 +23,7 @@ import {
   parseCreditInput,
   parseMoneyInput
 } from "../../format";
-import { useCreditHistory, useSetCreditRule } from "../../hooks";
+import { useCreditHistory, useDeleteCreditRule, useSetCreditRule } from "../../hooks";
 import { DateField } from "../date-field";
 import { FormAlert } from "../settings-kit";
 
@@ -247,6 +247,9 @@ export const CreditCellEditor = ({
         </form>
       ) : (
         <VersionHistory
+          project={project}
+          process={process}
+          canEdit={canEdit}
           versions={versions}
           pending={history.isPending}
           error={history.isError ? history.error : null}
@@ -269,6 +272,9 @@ export const CreditCellEditor = ({
 };
 
 const VersionHistory = ({
+  project,
+  process,
+  canEdit,
   versions,
   pending,
   error,
@@ -276,6 +282,9 @@ const VersionHistory = ({
   at,
   onUse
 }: {
+  project: ProductionProject;
+  process: Process;
+  canEdit: boolean;
   versions: readonly CreditRule[];
   pending: boolean;
   error: unknown;
@@ -283,6 +292,23 @@ const VersionHistory = ({
   at: string;
   onUse?: ((version: CreditRule) => void) | undefined;
 }) => {
+  const remove = useDeleteCreditRule(project.id, process.id);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const confirmRemove = (version: CreditRule) =>
+    remove.mutate(version.id, {
+      onSuccess: () => {
+        setConfirmingId(null);
+        setRemoveError(null);
+        toast.success(`Đã xóa phiên bản từ ${formatDay(version.effectiveFrom)}`);
+      },
+      onError: (failure) => {
+        setConfirmingId(null);
+        setRemoveError(productionErrorMessage(failure));
+      }
+    });
+
   if (pending) {
     return (
       <div className="flex flex-col gap-2" aria-hidden="true">
@@ -301,51 +327,110 @@ const VersionHistory = ({
     );
   }
   return (
-    <ol aria-label="Các phiên bản đơn giá" className="flex max-h-72 flex-col gap-1 overflow-y-auto">
-      {versions.map((version) => {
-        const current = dayInRange(at, version.effectiveFrom, version.effectiveTo);
-        return (
-          <li
-            key={version.id}
-            className={cn(
-              "flex items-center gap-3 rounded-lg border px-2.5 py-2",
-              current ? "border-brand/40 bg-brand-soft" : "border-transparent bg-muted/50"
-            )}
-          >
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-xs font-medium tabular-nums">
-                {formatVersionRange(version.effectiveFrom, version.effectiveTo)}
-              </span>
-              <span className="text-[11px] text-foreground-muted">
-                {current
-                  ? `Áp dụng ngày ${formatDay(at)}`
-                  : version.effectiveTo === null
-                    ? "Mới nhất"
-                    : "Đã kết thúc"}
-              </span>
-            </span>
-            <span className="flex flex-col items-end">
-              <span className="text-[13px] font-medium tabular-nums">
-                {formatCredit(version.creditPerImage)}
-              </span>
-              <span className="text-[11px] text-foreground-muted tabular-nums">
-                {formatMoney(version.moneyPerImage)}
-              </span>
-            </span>
-            {onUse ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Sửa phiên bản từ ${formatDay(version.effectiveFrom)}`}
-                title="Sửa phiên bản này"
-                onClick={() => onUse(version)}
+    <div className="flex flex-col gap-2">
+      {removeError ? <FormAlert>{removeError}</FormAlert> : null}
+      <ol
+        aria-label="Các phiên bản đơn giá"
+        className="flex max-h-72 flex-col gap-1 overflow-y-auto"
+      >
+        {versions.map((version) => {
+          const current = dayInRange(at, version.effectiveFrom, version.effectiveTo);
+          if (confirmingId === version.id) {
+            return (
+              <li
+                key={version.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-2"
               >
-                <PencilLine />
-              </Button>
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
+                <span className="min-w-0 flex-1 text-xs">
+                  Xóa phiên bản{" "}
+                  {formatVersionRange(version.effectiveFrom, version.effectiveTo).toLocaleLowerCase(
+                    "vi"
+                  )}
+                  ?{" "}
+                  {versions.some((other) => other.effectiveTo === version.effectiveFrom)
+                    ? "Phiên bản trước sẽ áp dụng lại cho khoảng này."
+                    : "Khoảng này sẽ không còn đơn giá."}
+                </span>
+                <span className="flex gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={remove.isPending}
+                    onClick={() => setConfirmingId(null)}
+                  >
+                    Hủy
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={remove.isPending}
+                    onClick={() => confirmRemove(version)}
+                  >
+                    {remove.isPending ? <Spinner /> : null}
+                    Xóa
+                  </Button>
+                </span>
+              </li>
+            );
+          }
+          return (
+            <li
+              key={version.id}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border px-2.5 py-2",
+                current ? "border-brand/40 bg-brand-soft" : "border-transparent bg-muted/50"
+              )}
+            >
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-xs font-medium tabular-nums">
+                  {formatVersionRange(version.effectiveFrom, version.effectiveTo)}
+                </span>
+                <span className="text-[11px] text-foreground-muted">
+                  {current
+                    ? `Áp dụng ngày ${formatDay(at)}`
+                    : version.effectiveTo === null
+                      ? "Mới nhất"
+                      : "Đã kết thúc"}
+                </span>
+              </span>
+              <span className="flex flex-col items-end">
+                <span className="text-[13px] font-medium tabular-nums">
+                  {formatCredit(version.creditPerImage)}
+                </span>
+                <span className="text-[11px] text-foreground-muted tabular-nums">
+                  {formatMoney(version.moneyPerImage)}
+                </span>
+              </span>
+              {onUse ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Sửa phiên bản từ ${formatDay(version.effectiveFrom)}`}
+                  title="Sửa phiên bản này"
+                  onClick={() => onUse(version)}
+                >
+                  <PencilLine />
+                </Button>
+              ) : null}
+              {canEdit ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Xóa phiên bản từ ${formatDay(version.effectiveFrom)}`}
+                  title="Xóa phiên bản này"
+                  className="text-foreground-muted hover:text-destructive"
+                  onClick={() => {
+                    setRemoveError(null);
+                    setConfirmingId(version.id);
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 };

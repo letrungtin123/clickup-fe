@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ForecastTone } from "@/contracts/production-scores";
 
 import {
+  forecastLabel,
   forecastSentence,
   forecastToneInfo,
   formatPercent,
@@ -33,6 +34,16 @@ describe("forecast tone mapping", () => {
     for (const tone of ["MET", "ON_TRACK", "AT_RISK", "BEHIND", "NO_TARGET"] as const) {
       expect(forecastToneInfo[tone].label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("forecastLabel", () => {
+  it("uses the pace label while the period runs and a verdict once closed", () => {
+    expect(forecastLabel({ tone: "BEHIND", daysLeft: 5 })).toBe("Chậm tiến độ");
+    expect(forecastLabel({ tone: "AT_RISK", daysLeft: 3 })).toBe("Có nguy cơ thiếu");
+    expect(forecastLabel({ tone: "BEHIND", daysLeft: 0 })).toBe("Không đạt KPI");
+    expect(forecastLabel({ tone: "MET", daysLeft: 0 })).toBe("Đã đạt KPI");
+    expect(forecastLabel({ tone: "NO_TARGET", daysLeft: 0 })).toBe("Chưa có KPI");
   });
 });
 

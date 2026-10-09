@@ -121,17 +121,7 @@ export const ProductionCustomFieldsRoute = () => {
     mutations.update.mutate(
       {
         id: field.id,
-        input: {
-          entity: field.entity,
-          key: field.key,
-          label: field.label,
-          type: field.type,
-          options: field.options,
-          required: field.required,
-          showInTable: field.showInTable,
-          sortOrder: field.sortOrder,
-          active: !field.active
-        }
+        input: { active: !field.active }
       },
       {
         onSuccess: () =>

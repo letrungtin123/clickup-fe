@@ -88,11 +88,7 @@ export const ProductionTagsRoute = () => {
     mutations.update.mutate(
       {
         id: tag.id,
-        input: {
-          name: input.name ?? tag.name,
-          color: input.color ?? tag.color,
-          active: input.active ?? tag.active
-        }
+        input
       },
       {
         onSuccess: () => {

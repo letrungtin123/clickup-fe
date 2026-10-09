@@ -34,7 +34,6 @@ import {
   type TransitionsInput,
   type UpdateMemberInput
 } from "./api";
-import { sortOrderChanges } from "./catalog";
 import { productionKeys } from "./keys";
 import { visibleNavEntries } from "./nav";
 import type { NotificationPreferences } from "./types";
@@ -217,7 +216,8 @@ export const useTeamMutations = () => ({
   ),
   update: useCollectionMutation(
     productionKeys.teams(),
-    ({ id, input }: { id: string; input: TeamInput }) => productionApi.updateTeam(id, input),
+    ({ id, input }: { id: string; input: Partial<TeamInput> }) =>
+      productionApi.updateTeam(id, input),
     [productionKeys.me()]
   )
 });
@@ -232,7 +232,8 @@ export const useClientMutations = () => {
     ),
     update: useCollectionMutation(
       productionKeys.clients(),
-      ({ id, input }: { id: string; input: ClientInput }) => productionApi.updateClient(id, input),
+      ({ id, input }: { id: string; input: Partial<ClientInput> }) =>
+        productionApi.updateClient(id, input),
       related
     )
   };
@@ -248,7 +249,7 @@ export const useProjectMutations = () => {
     ),
     update: useCollectionMutation(
       productionKeys.projects(),
-      ({ id, input }: { id: string; input: ProjectInput }) =>
+      ({ id, input }: { id: string; input: Partial<ProjectInput> }) =>
         productionApi.updateProject(id, input),
       related
     )
@@ -265,7 +266,7 @@ export const useProcessMutations = () => {
     ),
     update: useCollectionMutation(
       productionKeys.processes(),
-      ({ id, input }: { id: string; input: ProcessInput }) =>
+      ({ id, input }: { id: string; input: Partial<ProcessInput> }) =>
         productionApi.updateProcess(id, input),
       related
     )
@@ -278,7 +279,8 @@ export const useShiftMutations = () => ({
   ),
   update: useCollectionMutation(
     productionKeys.shifts(),
-    ({ id, input }: { id: string; input: ShiftInput }) => productionApi.updateShift(id, input)
+    ({ id, input }: { id: string; input: Partial<ShiftInput> }) =>
+      productionApi.updateShift(id, input)
   )
 });
 
@@ -288,7 +290,7 @@ export const useTagMutations = () => ({
   ),
   update: useCollectionMutation(
     productionKeys.tags(),
-    ({ id, input }: { id: string; input: TagInput }) => productionApi.updateTag(id, input)
+    ({ id, input }: { id: string; input: Partial<TagInput> }) => productionApi.updateTag(id, input)
   )
 });
 
@@ -298,7 +300,7 @@ export const useCustomFieldMutations = () => ({
   ),
   update: useCollectionMutation(
     productionKeys.customFields(),
-    ({ id, input }: { id: string; input: CustomFieldInput }) =>
+    ({ id, input }: { id: string; input: Partial<CustomFieldInput> }) =>
       productionApi.updateCustomField(id, input)
   )
 });
@@ -309,7 +311,8 @@ export const useStatusMutations = () => ({
   ),
   update: useCollectionMutation(
     productionKeys.workflow(),
-    ({ id, input }: { id: string; input: StatusInput }) => productionApi.updateStatus(id, input)
+    ({ id, input }: { id: string; input: Partial<StatusInput> }) =>
+      productionApi.updateStatus(id, input)
   ),
   replaceTransitions: useCollectionMutation(productionKeys.workflow(), (input: TransitionsInput) =>
     productionApi.replaceTransitions(input)
@@ -341,23 +344,21 @@ export const useReorderStatuses = () => {
 type Sortable = { id: string; sortOrder: number };
 
 /**
- * Reorders a catalog that only has per-row PATCH (processes, shifts, custom fields): optimistic
- * cache update, then one PATCH per moved row; the last response is the refreshed collection.
+ * Drag-and-drop order of processes, shifts or custom fields: optimistic cache update, then one
+ * PUT /production/{segment}/order with the ids in their new order.
  */
-const useSequentialReorder = <T extends Sortable>(
+const useCatalogReorder = <T extends Sortable>(
+  segment: "processes" | "shifts" | "custom-fields",
   key: QueryKey,
-  patch: (item: T, sortOrder: number) => Promise<{ items: T[] }>,
   related: readonly QueryKey[] = []
 ) => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (ordered: T[]) => {
-      let last: { items: T[] } | null = null;
-      for (const { item, sortOrder } of sortOrderChanges(ordered)) {
-        last = await patch(item, sortOrder);
-      }
-      return last;
-    },
+    mutationFn: (ordered: T[]) =>
+      productionApi.reorderCatalog(
+        segment,
+        ordered.map((item) => item.id)
+      ),
     meta: { errorMessage: false },
     onMutate: async (ordered) => {
       await client.cancelQueries({ queryKey: key });
@@ -372,39 +373,19 @@ const useSequentialReorder = <T extends Sortable>(
           : current
       );
     },
-    onSuccess: (data) => {
-      if (data) client.setQueryData(key, data);
-      void invalidateAll(client, related);
-    },
-    onError: () => void client.invalidateQueries({ queryKey: key })
+    onSettled: () => void invalidateAll(client, [key, ...related])
   });
 };
 
 export const useReorderProcesses = () =>
-  useSequentialReorder<Process>(
-    productionKeys.processes(),
-    (item, sortOrder) => productionApi.updateProcess(item.id, { name: item.name, sortOrder }),
-    [productionKeys.creditRules()]
-  );
+  useCatalogReorder<Process>("processes", productionKeys.processes(), [
+    productionKeys.creditRules()
+  ]);
 
-export const useReorderShifts = () =>
-  useSequentialReorder<Shift>(productionKeys.shifts(), (item, sortOrder) =>
-    productionApi.updateShift(item.id, { name: item.name, payMode: item.payMode, sortOrder })
-  );
+export const useReorderShifts = () => useCatalogReorder<Shift>("shifts", productionKeys.shifts());
 
 export const useReorderCustomFields = () =>
-  useSequentialReorder<CustomField>(productionKeys.customFields(), (field, sortOrder) =>
-    productionApi.updateCustomField(field.id, {
-      entity: field.entity,
-      key: field.key,
-      label: field.label,
-      type: field.type,
-      options: field.options,
-      required: field.required,
-      showInTable: field.showInTable,
-      sortOrder
-    })
-  );
+  useCatalogReorder<CustomField>("custom-fields", productionKeys.customFields());
 
 /**
  * Role/team/custom-field/tag changes for one member, applied optimistically to the cached list.
@@ -465,6 +446,19 @@ export const useSetCreditRule = () => {
     meta: { errorMessage: false },
     onSuccess: (history, input) => {
       client.setQueryData(productionKeys.creditHistory(input.projectId, input.processId), history);
+      void client.invalidateQueries({ queryKey: [...productionKeys.creditRules(), "matrix"] });
+    }
+  });
+};
+
+/** DELETE /credit-rules/:id — removes an unused version; the previous one covers its period again. */
+export const useDeleteCreditRule = (projectId: string, processId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleId: string) => productionApi.deleteCreditRule(ruleId),
+    meta: { errorMessage: false },
+    onSuccess: (history) => {
+      client.setQueryData(productionKeys.creditHistory(projectId, processId), history);
       void client.invalidateQueries({ queryKey: [...productionKeys.creditRules(), "matrix"] });
     }
   });

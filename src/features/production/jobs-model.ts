@@ -1,4 +1,9 @@
-import type { CreditRule, PayMode, ProductionRole, ProductionStatus } from "@/contracts/production-catalog";
+import type {
+  CreditRule,
+  PayMode,
+  ProductionRole,
+  ProductionStatus
+} from "@/contracts/production-catalog";
 import type {
   JobSummary,
   ProductionTask,
@@ -26,7 +31,14 @@ const partsIn = (date: Date, timeZone: string) => {
     hourCycle: "h23"
   }).formatToParts(date);
   const get = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute"), second: get("second") };
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: get("hour"),
+    minute: get("minute"),
+    second: get("second")
+  };
 };
 
 /** Offset (minutes east of UTC) of `timeZone` at `date`. */
@@ -44,7 +56,13 @@ export const zonedToIso = (day: string, time: string, timeZone: string) => {
   const hour = Number(timeMatch[1]);
   const minute = Number(timeMatch[2]);
   if (hour > 23 || minute > 59) return null;
-  const guess = Date.UTC(Number(dayMatch[1]), Number(dayMatch[2]) - 1, Number(dayMatch[3]), hour, minute);
+  const guess = Date.UTC(
+    Number(dayMatch[1]),
+    Number(dayMatch[2]) - 1,
+    Number(dayMatch[3]),
+    hour,
+    minute
+  );
   // Two passes settle DST transitions in zones that have them.
   let instant = guess - offsetMinutes(new Date(guess), timeZone) * 60_000;
   instant = guess - offsetMinutes(new Date(instant), timeZone) * 60_000;
@@ -55,7 +73,10 @@ export const zonedToIso = (day: string, time: string, timeZone: string) => {
 export const isoToZoned = (iso: string, timeZone: string) => {
   const p = partsIn(new Date(iso), timeZone);
   const pad = (value: number) => String(value).padStart(2, "0");
-  return { day: `${p.year}-${pad(p.month)}-${pad(p.day)}`, time: `${pad(p.hour)}:${pad(p.minute)}` };
+  return {
+    day: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+    time: `${pad(p.hour)}:${pad(p.minute)}`
+  };
 };
 
 /** "17:30 · 09/10" (short) or "17:30, 09/10/2026" (long) in the organization timezone. */
@@ -64,7 +85,9 @@ export const formatDateTime = (iso: string | null | undefined, timeZone: string,
   const p = partsIn(new Date(iso), timeZone);
   const pad = (value: number) => String(value).padStart(2, "0");
   const time = `${pad(p.hour)}:${pad(p.minute)}`;
-  return long ? `${time}, ${pad(p.day)}/${pad(p.month)}/${p.year}` : `${time} · ${pad(p.day)}/${pad(p.month)}`;
+  return long
+    ? `${time}, ${pad(p.day)}/${pad(p.month)}/${p.year}`
+    : `${time} · ${pad(p.day)}/${pad(p.month)}`;
 };
 
 /** Relative wording for deadlines: "còn 3 giờ", "trễ 2 ngày". */
@@ -91,7 +114,9 @@ const percent = (value: number, total: number) =>
   total <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((value / total) * 100)));
 
 /** Progress of a job against its total images (assigned may exceed 100% when over-allocated). */
-export const jobProgress = (job: Pick<JobSummary, "totalImages" | "qtyAssigned" | "qtyDone" | "qtyChecked">) => ({
+export const jobProgress = (
+  job: Pick<JobSummary, "totalImages" | "qtyAssigned" | "qtyDone" | "qtyChecked">
+) => ({
   assigned: percent(job.qtyAssigned, job.totalImages),
   done: percent(job.qtyDone, job.totalImages),
   checked: percent(job.qtyChecked, job.totalImages),
@@ -99,8 +124,15 @@ export const jobProgress = (job: Pick<JobSummary, "totalImages" | "qtyAssigned" 
 });
 
 /** Live totals of the "Chia task" form: what is already assigned plus the new lines. */
-export const allocation = (totalImages: number, alreadyAssigned: number, quantities: readonly number[]) => {
-  const adding = quantities.reduce((sum, qty) => sum + (Number.isFinite(qty) && qty > 0 ? qty : 0), 0);
+export const allocation = (
+  totalImages: number,
+  alreadyAssigned: number,
+  quantities: readonly number[]
+) => {
+  const adding = quantities.reduce(
+    (sum, qty) => sum + (Number.isFinite(qty) && qty > 0 ? qty : 0),
+    0
+  );
   const total = alreadyAssigned + adding;
   return { adding, total, remaining: totalImages - total, over: total > totalImages };
 };
@@ -114,10 +146,15 @@ export const assignedNormalQty = (tasks: readonly Pick<ProductionTask, "kind" | 
  * "Khoán" shifts and only when the process has a price; the matrix hides money from people who may
  * not see it).
  */
-export const expectedEarnings = (rule: Pick<CreditRule, "creditPerImage" | "moneyPerImage"> | null, qty: number, payMode: PayMode | null) => {
+export const expectedEarnings = (
+  rule: Pick<CreditRule, "creditPerImage" | "moneyPerImage"> | null,
+  qty: number,
+  payMode: PayMode | null
+) => {
   if (!rule || !Number.isFinite(qty) || qty <= 0) return { credit: null, money: null };
   const credit = Math.round(rule.creditPerImage * qty * 100) / 100;
-  const money = payMode === "MONEY_IF_KPI" && rule.moneyPerImage !== null ? rule.moneyPerImage * qty : null;
+  const money =
+    payMode === "MONEY_IF_KPI" && rule.moneyPerImage !== null ? rule.moneyPerImage * qty : null;
   return { credit, money };
 };
 
@@ -144,19 +181,23 @@ export const taskLineProblems = (line: TaskLineDraft, context: LineContext) => {
     problems.assignee = "Chọn người làm.";
   } else {
     const roles = context.roles.get(line.assigneeId) ?? [];
-    if (!roles.includes("STAFF") && !roles.includes("LEADER")) problems.assignee = "Cần vai trò Nhân viên hoặc Leader.";
+    if (!roles.includes("STAFF") && !roles.includes("LEADER"))
+      problems.assignee = "Cần vai trò Nhân viên hoặc Leader.";
   }
   if (line.qcId) {
-    if (!(context.roles.get(line.qcId) ?? []).includes("QC")) problems.qc = "Người QC cần vai trò QC.";
+    if (!(context.roles.get(line.qcId) ?? []).includes("QC"))
+      problems.qc = "Người QC cần vai trò QC.";
     else if (line.qcId === line.assigneeId) problems.qc = "QC phải khác người làm.";
   } else if (line.assigneeId && line.assigneeId === context.callerId) {
     problems.qc = "Tự giao cho mình thì cần QC là người khác.";
   }
   if (!line.processId) problems.process = "Chọn quy trình.";
-  else if (context.qcProcessIds.has(line.processId)) problems.process = "Quy trình QC không giao như task.";
+  else if (context.qcProcessIds.has(line.processId))
+    problems.process = "Quy trình QC không giao như task.";
   if (!line.shiftId) problems.shift = "Chọn ca.";
   const qty = Number(line.qty);
-  if (!/^\d+$/.test(line.qty.trim()) || qty < 1 || qty > 1_000_000) problems.qty = "Số tấm nguyên ≥ 1.";
+  if (!/^\d+$/.test(line.qty.trim()) || qty < 1 || qty > 1_000_000)
+    problems.qty = "Số tấm nguyên ≥ 1.";
   return problems;
 };
 
@@ -169,8 +210,27 @@ export const splitTransitions = (options: readonly TaskTransitionOption[]) => ({
 });
 
 /** True when a move needs the transition dialog (note, Done quantity, OT hours or override reason). */
-export const needsInput = (option: TaskTransitionOption) =>
-  option.requiresNote || option.asksQty || option.asksOtHours || option.override;
+/**
+ * What a move must ask for. The API flags every move into a done status with asksQty/asksOtHours,
+ * but both lock at the first Done (a re-Done after QC fail sending another qty answers QTY_LOCKED;
+ * the Leader corrects it instead), so they are only asked while the task has never been done.
+ */
+export const transitionAsks = (
+  task: Pick<ProductionTask, "doneAt">,
+  option: TaskTransitionOption
+) => {
+  const firstDone = task.doneAt === null;
+  return {
+    qty: option.asksQty && firstDone,
+    otHours: option.asksOtHours && firstDone,
+    note: option.requiresNote || option.override
+  };
+};
+
+export const needsInput = (task: Pick<ProductionTask, "doneAt">, option: TaskTransitionOption) => {
+  const asks = transitionAsks(task, option);
+  return asks.qty || asks.otHours || asks.note;
+};
 
 type StatusMeta = Pick<ProductionStatus, "id" | "sortOrder" | "countsChecked">;
 
@@ -178,7 +238,10 @@ type StatusMeta = Pick<ProductionStatus, "id" | "sortOrder" | "countsChecked">;
  * QC queue buttons: "Pass" is the move into a checked status; "Fail" a backward move that needs a
  * note (PLAN §4). Both come from the task's own capabilities — never invented here.
  */
-export const qcActions = (task: Pick<ProductionTask, "status" | "capabilities">, statuses: readonly StatusMeta[]) => {
+export const qcActions = (
+  task: Pick<ProductionTask, "status" | "capabilities">,
+  statuses: readonly StatusMeta[]
+) => {
   const byId = new Map(statuses.map((status) => [status.id, status]));
   const current = byId.get(task.status.id);
   const normal = task.capabilities.transitions.filter((option) => !option.override);
@@ -186,14 +249,22 @@ export const qcActions = (task: Pick<ProductionTask, "status" | "capabilities">,
   const fail =
     normal.find((option) => {
       const target = byId.get(option.toStatusId);
-      return option.requiresNote && target !== undefined && current !== undefined && target.sortOrder < current.sortOrder;
+      return (
+        option.requiresNote &&
+        target !== undefined &&
+        current !== undefined &&
+        target.sortOrder < current.sortOrder
+      );
     }) ?? null;
   return { pass, fail };
 };
 
 // Kanban --------------------------------------------------------------------------------------------------
 
-export type BoardColumn<T> = { status: Pick<ProductionStatus, "id" | "name" | "color" | "code">; tasks: T[] };
+export type BoardColumn<T> = {
+  status: Pick<ProductionStatus, "id" | "name" | "color" | "code" | "sortOrder" | "active">;
+  tasks: T[];
+};
 
 /**
  * Columns in workflow order. Columns without tasks are kept for the active flow (so drops have a
@@ -201,7 +272,10 @@ export type BoardColumn<T> = { status: Pick<ProductionStatus, "id" | "name" | "c
  */
 export const boardColumns = <T extends { status: { id: string } }>(
   tasks: readonly T[],
-  statuses: readonly (Pick<ProductionStatus, "id" | "name" | "color" | "code" | "sortOrder" | "active">)[]
+  statuses: readonly Pick<
+    ProductionStatus,
+    "id" | "name" | "color" | "code" | "sortOrder" | "active"
+  >[]
 ): BoardColumn<T>[] => {
   const byStatus = new Map<string, T[]>();
   for (const task of tasks) {
@@ -282,8 +356,16 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
 };
 
 export const activeFilterCount = (filters: JobFilters) =>
-  [filters.projectId, filters.statusId, filters.leaderId, filters.tagId, filters.from, filters.to].filter(Boolean)
-    .length + (filters.late ? 1 : 0) + (filters.archived ? 1 : 0);
+  [
+    filters.projectId,
+    filters.statusId,
+    filters.leaderId,
+    filters.tagId,
+    filters.from,
+    filters.to
+  ].filter(Boolean).length +
+  (filters.late ? 1 : 0) +
+  (filters.archived ? 1 : 0);
 
 const addDay = (day: string) => {
   const [year, month, date] = day.split("-").map(Number) as [number, number, number];
@@ -298,8 +380,12 @@ export const jobQueryFromFilters = (filters: JobFilters, timeZone: string) => ({
   statusId: filters.statusId ?? undefined,
   leaderId: filters.leaderId ?? undefined,
   tagId: filters.tagId ?? undefined,
-  deadlineFrom: filters.from ? (zonedToIso(filters.from, "00:00", timeZone) ?? undefined) : undefined,
-  deadlineTo: filters.to ? (zonedToIso(addDay(filters.to), "00:00", timeZone) ?? undefined) : undefined,
+  deadlineFrom: filters.from
+    ? (zonedToIso(filters.from, "00:00", timeZone) ?? undefined)
+    : undefined,
+  deadlineTo: filters.to
+    ? (zonedToIso(addDay(filters.to), "00:00", timeZone) ?? undefined)
+    : undefined,
   late: filters.late ? "true" : undefined,
   includeArchived: filters.archived ? "true" : undefined
 });
@@ -316,7 +402,8 @@ type Names = {
 };
 
 const str = (value: unknown) => (typeof value === "string" && value ? value : null);
-const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+const num = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
 
 const person = (id: unknown, names: Names, fallback = "người khác"): Segment => {
   const value = str(id);
@@ -332,9 +419,11 @@ const fieldLabels: Record<string, string> = {
 };
 
 const fieldValue = (key: string, value: unknown, names: Names) => {
-  if (key === "processId") return str(value) ? (names.process(str(value)!) ?? "quy trình khác") : "—";
+  if (key === "processId")
+    return str(value) ? (names.process(str(value)!) ?? "quy trình khác") : "—";
   if (key === "shiftId") return str(value) ? (names.shift(str(value)!) ?? "ca khác") : "—";
-  if (key === "deadline") return str(value) ? formatDateTime(str(value), names.timeZone, true) : "—";
+  if (key === "deadline")
+    return str(value) ? formatDateTime(str(value), names.timeZone, true) : "—";
   if (key === "qtyAssigned") return num(value) !== null ? `${num(value)} tấm` : "—";
   return null;
 };
@@ -344,7 +433,10 @@ const fieldValue = (key: string, value: unknown, names: Names) => {
  * the Done quantity / OT hours / QC fail / override, quantity corrections, (re)assignment, field
  * edits and creation (with the over-allocation warning stored in the log).
  */
-export const describeTaskLog = (log: Pick<TaskLog, "action" | "fromValue" | "toValue" | "taskNumber">, names: Names): Segment[] => {
+export const describeTaskLog = (
+  log: Pick<TaskLog, "action" | "fromValue" | "toValue" | "taskNumber">,
+  names: Names
+): Segment[] => {
   const from = log.fromValue ?? {};
   const to = log.toValue ?? {};
   const task: Segment = { text: `#${log.taskNumber}`, strong: true };
@@ -352,7 +444,14 @@ export const describeTaskLog = (log: Pick<TaskLog, "action" | "fromValue" | "toV
     case "CREATE": {
       const kind = str(to.kind);
       const segments: Segment[] = [
-        { text: kind === "FB_WRONG" ? "giao lại (feedback sai) task " : kind === "FB_EXTRA" ? "giao thêm (feedback) task " : "đã tạo task " },
+        {
+          text:
+            kind === "FB_WRONG"
+              ? "giao lại (feedback sai) task "
+              : kind === "FB_EXTRA"
+                ? "giao thêm (feedback) task "
+                : "đã tạo task "
+        },
         task,
         { text: " cho " },
         person(to.assigneeId, names)
@@ -387,15 +486,27 @@ export const describeTaskLog = (log: Pick<TaskLog, "action" | "fromValue" | "toV
     case "ASSIGN": {
       const segments: Segment[] = [{ text: "giao lại " }, task];
       if (str(from.assigneeId) !== str(to.assigneeId)) {
-        segments.push({ text: ": người làm " }, person(from.assigneeId, names), { text: " → " }, person(to.assigneeId, names));
+        segments.push(
+          { text: ": người làm " },
+          person(from.assigneeId, names),
+          { text: " → " },
+          person(to.assigneeId, names)
+        );
       }
       if (str(from.qcId) !== str(to.qcId)) {
-        segments.push({ text: segments.length > 2 ? "; QC " : ": QC " }, person(from.qcId, names), { text: " → " }, person(to.qcId, names));
+        segments.push(
+          { text: segments.length > 2 ? "; QC " : ": QC " },
+          person(from.qcId, names),
+          { text: " → " },
+          person(to.qcId, names)
+        );
       }
       return segments;
     }
     case "NOTE":
-      return str(to.note) ? [{ text: "cập nhật ghi chú của " }, task] : [{ text: "xóa ghi chú của " }, task];
+      return str(to.note)
+        ? [{ text: "cập nhật ghi chú của " }, task]
+        : [{ text: "xóa ghi chú của " }, task];
     case "FIELD": {
       const keys = Object.keys(to);
       const parts = keys.map((key) => {
@@ -424,7 +535,10 @@ export const mentionAt = (text: string, caret: number) => {
 /** Replaces the "@query" at `start` with "@Name " and returns the new text and caret. */
 export const insertMention = (text: string, start: number, caret: number, name: string) => {
   const inserted = `@${name} `;
-  return { text: text.slice(0, start) + inserted + text.slice(caret), caret: start + inserted.length };
+  return {
+    text: text.slice(0, start) + inserted + text.slice(caret),
+    caret: start + inserted.length
+  };
 };
 
 /** Ids of the people still mentioned in the final text (a mention removed by editing is dropped). */

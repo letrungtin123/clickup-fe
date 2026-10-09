@@ -68,6 +68,13 @@ export const useProductionTask = (taskId: string | null | undefined) =>
     enabled: Boolean(taskId)
   });
 
+export const useTaskScores = (taskId: string | null | undefined, enabled = true) =>
+  useQuery({
+    queryKey: productionKeys.taskScores(taskId ?? ""),
+    queryFn: ({ signal }) => jobsApi.taskScores(taskId ?? "", signal),
+    enabled: Boolean(taskId) && enabled
+  });
+
 export const useMyTasks = (role: MyTasksRole, includeFinished: boolean) =>
   useInfiniteQuery({
     queryKey: productionKeys.myTasks(role, includeFinished),
@@ -95,17 +102,26 @@ export const useProductionTimeline = (entity: TimelineEntity, id: string) =>
 // --- Cache helpers ---------------------------------------------------------------------------------------
 
 /** Derived views that may change after any task or job write. */
-export const invalidateProductionViews = (client: QueryClient, jobId?: string | null, taskIds: readonly string[] = []) =>
+export const invalidateProductionViews = (
+  client: QueryClient,
+  jobId?: string | null,
+  taskIds: readonly string[] = []
+) =>
   Promise.all([
     client.invalidateQueries({ queryKey: productionKeys.jobs() }),
-    client.invalidateQueries({ queryKey: jobId ? productionKeys.job(jobId) : productionKeys.jobAll() }),
+    client.invalidateQueries({
+      queryKey: jobId ? productionKeys.job(jobId) : productionKeys.jobAll()
+    }),
     client.invalidateQueries({ queryKey: productionKeys.myTasks() }),
     client.invalidateQueries({ queryKey: productionKeys.qcQueue() }),
     client.invalidateQueries({ queryKey: productionKeys.timeline() }),
     ...taskIds.map((taskId) => client.invalidateQueries({ queryKey: productionKeys.task(taskId) }))
   ]);
 
-const replaceInPages = (data: InfiniteData<ProductionTaskPage> | undefined, task: ProductionTask) =>
+const replaceInPages = (
+  data: InfiniteData<ProductionTaskPage> | undefined,
+  task: ProductionTask
+) =>
   data
     ? {
         ...data,
@@ -119,11 +135,13 @@ const replaceInPages = (data: InfiniteData<ProductionTaskPage> | undefined, task
 /** Stores a task the API returned everywhere it is cached, then refreshes derived views. */
 export const applyTask = (client: QueryClient, task: ProductionTask) => {
   client.setQueryData(productionKeys.task(task.id), task);
+  void client.invalidateQueries({ queryKey: productionKeys.taskScores(task.id) });
   client.setQueryData<JobDetail>(productionKeys.job(task.jobId), (job) =>
     job ? { ...job, tasks: job.tasks.map((item) => (item.id === task.id ? task : item)) } : job
   );
-  client.setQueriesData<InfiniteData<ProductionTaskPage>>({ queryKey: productionKeys.myTasks() }, (data) =>
-    replaceInPages(data, task)
+  client.setQueriesData<InfiniteData<ProductionTaskPage>>(
+    { queryKey: productionKeys.myTasks() },
+    (data) => replaceInPages(data, task)
   );
   void invalidateProductionViews(client, task.jobId);
 };
@@ -167,7 +185,8 @@ export const useCreateTasks = (jobId: string) => {
 export const useReassignFeedback = (jobId: string) => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ feedbackId, input }: { feedbackId: string; input: ReassignInput }) => jobsApi.reassign(feedbackId, input),
+    mutationFn: ({ feedbackId, input }: { feedbackId: string; input: ReassignInput }) =>
+      jobsApi.reassign(feedbackId, input),
     meta: { errorMessage: false },
     onSuccess: () => void invalidateProductionViews(client, jobId)
   });
@@ -180,7 +199,11 @@ export const useJobTransition = (jobId: string) => {
     meta: { errorMessage: false },
     onSuccess: (result) => {
       client.setQueryData(productionKeys.job(jobId), result.job);
-      void invalidateProductionViews(client, jobId, result.job.tasks.map((task) => task.id));
+      void invalidateProductionViews(
+        client,
+        jobId,
+        result.job.tasks.map((task) => task.id)
+      );
     }
   });
 };
@@ -192,13 +215,20 @@ export const useCreateFeedback = (jobId: string) => {
     meta: { errorMessage: false },
     onSuccess: (job) => {
       client.setQueryData(productionKeys.job(jobId), job);
-      void invalidateProductionViews(client, jobId, job.tasks.map((task) => task.id));
+      void invalidateProductionViews(
+        client,
+        jobId,
+        job.tasks.map((task) => task.id)
+      );
     }
   });
 };
 
 export const useOpenJobChat = () =>
-  useMutation({ mutationFn: (jobId: string) => jobsApi.chat(jobId), meta: { errorMessage: false } });
+  useMutation({
+    mutationFn: (jobId: string) => jobsApi.chat(jobId),
+    meta: { errorMessage: false }
+  });
 
 // --- Task writes ------------------------------------------------------------------------------------------
 
@@ -217,9 +247,17 @@ export const useTransitionTask = () => {
     onMutate: async ({ task, optimisticStatus }) => {
       if (!optimisticStatus) return { snapshot: [] as [readonly unknown[], unknown][] };
       await client.cancelQueries({ queryKey: productionKeys.myTasks() });
-      const snapshot = client.getQueriesData<InfiniteData<ProductionTaskPage>>({ queryKey: productionKeys.myTasks() });
-      client.setQueriesData<InfiniteData<ProductionTaskPage>>({ queryKey: productionKeys.myTasks() }, (data) =>
-        replaceInPages(data, { ...task, status: optimisticStatus, capabilities: { ...task.capabilities, transitions: [] } })
+      const snapshot = client.getQueriesData<InfiniteData<ProductionTaskPage>>({
+        queryKey: productionKeys.myTasks()
+      });
+      client.setQueriesData<InfiniteData<ProductionTaskPage>>(
+        { queryKey: productionKeys.myTasks() },
+        (data) =>
+          replaceInPages(data, {
+            ...task,
+            status: optimisticStatus,
+            capabilities: { ...task.capabilities, transitions: [] }
+          })
       );
       return { snapshot };
     },
@@ -235,17 +273,20 @@ export const useTaskMutations = () => {
   const onSuccess = (task: ProductionTask) => applyTask(client, task);
   return {
     update: useMutation({
-      mutationFn: ({ taskId, input }: { taskId: string; input: UpdateTaskInput }) => jobsApi.updateTask(taskId, input),
+      mutationFn: ({ taskId, input }: { taskId: string; input: UpdateTaskInput }) =>
+        jobsApi.updateTask(taskId, input),
       meta: { errorMessage: false },
       onSuccess
     }),
     setQty: useMutation({
-      mutationFn: ({ taskId, input }: { taskId: string; input: QtyInput }) => jobsApi.setQty(taskId, input),
+      mutationFn: ({ taskId, input }: { taskId: string; input: QtyInput }) =>
+        jobsApi.setQty(taskId, input),
       meta: { errorMessage: false },
       onSuccess
     }),
     assign: useMutation({
-      mutationFn: ({ taskId, input }: { taskId: string; input: AssignInput }) => jobsApi.assign(taskId, input),
+      mutationFn: ({ taskId, input }: { taskId: string; input: AssignInput }) =>
+        jobsApi.assign(taskId, input),
       meta: { errorMessage: false },
       onSuccess
     })
@@ -259,13 +300,23 @@ export const useCommentMutations = () => {
   const refresh = () => void client.invalidateQueries({ queryKey: productionKeys.timeline() });
   return {
     add: useMutation({
-      mutationFn: ({ entity, id, body, mentionedUserIds }: { entity: TimelineEntity; id: string; body: string; mentionedUserIds: string[] }) =>
-        jobsApi.comment(entity, id, body, mentionedUserIds),
+      mutationFn: ({
+        entity,
+        id,
+        body,
+        mentionedUserIds
+      }: {
+        entity: TimelineEntity;
+        id: string;
+        body: string;
+        mentionedUserIds: string[];
+      }) => jobsApi.comment(entity, id, body, mentionedUserIds),
       meta: { errorMessage: false },
       onSuccess: refresh
     }),
     edit: useMutation({
-      mutationFn: ({ commentId, body }: { commentId: string; body: string }) => jobsApi.editComment(commentId, body),
+      mutationFn: ({ commentId, body }: { commentId: string; body: string }) =>
+        jobsApi.editComment(commentId, body),
       meta: { errorMessage: false },
       onSuccess: refresh
     }),
