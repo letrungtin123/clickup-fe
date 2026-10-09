@@ -23,8 +23,11 @@ import { P } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
 import {
   ChannelsSection,
-  DirectMessagesSection
+  ChannelsSectionAction,
+  DirectMessagesSection,
+  DirectMessagesSectionAction
 } from "@/features/chat/components/sidebar-sections";
+import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
 import { ProjectTree } from "@/features/projects/components/project-tree";
 import { useProjects } from "@/features/projects/hooks";
 import { useRealtimeStatus } from "@/lib/realtime/hooks";
@@ -108,6 +111,7 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
               >
                 <entry.icon aria-hidden="true" />
                 {entry.label}
+                {entry.to === "/inbox" ? <InboxNavBadge /> : null}
               </NavLink>
             </li>
           ))}
@@ -124,17 +128,11 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
           <ProjectTree onNavigate={onNavigate} />
         </SidebarSection>
 
-        <SidebarSection
-          title="Kênh"
-          action={<SectionActionButton label="Tạo kênh (sắp ra mắt)" disabled />}
-        >
+        <SidebarSection title="Kênh" action={<ChannelsSectionAction />}>
           <ChannelsSection />
         </SidebarSection>
 
-        <SidebarSection
-          title="Tin nhắn trực tiếp"
-          action={<SectionActionButton label="Tin nhắn mới (sắp ra mắt)" disabled />}
-        >
+        <SidebarSection title="Tin nhắn trực tiếp" action={<DirectMessagesSectionAction />}>
           <DirectMessagesSection />
         </SidebarSection>
       </nav>
@@ -276,11 +274,12 @@ const RailLink = ({ entry }: { entry: NavEntry }) => (
           to={entry.to}
           end={entry.end ?? false}
           aria-label={entry.label}
-          className={({ isActive }) => railItemClass(isActive)}
+          className={({ isActive }) => cn(railItemClass(isActive), "relative")}
         />
       }
     >
       <entry.icon aria-hidden="true" />
+      {entry.to === "/inbox" ? <InboxNavBadge variant="dot" /> : null}
     </TooltipTrigger>
     <TooltipContent side="right">{entry.label}</TooltipContent>
   </Tooltip>

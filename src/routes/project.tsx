@@ -1,7 +1,17 @@
 import { cn } from "cn";
-import { ChevronRight, ListPlus, Lock, Plus, Settings2, Users } from "lucide-react";
-import { Suspense } from "react";
-import { Link, Navigate, Outlet, useParams, useSearchParams } from "react-router";
+import {
+  ChevronRight,
+  ListPlus,
+  Lock,
+  MoreHorizontal,
+  Plus,
+  Settings2,
+  Trash2,
+  Users,
+  Workflow
+} from "lucide-react";
+import { lazy, Suspense, useState } from "react";
+import { Link, Navigate, Outlet, useNavigate, useParams, useSearchParams } from "react-router";
 
 import { ColorDot } from "@/components/shared/color-dot";
 import { PageHeader } from "@/components/shared/page-header";
@@ -9,10 +19,18 @@ import { ProjectIcon } from "@/components/shared/project-icon";
 import { SegmentedControl } from "@/components/shared/radio-controls";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { List, Project } from "@/contracts/work";
 import { useProject, useProjectAbilities } from "@/features/projects/hooks";
+import { CreateTaskDialog } from "@/features/tasks/components/create-task-dialog";
+import { TaskFilterBar } from "@/features/tasks/components/filter-bar";
 import { useTaskPanel } from "@/features/tasks/use-task-panel";
 import {
   parseTaskView,
@@ -28,6 +46,12 @@ import { NotFoundRoute } from "./errors";
 import { useProjectOutlet, type ProjectOutletContext } from "./project-context";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const WorkflowEditorDialog = lazy(() =>
+  import("@/features/tasks/components/workflow-editor").then((module) => ({
+    default: module.WorkflowEditorDialog
+  }))
+);
 
 /**
  * /p/:projectId — resolves the project (seeded from the sidebar cache), joins its realtime room for
@@ -180,6 +204,8 @@ export const ListRoute = () => {
   const breakpoint = useBreakpoint();
   const view = parseTaskView(params.get("view"));
   const list = project.lists.find((item) => item.id === listId);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
 
   if (!list) {
     return <NotFoundRoute />;
@@ -216,22 +242,91 @@ export const ListRoute = () => {
             iconOnly={breakpoint === "mobile"}
             className={cn(breakpoint === "mobile" && "[&_button]:px-2.5")}
           />
-          <Tooltip>
-            <TooltipTrigger render={<span className="ml-auto" />}>
-              <Button size="sm" disabled>
+          <div className="ml-auto flex items-center gap-1.5">
+            <ListMenu project={project} list={list} onEditWorkflow={() => setWorkflowOpen(true)} />
+            {project.capabilities.canCreateTask ? (
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus />
                 Công việc
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>Sắp có</TooltipContent>
-          </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger render={<span />}>
+                  <Button size="sm" disabled>
+                    <Plus />
+                    Công việc
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Bạn chỉ có quyền xem dự án này</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
+        <TaskFilterBar projectId={project.id} listId={list.id} view={view} />
       </ProjectHeader>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<ViewSkeleton view={view} />}>
           <View key={`${list.id}:${view}`} project={project} list={list} openTask={openTask} />
         </Suspense>
       </div>
+      <CreateTaskDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        project={project}
+        list={list}
+        openTask={openTask}
+      />
+      {workflowOpen ? (
+        <Suspense fallback={null}>
+          <WorkflowEditorDialog
+            open={workflowOpen}
+            onOpenChange={setWorkflowOpen}
+            project={project}
+            list={list}
+          />
+        </Suspense>
+      ) : null}
     </div>
+  );
+};
+
+/** List header "…" menu: workflow (statuses) and trash. */
+const ListMenu = ({
+  project,
+  list,
+  onEditWorkflow
+}: {
+  project: Project;
+  list: List;
+  onEditWorkflow: () => void;
+}) => {
+  const navigate = useNavigate();
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label={`Tùy chọn danh sách ${list.name}`} />}
+            />
+          }
+        >
+          <MoreHorizontal />
+        </TooltipTrigger>
+        <TooltipContent>Tùy chọn danh sách</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-60">
+        {project.capabilities.canManageStatuses ? (
+          <DropdownMenuItem onClick={onEditWorkflow}>
+            <Workflow />
+            Quy trình trạng thái…
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem onClick={() => void navigate(`/trash?project=${project.id}`)}>
+          <Trash2 />
+          Thùng rác của dự án
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };

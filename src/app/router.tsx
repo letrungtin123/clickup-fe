@@ -9,11 +9,15 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *
  *   /login                         sign in
  *   /                              home
- *   /my-tasks, /inbox              placeholders (tasks / notifications UI)
+ *   /my-tasks                      my tasks
+ *   /trash?project=                deleted tasks (restore / purge)
+ *   /inbox?tab=all|unread|mentions notifications
+ *   /search?q=&tab=                global search results
  *   /p/:projectId                  → first list
  *   /p/:projectId/l/:listId        list with ?view=list|board|table and ?task=<id> detail panel
  *   /p/:projectId/settings         project settings + members
- *   /c/:channelId                  channel / DM placeholder (chat UI)
+ *   /c                             all conversations (mobile chat entry)
+ *   /c/:channelId                  channel / DM with ?thread=<rootId> and ?message=<id>
  *   /settings/{profile,members,roles}
  */
 export const routes: RouteObject[] = [
@@ -38,11 +42,19 @@ export const routes: RouteObject[] = [
           },
           {
             path: "my-tasks",
-            lazy: async () => ({ Component: (await import("@/routes/placeholders")).MyTasksRoute })
+            lazy: async () => ({ Component: (await import("@/routes/my-tasks")).MyTasksRoute })
+          },
+          {
+            path: "trash",
+            lazy: async () => ({ Component: (await import("@/routes/trash")).TrashRoute })
           },
           {
             path: "inbox",
-            lazy: async () => ({ Component: (await import("@/routes/placeholders")).InboxRoute })
+            lazy: async () => ({ Component: (await import("@/routes/inbox")).InboxRoute })
+          },
+          {
+            path: "search",
+            lazy: async () => ({ Component: (await import("@/routes/search")).SearchRoute })
           },
           {
             path: "p/:projectId",
@@ -69,8 +81,12 @@ export const routes: RouteObject[] = [
             ]
           },
           {
+            path: "c",
+            lazy: async () => ({ Component: (await import("@/routes/channel")).ChannelsIndexRoute })
+          },
+          {
             path: "c/:channelId",
-            lazy: async () => ({ Component: (await import("@/routes/placeholders")).ChannelRoute })
+            lazy: async () => ({ Component: (await import("@/routes/channel")).ChannelRoute })
           },
           {
             path: "settings",

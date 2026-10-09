@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { P } from "@/features/auth/permissions";
 import { usePermissions, useSessionContext } from "@/features/auth/hooks";
+import { InboxWidgetContent } from "@/features/notifications/components/inbox-widget";
 import { useProjects } from "@/features/projects/hooks";
+import { MyTasksWidget } from "@/features/tasks/components/my-tasks-list";
 import { useUiStore } from "@/stores/ui-store";
 
 const greetingFor = (date: Date) => {
@@ -57,20 +59,10 @@ export const HomeRoute = () => {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Widget title="Việc của tôi" icon={ListTodo} href="/my-tasks">
-            <EmptyState
-              size="sm"
-              icon={ListTodo}
-              title="Chưa có việc cần làm hôm nay"
-              description="Công việc được giao cho bạn, sắp đến hạn hoặc quá hạn sẽ hiện ở đây."
-            />
+            <MyTasksWidget />
           </Widget>
           <Widget title="Hộp thư" icon={Bell} href="/inbox">
-            <EmptyState
-              size="sm"
-              icon={Bell}
-              title="Bạn đã xem hết thông báo"
-              description="Nhắc tên, giao việc và bình luận mới sẽ được gom tại Hộp thư."
-            />
+            <InboxWidgetContent />
           </Widget>
         </div>
 

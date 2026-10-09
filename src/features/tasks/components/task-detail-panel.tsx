@@ -1,141 +1,208 @@
-import { ArrowLeft, Link2, X } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft, ChevronRight, Hash, Link2, MoreHorizontal, Trash2, X } from "lucide-react";
+import { lazy, Suspense } from "react";
+import { Link } from "react-router";
 
 import { ColorDot } from "@/components/shared/color-dot";
 import { ErrorState } from "@/components/shared/states";
-import { PriorityFlag, StatusPill } from "@/components/shared/task-meta";
-import { AvatarGroup } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useRealtimeRoom } from "@/lib/realtime/hooks";
+import type { TaskDetail } from "@/contracts/work";
+import { useRealtimeEvent, useRealtimeRoom } from "@/lib/realtime/hooks";
+import { scheduleInvalidate } from "@/lib/realtime/socket";
+import { qk } from "@/lib/query-keys";
 
-import { useTask } from "../hooks";
+import { useDeleteTask, useTask } from "../hooks";
+import { copyText, taskUrl } from "../use-task-abilities";
+import { TASK_PANEL_PARAM, useTaskPanel } from "../use-task-panel";
 
 export type DetailPanelMode = "docked" | "overlay" | "fullscreen";
 
 type TaskDetailPanelProps = { taskId: string; mode: DetailPanelMode; onClose: () => void };
 
+const TaskDetailBody = lazy(() => import("./detail/task-detail-body"));
+
 /**
- * Task detail content for the right-hand panel. Foundation version: header + skeleton body.
- * The task-detail work replaces the body (description editor, subtasks, attachments, timeline) and
- * keeps this component's name/props — the panel container (components/layout/detail-panel.tsx) owns
- * placement, motion, focus and Escape handling.
+ * Task detail content for the right-hand panel (the container in components/layout/detail-panel.tsx
+ * owns placement, motion, focus and Escape). The header is light; the body (editor, timeline,
+ * uploads) is code-split so the app shell stays small.
  */
 export const TaskDetailPanel = ({ taskId, mode, onClose }: TaskDetailPanelProps) => {
   const task = useTask(taskId);
   useRealtimeRoom({ type: "task", id: taskId });
-
-  const copyLink = () => {
-    void navigator.clipboard
-      ?.writeText(window.location.href)
-      .then(() => toast.success("Đã sao chép liên kết công việc"))
-      .catch(() => toast.error("Không sao chép được liên kết"));
-  };
+  // The task room also reports field changes (task:timeline accompanies every change), which keeps
+  // the panel fresh even when its project room is not joined (e.g. opened from My tasks).
+  useRealtimeEvent("task:timeline", (event) => {
+    if (event.taskId === taskId) scheduleInvalidate(qk.task(taskId), true);
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        {mode === "fullscreen" ? (
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Quay lại">
-            <ArrowLeft />
-          </Button>
-        ) : null}
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-foreground-muted">
-          {task.data ? (
-            <>
-              <ColorDot color={task.data.project.color} />
-              <span className="truncate">{task.data.project.name}</span>
-              <span aria-hidden="true">/</span>
-              <span className="truncate">{task.data.list.name}</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono">{task.data.key}</span>
-            </>
-          ) : (
-            <Skeleton className="h-3 w-40" />
-          )}
-        </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={copyLink}
-                aria-label="Sao chép liên kết"
-              />
-            }
-          >
-            <Link2 />
-          </TooltipTrigger>
-          <TooltipContent>Sao chép liên kết</TooltipContent>
-        </Tooltip>
-        {mode === "fullscreen" ? null : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onClose}
-                  aria-label="Đóng chi tiết"
-                />
-              }
-            >
-              <X />
-            </TooltipTrigger>
-            <TooltipContent>
-              Đóng <span className="opacity-70">Esc</span>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <PanelHeader task={task.data} mode={mode} onClose={onClose} />
+      <div className="relative min-h-0 flex-1">
         {task.isError ? (
-          <ErrorState
-            error={task.error}
-            onRetry={() => void task.refetch()}
-            retrying={task.isFetching}
-          />
-        ) : (
-          <div className="flex flex-col gap-6 px-5 py-5">
-            {task.data ? (
-              <div className="flex flex-col gap-3">
-                <h2
-                  id="task-detail-title"
-                  className="text-lg leading-snug font-semibold tracking-[-0.01em]"
-                >
-                  {task.data.title}
-                </h2>
-                <div className="flex flex-wrap items-center gap-3">
-                  <StatusPill status={task.data.status} />
-                  <PriorityFlag priority={task.data.priority} showLabel />
-                  {task.data.assignees.length > 0 ? (
-                    <AvatarGroup users={task.data.assignees} max={4} />
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-6 w-4/5" />
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-6 w-24 rounded-full" />
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="size-6 rounded-full" />
-                </div>
-              </div>
-            )}
-            <DetailBodySkeleton />
+          <div className="h-full overflow-y-auto">
+            <ErrorState error={task.error} onRetry={() => void task.refetch()} retrying={task.isFetching} />
           </div>
+        ) : task.data ? (
+          <Suspense fallback={<DetailBodySkeleton />}>
+            <TaskDetailBody task={task.data} />
+          </Suspense>
+        ) : (
+          <DetailBodySkeleton />
         )}
       </div>
     </div>
   );
 };
 
+const PanelHeader = ({
+  task,
+  mode,
+  onClose
+}: {
+  task: TaskDetail | undefined;
+  mode: DetailPanelMode;
+  onClose: () => void;
+}) => {
+  const { openTask } = useTaskPanel();
+  const remove = useDeleteTask();
+  const listHref = task ? `/p/${task.project.id}/l/${task.list.id}?${TASK_PANEL_PARAM}=${task.id}` : "#";
+
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-1.5 border-b px-3">
+      {mode === "fullscreen" ? (
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Quay lại">
+          <ArrowLeft />
+        </Button>
+      ) : null}
+      <nav aria-label="Vị trí công việc" className="flex min-w-0 flex-1 items-center gap-1 text-xs text-foreground-muted">
+        {task ? (
+          <>
+            <ColorDot color={task.project.color} />
+            <Link
+              to={listHref}
+              className="max-w-[9rem] truncate rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              title={`${task.project.name} / ${task.list.name}`}
+            >
+              {task.project.name}
+            </Link>
+            <ChevronRight className="size-3 shrink-0 opacity-60" aria-hidden="true" />
+            <Link
+              to={listHref}
+              className="max-w-[8rem] truncate rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {task.list.name}
+            </Link>
+            {task.ancestors.map((ancestor) => (
+              <span key={ancestor.id} className="flex min-w-0 items-center gap-1">
+                <ChevronRight className="size-3 shrink-0 opacity-60" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => openTask(ancestor.id, { replace: true })}
+                  title={`${ancestor.key} ${ancestor.title}`}
+                  className="max-w-[7rem] truncate rounded font-mono outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {ancestor.key}
+                </button>
+              </span>
+            ))}
+            <ChevronRight className="size-3 shrink-0 opacity-60" aria-hidden="true" />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={() => copyText(task.key, `Đã sao chép ${task.key}`)}
+                    className="shrink-0 rounded px-1 font-mono font-medium text-foreground outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                }
+              >
+                {task.key}
+              </TooltipTrigger>
+              <TooltipContent>Sao chép mã</TooltipContent>
+            </Tooltip>
+          </>
+        ) : (
+          <Skeleton className="h-3 w-48" />
+        )}
+      </nav>
+      {task ? (
+        <>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => copyText(taskUrl(task), "Đã sao chép liên kết công việc")}
+                  aria-label="Sao chép liên kết"
+                />
+              }
+            >
+              <Link2 />
+            </TooltipTrigger>
+            <TooltipContent>Sao chép liên kết</TooltipContent>
+          </Tooltip>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Thao tác khác" />}>
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => copyText(task.key, `Đã sao chép ${task.key}`)}>
+                <Hash />
+                Sao chép mã {task.key}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => copyText(taskUrl(task), "Đã sao chép liên kết công việc")}>
+                <Link2 />
+                Sao chép liên kết
+              </DropdownMenuItem>
+              {task.capabilities.canDelete ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => {
+                      remove.mutate(task);
+                      onClose();
+                    }}
+                  >
+                    <Trash2 />
+                    Chuyển vào thùng rác
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      ) : null}
+      {mode === "fullscreen" ? null : (
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Đóng chi tiết" />}>
+            <X />
+          </TooltipTrigger>
+          <TooltipContent>
+            Đóng <span className="opacity-70">Esc</span>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+};
+
 const DetailBodySkeleton = () => (
-  <div className="flex flex-col gap-6" aria-hidden="true">
+  <div className="flex flex-col gap-6 px-5 py-5" aria-hidden="true">
+    <div className="flex flex-col gap-3">
+      <Skeleton className="h-6 w-4/5" />
+      <Skeleton className="h-4 w-1/3" />
+    </div>
     <div className="grid grid-cols-[7rem_1fr] gap-x-4 gap-y-3">
       {[40, 56, 32, 48].map((width, index) => (
         <div key={index} className="contents">
