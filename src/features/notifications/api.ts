@@ -12,7 +12,11 @@ export const notificationsApi = {
     signal?: AbortSignal
   ) =>
     api.get("/notifications", NotificationPageSchema, {
-      query: { filter: params.filter, cursor: params.cursor ?? undefined, limit: params.limit ?? 30 },
+      query: {
+        filter: params.filter,
+        cursor: params.cursor ?? undefined,
+        limit: params.limit ?? 30
+      },
       signal
     }),
   unreadCount: (signal?: AbortSignal) =>

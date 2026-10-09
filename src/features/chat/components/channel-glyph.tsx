@@ -38,7 +38,11 @@ export const ChannelGlyph = ({
       <span
         className={cn(
           "relative inline-flex shrink-0 items-center justify-center rounded-md bg-muted font-semibold text-foreground-muted",
-          size === "lg" ? "size-8 text-xs" : size === "md" ? "size-6 text-[10px]" : "size-5 text-[9px]",
+          size === "lg"
+            ? "size-8 text-xs"
+            : size === "md"
+              ? "size-6 text-[10px]"
+              : "size-5 text-[9px]",
           className
         )}
         aria-hidden="true"
@@ -60,26 +64,3 @@ export const ChannelGlyph = ({
     />
   );
 };
-
-/** Stacked initials for group DMs in headers. */
-export const ParticipantsStack = ({
-  participants,
-  max = 3
-}: {
-  participants: ChatChannel["participants"];
-  max?: number;
-}) => (
-  <span className="flex -space-x-1.5" aria-hidden="true">
-    {participants.slice(0, max).map((user) => (
-      <span key={user.id} className="rounded-full ring-2 ring-background">
-        <UserAvatar user={user} size="xs" />
-      </span>
-    ))}
-    {participants.length > max ? (
-      <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-foreground-muted ring-2 ring-background">
-        +{participants.length - max}
-      </span>
-    ) : null}
-  </span>
-);
-

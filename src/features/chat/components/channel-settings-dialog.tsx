@@ -132,7 +132,9 @@ export const ChannelSettingsDialog = ({
             </TabsTrigger>
             <TabsTrigger value="members" className="flex-none px-2">
               Thành viên
-              <span className="text-xs text-foreground-subtle tabular-nums">{channel.memberCount}</span>
+              <span className="text-xs text-foreground-subtle tabular-nums">
+                {channel.memberCount}
+              </span>
             </TabsTrigger>
             {channel.isMember ? (
               <TabsTrigger value="settings" className="flex-none px-2">
@@ -141,7 +143,11 @@ export const ChannelSettingsDialog = ({
             ) : null}
           </TabsList>
           <TabsContent value="about" className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            {direct ? <DirectAbout channel={channel} onDone={() => onOpenChange(false)} /> : <AboutTab channel={channel} />}
+            {direct ? (
+              <DirectAbout channel={channel} onDone={() => onOpenChange(false)} />
+            ) : (
+              <AboutTab channel={channel} />
+            )}
           </TabsContent>
           <TabsContent value="members" className="flex min-h-0 flex-1 flex-col">
             <MembersTab channel={channel} />
@@ -184,13 +190,16 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
     update.mutate(
       {
         ...(parsed.data !== channel.name ? { name: parsed.data } : {}),
-        ...(description.trim() !== (channel.description ?? "") ? { description: description.trim() || null } : {}),
+        ...(description.trim() !== (channel.description ?? "")
+          ? { description: description.trim() || null }
+          : {}),
         ...(topic.trim() !== (channel.topic ?? "") ? { topic: topic.trim() || null } : {})
       },
       {
         onSuccess: () => toast.success("Đã lưu thông tin kênh"),
         onError: (error) => {
-          if (isApiError(error) && error.code === "CHANNEL_NAME_TAKEN") setNameError(chatErrorMessage(error));
+          if (isApiError(error) && error.code === "CHANNEL_NAME_TAKEN")
+            setNameError(chatErrorMessage(error));
           else toast.error(chatErrorMessage(error));
         }
       }
@@ -202,7 +211,9 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
       { kind },
       {
         onSuccess: () =>
-          toast.success(kind === "private" ? "Kênh đã chuyển sang riêng tư" : "Kênh đã chuyển sang công khai"),
+          toast.success(
+            kind === "private" ? "Kênh đã chuyển sang riêng tư" : "Kênh đã chuyển sang công khai"
+          ),
         onError: (error) => toast.error(chatErrorMessage(error))
       }
     );
@@ -237,7 +248,9 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
           placeholder={editable ? "Mọi người đang trao đổi về điều gì?" : "Chưa đặt chủ đề"}
           onChange={(event) => setTopic(event.target.value)}
         />
-        <FieldDescription className="text-xs">Hiển thị ở đầu kênh cho mọi thành viên.</FieldDescription>
+        <FieldDescription className="text-xs">
+          Hiển thị ở đầu kênh cho mọi thành viên.
+        </FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor={`${ids}-description`}>Mô tả</FieldLabel>
@@ -296,11 +309,16 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
         </div>
       ) : null}
 
-      <AlertDialog open={confirmKind !== null} onOpenChange={(open) => !open && setConfirmKind(null)}>
+      <AlertDialog
+        open={confirmKind !== null}
+        onOpenChange={(open) => !open && setConfirmKind(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmKind === "private" ? "Chuyển kênh sang riêng tư?" : "Chuyển kênh sang công khai?"}
+              {confirmKind === "private"
+                ? "Chuyển kênh sang riêng tư?"
+                : "Chuyển kênh sang công khai?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmKind === "private"
@@ -354,8 +372,8 @@ const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: 
       <div className="flex flex-col gap-2 border-t pt-4">
         <span className="text-sm font-medium">Thêm người vào cuộc trò chuyện</span>
         <p className="text-xs text-foreground-muted">
-          Người tham gia của tin nhắn trực tiếp là cố định. Thêm người sẽ tạo một nhóm trò chuyện mới
-          gồm {channelTitle(channel)} và những người bạn chọn.
+          Người tham gia của tin nhắn trực tiếp là cố định. Thêm người sẽ tạo một nhóm trò chuyện
+          mới gồm {channelTitle(channel)} và những người bạn chọn.
         </p>
         {room > 0 ? (
           <>
@@ -371,7 +389,10 @@ const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: 
                 disabled={adding.length === 0 || openDm.isPending}
                 onClick={() =>
                   openDm.mutate(
-                    [...channel.participants.map((user) => user.id), ...adding.map((user) => user.id)],
+                    [
+                      ...channel.participants.map((user) => user.id),
+                      ...adding.map((user) => user.id)
+                    ],
                     { onSuccess: onDone }
                   )
                 }
@@ -382,7 +403,9 @@ const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: 
             </div>
           </>
         ) : (
-          <p className="text-xs text-foreground-muted">Nhóm đã đạt tối đa {chatLimits.dmOthersMax + 1} người.</p>
+          <p className="text-xs text-foreground-muted">
+            Nhóm đã đạt tối đa {chatLimits.dmOthersMax + 1} người.
+          </p>
         )}
       </div>
     </div>
@@ -397,7 +420,11 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
   const session = useSessionContext();
   const [q, setQ] = useState("");
   const debounced = useDebouncedValue(q.trim(), 200);
-  const members = useChannelMembers(channel.id, debounced, channel.capabilities.canRead || channel.isMember);
+  const members = useChannelMembers(
+    channel.id,
+    debounced,
+    channel.capabilities.canRead || channel.isMember
+  );
   const mutations = useMemberMutations(channel.id);
   const [adding, setAdding] = useState(false);
   const [toAdd, setToAdd] = useState<UserRef[]>([]);
@@ -405,7 +432,10 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
   const [toRemove, setToRemove] = useState<ChatChannelMember | null>(null);
   const direct = isDirectKind(channel.kind);
   const canManage = channel.capabilities.canManageMembers && !direct && !channel.archivedAt;
-  const items = useMemo(() => members.data?.pages.flatMap((page) => page.items) ?? [], [members.data]);
+  const items = useMemo(
+    () => members.data?.pages.flatMap((page) => page.items) ?? [],
+    [members.data]
+  );
   const existing = useMemo(() => new Set(items.map((member) => member.user.id)), [items]);
 
   return (
@@ -425,7 +455,10 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
           />
         </div>
         {canManage ? (
-          <Button variant={adding ? "secondary" : "default"} onClick={() => setAdding((value) => !value)}>
+          <Button
+            variant={adding ? "secondary" : "default"}
+            onClick={() => setAdding((value) => !value)}
+          >
             <UserPlus />
             Thêm
           </Button>
@@ -496,7 +529,11 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
         ) : members.isError ? (
           <ErrorState size="sm" error={members.error} onRetry={() => void members.refetch()} />
         ) : items.length === 0 ? (
-          <EmptyState size="sm" icon={Users} title={debounced ? "Không tìm thấy thành viên" : "Kênh chưa có thành viên"} />
+          <EmptyState
+            size="sm"
+            icon={Users}
+            title={debounced ? "Không tìm thấy thành viên" : "Kênh chưa có thành viên"}
+          />
         ) : (
           <ul className="flex flex-col">
             {items.map((member) => (
@@ -505,7 +542,9 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
                 member={member}
                 isSelf={member.user.id === session.user.id}
                 canManage={canManage}
-                onAccess={(next) => mutations.update.mutate({ userId: member.user.id, access: next })}
+                onAccess={(next) =>
+                  mutations.update.mutate({ userId: member.user.id, access: next })
+                }
                 onRole={(role) => mutations.update.mutate({ userId: member.user.id, role })}
                 onRemove={() => setToRemove(member)}
               />
@@ -631,7 +670,13 @@ const MemberRow = ({
 
 // Settings --------------------------------------------------------------------------------------------
 
-const SettingsTabPanel = ({ channel, onClose }: { channel: ChatChannelDetail; onClose: () => void }) => {
+const SettingsTabPanel = ({
+  channel,
+  onClose
+}: {
+  channel: ChatChannelDetail;
+  onClose: () => void;
+}) => {
   const navigate = useNavigate();
   const notify = useNotifyLevel(channel.id);
   const archive = useArchiveChannel(channel.id);
@@ -663,7 +708,10 @@ const SettingsTabPanel = ({ channel, onClose }: { channel: ChatChannelDetail; on
               )}
             >
               <option.icon
-                className={cn("mt-0.5 size-4", level === option.value ? "text-brand-text" : "text-foreground-muted")}
+                className={cn(
+                  "mt-0.5 size-4",
+                  level === option.value ? "text-brand-text" : "text-foreground-muted"
+                )}
                 aria-hidden="true"
               />
               <span className="flex flex-col">
@@ -713,7 +761,9 @@ const SettingsTabPanel = ({ channel, onClose }: { channel: ChatChannelDetail; on
                   variant="outline"
                   size="sm"
                   disabled={archive.isPending}
-                  onClick={() => (channel.archivedAt ? archive.mutate(false) : setConfirm("archive"))}
+                  onClick={() =>
+                    channel.archivedAt ? archive.mutate(false) : setConfirm("archive")
+                  }
                 >
                   {archive.isPending ? <Spinner /> : null}
                   {channel.archivedAt ? "Khôi phục" : "Lưu trữ"}
@@ -777,7 +827,9 @@ const SettingsTabPanel = ({ channel, onClose }: { channel: ChatChannelDetail; on
                   leave.mutate(undefined, {
                     onSuccess: () => {
                       onClose();
-                      void navigate(channel.kind === "public" ? `/c/${channel.id}` : "/c", { replace: true });
+                      void navigate(channel.kind === "public" ? `/c/${channel.id}` : "/c", {
+                        replace: true
+                      });
                     },
                     onError: (error) => setLeaveError(chatErrorMessage(error))
                   });
@@ -789,7 +841,11 @@ const SettingsTabPanel = ({ channel, onClose }: { channel: ChatChannelDetail; on
                 }
               }}
             >
-              {confirm === "leave" ? "Rời kênh" : confirm === "archive" ? "Lưu trữ" : "Xóa vĩnh viễn"}
+              {confirm === "leave"
+                ? "Rời kênh"
+                : confirm === "archive"
+                  ? "Lưu trữ"
+                  : "Xóa vĩnh viễn"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -812,7 +868,10 @@ const SettingRow = ({
   danger?: boolean;
 }) => (
   <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
-    <Icon className={cn("size-4 shrink-0", danger ? "text-danger" : "text-foreground-muted")} aria-hidden="true" />
+    <Icon
+      className={cn("size-4 shrink-0", danger ? "text-danger" : "text-foreground-muted")}
+      aria-hidden="true"
+    />
     <div className="flex min-w-0 flex-1 flex-col">
       <span className="text-[13px] font-medium">{title}</span>
       <span className="text-xs text-foreground-muted">{description}</span>

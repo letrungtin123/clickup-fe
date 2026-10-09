@@ -40,23 +40,33 @@ describe("notification sentences", () => {
     expect(sentence(make({ type: "task.assigned", payload: { reopened: true } }))).toBe(
       "Minh Nguyễn đã mở lại và giao cho bạn WEB-12"
     );
-    expect(sentence(make({ type: "task.mentioned" }))).toBe("Minh Nguyễn đã nhắc đến bạn trong WEB-12");
-    expect(sentence(make({ type: "task.commented" }))).toBe("Minh Nguyễn đã bình luận trong WEB-12");
+    expect(sentence(make({ type: "task.mentioned" }))).toBe(
+      "Minh Nguyễn đã nhắc đến bạn trong WEB-12"
+    );
+    expect(sentence(make({ type: "task.commented" }))).toBe(
+      "Minh Nguyễn đã bình luận trong WEB-12"
+    );
     expect(sentence(make({ type: "task.replied" }))).toBe(
       "Minh Nguyễn đã trả lời bình luận của bạn trong WEB-12"
     );
-    expect(sentence(make({ type: "task.status_changed", payload: { statusName: "Đang làm" } }))).toBe(
-      "Minh Nguyễn đã chuyển WEB-12 sang Đang làm"
-    );
+    expect(
+      sentence(make({ type: "task.status_changed", payload: { statusName: "Đang làm" } }))
+    ).toBe("Minh Nguyễn đã chuyển WEB-12 sang Đang làm");
     expect(sentence(make({ type: "task.status_changed", payload: { isDone: true } }))).toBe(
       "Minh Nguyễn đã hoàn thành WEB-12"
     );
   });
 
   it("describes deadlines without an actor", () => {
-    const soon = make({ type: "task.due_soon", actor: null, payload: { dueAt: "2026-10-10T10:00:00Z" } });
+    const soon = make({
+      type: "task.due_soon",
+      actor: null,
+      payload: { dueAt: "2026-10-10T10:00:00Z" }
+    });
     expect(sentence(soon)).toMatch(/^WEB-12 sắp đến hạn lúc \d{2}:\d{2}, 10\/10$/);
-    expect(sentence(make({ type: "task.overdue", actor: null, payload: {} }))).toBe("WEB-12 đã quá hạn");
+    expect(sentence(make({ type: "task.overdue", actor: null, payload: {} }))).toBe(
+      "WEB-12 đã quá hạn"
+    );
     expect(describeNotification(soon).tone).toBe("warning");
   });
 
@@ -73,22 +83,24 @@ describe("notification sentences", () => {
       title: "thiết-kế",
       body: "@Linh xem giúp nhé"
     };
-    expect(sentence(make({ ...base, type: "chat.mentioned", payload: { channelKind: "public" } }))).toBe(
-      "Minh Nguyễn đã nhắc đến bạn trong #thiết-kế"
+    expect(
+      sentence(make({ ...base, type: "chat.mentioned", payload: { channelKind: "public" } }))
+    ).toBe("Minh Nguyễn đã nhắc đến bạn trong #thiết-kế");
+    expect(
+      sentence(make({ ...base, type: "chat.mentioned", payload: { channelKind: "dm" } }))
+    ).toBe("Minh Nguyễn đã nhắc đến bạn trong tin nhắn trực tiếp");
+    expect(describeNotification(make({ ...base, type: "chat.mentioned" })).excerpt).toBe(
+      "@Linh xem giúp nhé"
     );
-    expect(sentence(make({ ...base, type: "chat.mentioned", payload: { channelKind: "dm" } }))).toBe(
-      "Minh Nguyễn đã nhắc đến bạn trong tin nhắn trực tiếp"
-    );
-    expect(describeNotification(make({ ...base, type: "chat.mentioned" })).excerpt).toBe("@Linh xem giúp nhé");
-    expect(sentence(make({ ...base, type: "channel.member_added", payload: { channelKind: "private" } }))).toBe(
-      "Minh Nguyễn đã thêm bạn vào kênh #thiết-kế"
-    );
+    expect(
+      sentence(make({ ...base, type: "channel.member_added", payload: { channelKind: "private" } }))
+    ).toBe("Minh Nguyễn đã thêm bạn vào kênh #thiết-kế");
   });
 
   it("falls back to 'Ai đó' when the actor is unknown", () => {
-    expect(sentence(make({ type: "project.member_added", actor: null, payload: { projectName: "Web" } }))).toBe(
-      "Ai đó đã thêm bạn vào dự án Web"
-    );
+    expect(
+      sentence(make({ type: "project.member_added", actor: null, payload: { projectName: "Web" } }))
+    ).toBe("Ai đó đã thêm bạn vào dự án Web");
   });
 });
 

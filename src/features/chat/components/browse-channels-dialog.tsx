@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Compass, Hash, Plus, Search, Users } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -24,7 +25,6 @@ import { chatApi } from "../api";
 import { chatErrorMessage } from "../errors";
 import { storeChannelDetail, useBrowseChannels } from "../hooks/use-channels";
 import { useChatDialogStore } from "../model/ui-state";
-import { useQueryClient } from "@tanstack/react-query";
 
 export const BrowseChannelsDialog = ({
   open,

@@ -28,7 +28,10 @@ describe("optimistic send reconciliation", () => {
   it("shows pending messages after confirmed ones, ordered by creation", () => {
     const confirmed = [makeMessage({ seq: 1 })];
     const merged = mergeWithPending(confirmed, [
-      pending({ clientMessageId: "33333333-3333-4333-8333-333333333333", createdAt: "2026-10-09T08:06:00Z" }),
+      pending({
+        clientMessageId: "33333333-3333-4333-8333-333333333333",
+        createdAt: "2026-10-09T08:06:00Z"
+      }),
       pending()
     ]);
     expect(merged.map((message) => message.clientMessageId ?? message.id)).toEqual([
@@ -60,18 +63,32 @@ describe("optimistic send reconciliation", () => {
     });
 
     const server = makeMessage({ seq: 2, author: me, clientMessageId: CLIENT_ID });
-    receiveMessage(queryClient, { channelId: CHANNEL_ID, message: server, threadRoot: null }, me.id, {
-      fromRealtime: true
-    });
+    receiveMessage(
+      queryClient,
+      { channelId: CHANNEL_ID, message: server, threadRoot: null },
+      me.id,
+      {
+        fromRealtime: true
+      }
+    );
     // The POST response arriving afterwards is a no-op.
-    receiveMessage(queryClient, { channelId: CHANNEL_ID, message: server, threadRoot: null }, me.id, {
-      fromRealtime: false
-    });
+    receiveMessage(
+      queryClient,
+      { channelId: CHANNEL_ID, message: server, threadRoot: null },
+      me.id,
+      {
+        fromRealtime: false
+      }
+    );
 
     const window = queryClient.getQueryData<MessageWindow>(chatKeys.messages(CHANNEL_ID));
     expect(window?.items.map((message) => message.seq)).toEqual([1, 2]);
-    expect(usePendingStore.getState().byConversation[conversationKey(CHANNEL_ID, null)]).toBeUndefined();
-    const sidebar = queryClient.getQueryData<{ items: ReturnType<typeof makeChannel>[] }>(chatKeys.channels());
+    expect(
+      usePendingStore.getState().byConversation[conversationKey(CHANNEL_ID, null)]
+    ).toBeUndefined();
+    const sidebar = queryClient.getQueryData<{ items: ReturnType<typeof makeChannel>[] }>(
+      chatKeys.channels()
+    );
     expect(sidebar?.items[0]).toMatchObject({ lastMessageSeq: 2, unreadCount: 0, lastReadSeq: 2 });
   });
 
@@ -81,13 +98,25 @@ describe("optimistic send reconciliation", () => {
       items: [makeChannel({ lastMessageSeq: 5, lastReadSeq: 5 })]
     });
     const incoming = makeMessage({ seq: 6, mentions: [me.id] });
-    receiveMessage(queryClient, { channelId: CHANNEL_ID, message: incoming, threadRoot: null }, me.id, {
-      fromRealtime: true
-    });
-    receiveMessage(queryClient, { channelId: CHANNEL_ID, message: incoming, threadRoot: null }, me.id, {
-      fromRealtime: true
-    });
-    const sidebar = queryClient.getQueryData<{ items: ReturnType<typeof makeChannel>[] }>(chatKeys.channels());
+    receiveMessage(
+      queryClient,
+      { channelId: CHANNEL_ID, message: incoming, threadRoot: null },
+      me.id,
+      {
+        fromRealtime: true
+      }
+    );
+    receiveMessage(
+      queryClient,
+      { channelId: CHANNEL_ID, message: incoming, threadRoot: null },
+      me.id,
+      {
+        fromRealtime: true
+      }
+    );
+    const sidebar = queryClient.getQueryData<{ items: ReturnType<typeof makeChannel>[] }>(
+      chatKeys.channels()
+    );
     expect(sidebar?.items[0]).toMatchObject({ unreadCount: 1, mentionCount: 1, lastMessageSeq: 6 });
   });
 

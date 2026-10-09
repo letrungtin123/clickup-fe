@@ -88,7 +88,10 @@ export const MessageItem = memo(function MessageItem({
   const canInteract = !pending && !message.isDeleted && actions.capabilities.canPost;
   const canEdit = mine && !pending && !message.isDeleted && actions.capabilities.canPost;
   const canDelete =
-    !pending && !message.isDeleted && !actions.archived && (mine || actions.capabilities.canModerate);
+    !pending &&
+    !message.isDeleted &&
+    !actions.archived &&
+    (mine || actions.capabilities.canModerate);
   const showHeader = !grouped;
 
   return (
@@ -101,7 +104,8 @@ export const MessageItem = memo(function MessageItem({
         !editing && "hover:bg-surface-hover/60",
         (pinned || editing) && "bg-surface-hover/60",
         highlighted && "bg-warning-soft hover:bg-warning-soft",
-        fresh && "animate-in duration-200 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
+        fresh &&
+          "animate-in duration-200 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
       )}
     >
       <div className="w-9 shrink-0">
@@ -157,7 +161,11 @@ export const MessageItem = memo(function MessageItem({
           </p>
         ) : (
           <div className="text-sm [&_.rt-content]:inline [&_.rt-content>p:last-child]:inline">
-            <RichTextView doc={message.body} selfId={actions.myId} className="[&_p]:leading-relaxed" />
+            <RichTextView
+              doc={message.body}
+              selfId={actions.myId}
+              className="[&_p]:leading-relaxed"
+            />
             {message.isEdited ? (
               <Tooltip>
                 <TooltipTrigger
@@ -209,7 +217,9 @@ export const MessageItem = memo(function MessageItem({
                     actions.toggleReaction(
                       message,
                       emoji,
-                      !message.reactions.some((reaction) => reaction.emoji === emoji && reaction.reactedByMe)
+                      !message.reactions.some(
+                        (reaction) => reaction.emoji === emoji && reaction.reactedByMe
+                      )
                     )
                   }
                 >
@@ -222,13 +232,19 @@ export const MessageItem = memo(function MessageItem({
                   actions.toggleReaction(
                     message,
                     emoji,
-                    !message.reactions.some((reaction) => reaction.emoji === emoji && reaction.reactedByMe)
+                    !message.reactions.some(
+                      (reaction) => reaction.emoji === emoji && reaction.reactedByMe
+                    )
                   )
                 }
               />
             </>
           ) : null}
-          {!actions.inThread && !pending && message.seq !== null && !message.isDeleted && actions.capabilities.canRead ? (
+          {!actions.inThread &&
+          !pending &&
+          message.seq !== null &&
+          !message.isDeleted &&
+          actions.capabilities.canRead ? (
             <ToolbarButton label="Trả lời trong chuỗi" onClick={() => actions.openThread(message)}>
               <MessageSquareReply className="size-4" />
             </ToolbarButton>
@@ -266,7 +282,10 @@ export const MessageItem = memo(function MessageItem({
                 {canDelete ? (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => actions.requestDelete(message)}>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => actions.requestDelete(message)}
+                    >
                       <Trash2 />
                       Xóa tin nhắn
                     </DropdownMenuItem>
@@ -338,7 +357,9 @@ const ReactionBar = ({
             actions.toggleReaction(
               message,
               emoji,
-              !message.reactions.some((reaction) => reaction.emoji === emoji && reaction.reactedByMe)
+              !message.reactions.some(
+                (reaction) => reaction.emoji === emoji && reaction.reactedByMe
+              )
             )
           }
           trigger={
@@ -395,9 +416,7 @@ const ThreadSummary = ({ message }: { message: ChatMessage }) => {
         {message.replyCount} câu trả lời
       </span>
       {message.lastReplyAt ? (
-        <span className="text-foreground-subtle">
-          Gần nhất {timeAgo(message.lastReplyAt)}
-        </span>
+        <span className="text-foreground-subtle">Gần nhất {timeAgo(message.lastReplyAt)}</span>
       ) : null}
     </button>
   );
@@ -413,7 +432,10 @@ const PendingStatus = ({ message }: { message: DisplayMessage }) => {
     );
   }
   return (
-    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-danger" role="alert">
+    <p
+      className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-danger"
+      role="alert"
+    >
       <AlertCircle className="size-3.5" aria-hidden="true" />
       {message.pending?.error ?? "Không gửi được."}
       <button
@@ -510,4 +532,3 @@ const InlineEditor = ({ message }: { message: ChatMessage }) => {
     </div>
   );
 };
-

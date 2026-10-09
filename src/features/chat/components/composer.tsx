@@ -194,7 +194,8 @@ export const Composer = ({
             }}
           />
           <span className="ml-auto hidden pr-2 text-[11px] text-foreground-subtle lg:inline">
-            <kbd className="font-sans">Enter</kbd> để gửi · <kbd className="font-sans">Shift + Enter</kbd> xuống dòng
+            <kbd className="font-sans">Enter</kbd> để gửi ·{" "}
+            <kbd className="font-sans">Shift + Enter</kbd> xuống dòng
           </span>
           <Tooltip>
             <TooltipTrigger
@@ -349,7 +350,9 @@ export const TypingIndicator = ({
   myId: string;
   nameOf: (userId: string) => string | null;
 }) => {
-  const typers = useTypingStore(useShallow(selectTypers(conversationKey(channelId, threadRootId), myId)));
+  const typers = useTypingStore(
+    useShallow(selectTypers(conversationKey(channelId, threadRootId), myId))
+  );
   const text = useMemo(() => {
     if (typers.length === 0) return "";
     const names = typers.map((id) => nameOf(id) ?? "Ai đó");
@@ -358,7 +361,10 @@ export const TypingIndicator = ({
     return "Nhiều người đang nhập…";
   }, [nameOf, typers]);
   return (
-    <p className="flex h-5 items-center gap-1.5 px-1 pt-1 text-[11px] text-foreground-muted" aria-live="polite">
+    <p
+      className="flex h-5 items-center gap-1.5 px-1 pt-1 text-[11px] text-foreground-muted"
+      aria-live="polite"
+    >
       {text ? (
         <>
           <span className="flex gap-0.5" aria-hidden="true">
@@ -399,8 +405,14 @@ const ComposerNotice = ({
   const join = useJoinChannel(channel.id);
   const archive = useArchiveChannel(channel.id);
   const content: Record<BlockReason, { icon: typeof Eye; text: string }> = {
-    archived: { icon: Archive, text: "Kênh đã được lưu trữ. Bạn vẫn xem được tin nhắn nhưng không thể gửi mới." },
-    preview: { icon: Eye, text: `Bạn đang xem trước ${channelLabel(channel)}. Tham gia để gửi tin và nhận thông báo.` },
+    archived: {
+      icon: Archive,
+      text: "Kênh đã được lưu trữ. Bạn vẫn xem được tin nhắn nhưng không thể gửi mới."
+    },
+    preview: {
+      icon: Eye,
+      text: `Bạn đang xem trước ${channelLabel(channel)}. Tham gia để gửi tin và nhận thông báo.`
+    },
     "view-only": {
       icon: Eye,
       text: "Bạn chỉ có quyền xem trong kênh này. Liên hệ quản trị kênh nếu cần gửi tin."
@@ -420,7 +432,12 @@ const ComposerNotice = ({
           </Button>
         ) : null}
         {reason === "archived" && channel.capabilities.canArchive ? (
-          <Button size="sm" variant="outline" onClick={() => archive.mutate(false)} disabled={archive.isPending}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => archive.mutate(false)}
+            disabled={archive.isPending}
+          >
             {archive.isPending ? <Spinner /> : <RotateCcw />}
             Khôi phục kênh
           </Button>

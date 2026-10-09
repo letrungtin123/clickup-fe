@@ -86,7 +86,11 @@ export const prependNotification = (queryClient: QueryClient, notification: Noti
   }
 };
 
-export const applyRead = (queryClient: QueryClient, ids: readonly string[] | "all", readAt: string) => {
+export const applyRead = (
+  queryClient: QueryClient,
+  ids: readonly string[] | "all",
+  readAt: string
+) => {
   const idSet = ids === "all" ? null : new Set(ids);
   mapFeeds(queryClient, (item) =>
     item.readAt || (idSet && !idSet.has(item.id)) ? item : { ...item, readAt }
@@ -110,7 +114,8 @@ export const useMarkNotificationsRead = () => {
       applyRead(queryClient, ids, new Date().toISOString());
       const previous = queryClient.getQueryData<number>(qk.notifications.unreadCount());
       if (ids === "all") setUnreadCount(queryClient, 0);
-      else if (previous !== undefined) setUnreadCount(queryClient, Math.max(0, previous - ids.length));
+      else if (previous !== undefined)
+        setUnreadCount(queryClient, Math.max(0, previous - ids.length));
       return { previous };
     },
     onSuccess: (result) => setUnreadCount(queryClient, result.unreadCount),

@@ -162,7 +162,11 @@ const FileChip = ({ attachment }: { attachment: ChatAttachment }) => {
       aria-label={`Tải xuống ${attachment.fileName}, ${formatBytes(attachment.sizeBytes)}`}
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-soft text-brand-text">
-        <FileTypeIcon mimeType={attachment.mimeType} fileName={attachment.fileName} className="size-4" />
+        <FileTypeIcon
+          mimeType={attachment.mimeType}
+          fileName={attachment.fileName}
+          className="size-4"
+        />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px] font-medium">{attachment.fileName}</span>
@@ -218,7 +222,12 @@ const Lightbox = ({
               variant="outline"
               nativeButton={false}
               render={
-                <a href={url.data} target="_blank" rel="noopener noreferrer" download={current?.fileName} />
+                <a
+                  href={url.data}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={current?.fileName}
+                />
               }
             >
               <Download />

@@ -20,6 +20,7 @@ const taskMessages: Record<string, string> = {
   ATTACHMENT_TYPE_BLOCKED: "Loại tệp này không được phép tải lên.",
   ATTACHMENT_TOO_LARGE: "Tệp vượt quá giới hạn 50 MB.",
   ATTACHMENT_NOT_UPLOADED: "Tệp chưa tải lên xong. Thử lại.",
+  ATTACHMENT_TYPE_MISMATCH: "Loại tệp không khớp khi tải lên. Thử lại.",
   ATTACHMENT_NOT_FOUND: "Tệp đính kèm không còn tồn tại.",
   ATTACHMENT_RATE_LIMITED: "Bạn đang tải lên quá nhiều tệp. Chờ một chút rồi thử lại.",
   INVALID_CURSOR: "Danh sách đã thay đổi. Hãy tải lại.",

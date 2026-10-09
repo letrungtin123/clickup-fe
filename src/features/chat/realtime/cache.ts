@@ -111,7 +111,11 @@ export const receiveMessage = (
           lastMessageSeq: seq,
           lastMessageAt: message.createdAt,
           ...(mine
-            ? { lastReadSeq: Math.max(channel.lastReadSeq ?? 0, seq), unreadCount: 0, mentionCount: 0 }
+            ? {
+                lastReadSeq: Math.max(channel.lastReadSeq ?? 0, seq),
+                unreadCount: 0,
+                mentionCount: 0
+              }
             : {})
         };
       }
@@ -150,11 +154,7 @@ export const receiveDeletion = (queryClient: QueryClient, event: ChatMessageDele
   }
 };
 
-export const receiveReaction = (
-  queryClient: QueryClient,
-  event: ChatReactionEvent,
-  myId: string
-) =>
+export const receiveReaction = (queryClient: QueryClient, event: ChatReactionEvent, myId: string) =>
   patchMessage(
     queryClient,
     { channelId: event.channelId, messageId: event.messageId, threadRootId: event.threadRootId },

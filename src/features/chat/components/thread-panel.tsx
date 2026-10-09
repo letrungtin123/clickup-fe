@@ -1,6 +1,14 @@
 import { ArrowLeft, MessagesSquare, RefreshCw, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { motion } from "motion/react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from "react";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -49,7 +57,12 @@ export const ThreadPanel = ({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (document.querySelector("[data-slot=dialog-content], [role=menu], [data-slot=popover-content]")) return;
+      if (
+        document.querySelector(
+          "[data-slot=dialog-content], [role=menu], [data-slot=popover-content]"
+        )
+      )
+        return;
       const target = event.target;
       if (target instanceof Node && frameRef.current?.contains(target)) {
         onClose();
@@ -148,7 +161,10 @@ const ThreadBody = ({
   const { query, loadMore, loadingMore, loadError } = useThread(rootId);
   const thread = query.data;
   const pending = usePendingMessages(channel.id, rootId);
-  const replies = useMemo(() => mergeWithPending(thread?.items ?? [], pending), [pending, thread?.items]);
+  const replies = useMemo(
+    () => mergeWithPending(thread?.items ?? [], pending),
+    [pending, thread?.items]
+  );
   const allMessages = useMemo(() => (thread ? [thread.root, ...thread.items] : []), [thread]);
   const nameOf = useUserLookup(channel, allMessages);
   const mentionSource = useMentionSource(channel.id);
@@ -191,7 +207,9 @@ const ThreadBody = ({
 
   const lastOwnReply = [...replies]
     .reverse()
-    .find((message) => message.author?.id === session.user.id && !message.isDeleted && !message.pending);
+    .find(
+      (message) => message.author?.id === session.user.id && !message.isDeleted && !message.pending
+    );
 
   const header = (
     <div className="flex h-14 shrink-0 items-center gap-2 border-b px-3">
@@ -225,7 +243,12 @@ const ThreadBody = ({
           description="Tin nhắn gốc có thể đã bị xóa hoặc bạn không còn quyền xem."
         />
       ) : (
-        <ErrorState size="sm" error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+        <ErrorState
+          size="sm"
+          error={query.error}
+          onRetry={() => void query.refetch()}
+          retrying={query.isFetching}
+        />
       );
   } else if (thread) {
     content = (
@@ -240,11 +263,17 @@ const ThreadBody = ({
         aria-label="Các câu trả lời"
       >
         <div className="pt-3">
-          <MessageItem message={thread.root} grouped={false} highlighted={highlight === thread.root.id} />
+          <MessageItem
+            message={thread.root}
+            grouped={false}
+            highlighted={highlight === thread.root.id}
+          />
         </div>
         <div className="flex items-center gap-3 px-4 py-2 md:px-5">
           <span className="text-xs font-medium text-foreground-muted">
-            {thread.root.replyCount > 0 ? `${thread.root.replyCount} câu trả lời` : "Chưa có câu trả lời"}
+            {thread.root.replyCount > 0
+              ? `${thread.root.replyCount} câu trả lời`
+              : "Chưa có câu trả lời"}
           </span>
           <span className="h-px flex-1 bg-border" />
         </div>
@@ -260,7 +289,12 @@ const ThreadBody = ({
         )}
         {thread.hasMore ? (
           <div className="flex flex-col items-center gap-1 py-3">
-            <Button variant="ghost" size="sm" onClick={() => void loadMore()} disabled={loadingMore}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
+            >
               {loadingMore ? <Spinner /> : <RefreshCw />}
               Tải thêm câu trả lời
             </Button>
@@ -309,9 +343,3 @@ const ThreadSkeleton = () => (
     ))}
   </div>
 );
-
-/** Animated slot for the thread panel inside the channel layout. */
-export const ThreadSlot = ({ children }: { children: ReactNode }) => (
-  <AnimatePresence initial={false}>{children}</AnimatePresence>
-);
-

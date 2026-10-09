@@ -16,7 +16,10 @@ export const fileKindOf = (mimeType: string, fileName: string): FileKind => {
     return "archive";
   }
   if (/sheet|excel|csv/.test(mimeType) || ["xls", "xlsx", "csv"].includes(ext)) return "sheet";
-  if (/pdf|word|text|document|presentation/.test(mimeType) || ["pdf", "doc", "docx", "txt", "md"].includes(ext)) {
+  if (
+    /pdf|word|text|document|presentation/.test(mimeType) ||
+    ["pdf", "doc", "docx", "txt", "md"].includes(ext)
+  ) {
     return "document";
   }
   return "other";

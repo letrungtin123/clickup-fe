@@ -24,7 +24,11 @@ export const useThread = (rootId: string) => {
       const pages: ThreadPage[] = [];
       let cursor: string | undefined;
       for (let index = 0; index < INITIAL_PAGES; index += 1) {
-        const page = await chatApi.thread(rootId, { limit: PAGE, ...(cursor ? { cursor } : {}) }, signal);
+        const page = await chatApi.thread(
+          rootId,
+          { limit: PAGE, ...(cursor ? { cursor } : {}) },
+          signal
+        );
         pages.push(page);
         if (!page.pageInfo.hasMore || !page.pageInfo.nextCursor) break;
         cursor = page.pageInfo.nextCursor;

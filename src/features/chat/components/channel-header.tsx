@@ -56,7 +56,13 @@ export const ChannelHeader = ({
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:px-4">
       {mobile ? (
-        <Button variant="ghost" size="icon" render={<Link to="/c" />} nativeButton={false} aria-label="Danh sách trò chuyện">
+        <Button
+          variant="ghost"
+          size="icon"
+          render={<Link to="/c" />}
+          nativeButton={false}
+          aria-label="Danh sách trò chuyện"
+        >
           <ArrowLeft />
         </Button>
       ) : null}
@@ -75,7 +81,9 @@ export const ChannelHeader = ({
         </span>
         <span className="flex min-w-0 flex-col">
           <span className="flex items-center gap-1">
-            <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">{channelTitle(channel)}</h1>
+            <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">
+              {channelTitle(channel)}
+            </h1>
             <ChevronDown
               className="size-3.5 shrink-0 text-foreground-subtle transition-colors group-hover/title:text-foreground"
               aria-hidden="true"

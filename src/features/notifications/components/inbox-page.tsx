@@ -135,7 +135,8 @@ const InboxFeed = ({ tab }: { tab: InboxTab }) => {
     if (!node || !hasNextPage) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage) void fetchNextPage();
+        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage)
+          void fetchNextPage();
       },
       { rootMargin: "400px" }
     );
@@ -184,7 +185,13 @@ const InboxFeed = ({ tab }: { tab: InboxTab }) => {
     );
   }
   if (feed.isError) {
-    return <ErrorState error={feed.error} onRetry={() => void feed.refetch()} retrying={feed.isFetching} />;
+    return (
+      <ErrorState
+        error={feed.error}
+        onRetry={() => void feed.refetch()}
+        retrying={feed.isFetching}
+      />
+    );
   }
   if (items.length === 0 && !hasNextPage) {
     return (

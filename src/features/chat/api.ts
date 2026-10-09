@@ -167,10 +167,7 @@ export const chatApi = {
     }),
 
   /** People picker (mentions are scoped to channel members for private channels and DMs). */
-  directory: (
-    params: { q?: string; channelId?: string; limit?: number },
-    signal?: AbortSignal
-  ) =>
+  directory: (params: { q?: string; channelId?: string; limit?: number }, signal?: AbortSignal) =>
     api.get("/directory/users", DirectoryCollectionSchema, {
       query: { q: params.q?.trim(), channelId: params.channelId, limit: params.limit ?? 20 },
       signal

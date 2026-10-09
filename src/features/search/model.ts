@@ -51,8 +51,23 @@ export type SearchItem =
       meta: string;
       hit: GlobalSearchResult["tasks"][number];
     }
-  | { group: "projects"; id: string; href: string; title: string; key: string; meta: string; hit: GlobalSearchResult["projects"][number] }
-  | { group: "lists"; id: string; href: string; title: string; meta: string; hit: GlobalSearchResult["lists"][number] }
+  | {
+      group: "projects";
+      id: string;
+      href: string;
+      title: string;
+      key: string;
+      meta: string;
+      hit: GlobalSearchResult["projects"][number];
+    }
+  | {
+      group: "lists";
+      id: string;
+      href: string;
+      title: string;
+      meta: string;
+      hit: GlobalSearchResult["lists"][number];
+    }
   | { group: "people"; id: string; title: string; meta: string; user: UserRef }
   | {
       group: "messages";
@@ -72,62 +87,58 @@ const conversationName = (hit: GlobalSearchResult["messages"][number]) =>
 export const mapSearchResults = (result: GlobalSearchResult | undefined): SearchItem[] => {
   if (!result) return [];
   return [
-    ...result.tasks.map(
-      (hit): SearchItem => ({
-        group: "tasks",
-        id: hit.id,
-        href: taskHref(hit),
-        title: hit.title,
-        key: hit.key,
-        meta: `${hit.projectName} · ${hit.listName}`,
-        hit
-      })
-    ),
-    ...result.messages.map(
-      (hit): SearchItem => ({
-        group: "messages",
-        id: hit.messageId,
-        href: messageHref(hit),
-        title: hit.text,
-        meta: [hit.author?.displayName, conversationName(hit)].filter(Boolean).join(" · "),
-        hit
-      })
-    ),
-    ...result.projects.map(
-      (hit): SearchItem => ({
-        group: "projects",
-        id: hit.id,
-        href: `/p/${hit.id}`,
-        title: hit.name,
-        key: hit.key,
-        meta: hit.visibility === "private" ? "Dự án riêng tư" : "Dự án công khai",
-        hit
-      })
-    ),
-    ...result.lists.map(
-      (hit): SearchItem => ({
-        group: "lists",
-        id: hit.id,
-        href: `/p/${hit.projectId}/l/${hit.id}`,
-        title: hit.name,
-        meta: hit.projectName,
-        hit
-      })
-    ),
-    ...result.people.map(
-      (user): SearchItem => ({
-        group: "people",
-        id: user.id,
-        title: user.displayName,
-        meta: user.email ?? "",
-        user
-      })
-    )
+    ...result.tasks.map((hit): SearchItem => ({
+      group: "tasks",
+      id: hit.id,
+      href: taskHref(hit),
+      title: hit.title,
+      key: hit.key,
+      meta: `${hit.projectName} · ${hit.listName}`,
+      hit
+    })),
+    ...result.messages.map((hit): SearchItem => ({
+      group: "messages",
+      id: hit.messageId,
+      href: messageHref(hit),
+      title: hit.text,
+      meta: [hit.author?.displayName, conversationName(hit)].filter(Boolean).join(" · "),
+      hit
+    })),
+    ...result.projects.map((hit): SearchItem => ({
+      group: "projects",
+      id: hit.id,
+      href: `/p/${hit.id}`,
+      title: hit.name,
+      key: hit.key,
+      meta: hit.visibility === "private" ? "Dự án riêng tư" : "Dự án công khai",
+      hit
+    })),
+    ...result.lists.map((hit): SearchItem => ({
+      group: "lists",
+      id: hit.id,
+      href: `/p/${hit.projectId}/l/${hit.id}`,
+      title: hit.name,
+      meta: hit.projectName,
+      hit
+    })),
+    ...result.people.map((user): SearchItem => ({
+      group: "people",
+      id: user.id,
+      title: user.displayName,
+      meta: user.email ?? "",
+      user
+    }))
   ];
 };
 
 export const countByGroup = (items: readonly SearchItem[]) => {
-  const counts: Record<SearchGroup, number> = { tasks: 0, messages: 0, projects: 0, lists: 0, people: 0 };
+  const counts: Record<SearchGroup, number> = {
+    tasks: 0,
+    messages: 0,
+    projects: 0,
+    lists: 0,
+    people: 0
+  };
   for (const item of items) counts[item.group] += 1;
   return counts;
 };

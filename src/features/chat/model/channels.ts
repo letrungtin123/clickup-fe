@@ -25,10 +25,10 @@ export const channelLabel = (channel: ChannelLike) =>
   isDirectKind(channel.kind) ? channelTitle(channel) : `#${channel.name ?? "kênh"}`;
 
 /** "99+" style badge text (mention counts are capped server side). */
-export const formatCount = (count: number, cap = 99) =>
-  count > cap ? `${cap}+` : String(count);
+export const formatCount = (count: number, cap = 99) => (count > cap ? `${cap}+` : String(count));
 
-export const isMuted = (channel: Pick<ChatChannel, "notifyLevel">) => channel.notifyLevel === "none";
+export const isMuted = (channel: Pick<ChatChannel, "notifyLevel">) =>
+  channel.notifyLevel === "none";
 
 export const hasUnread = (channel: Pick<ChatChannel, "unreadCount" | "notifyLevel">) =>
   channel.unreadCount > 0 && !isMuted(channel);
@@ -103,7 +103,10 @@ export const upsertSidebarChannel = (
 };
 
 /** Merges viewer-independent metadata from a realtime `chat:channel` event. */
-export const mergeChannelInfo = <T extends ChatChannelInfo>(channel: T, info: ChatChannelInfo): T => ({
+export const mergeChannelInfo = <T extends ChatChannelInfo>(
+  channel: T,
+  info: ChatChannelInfo
+): T => ({
   ...channel,
   name: info.name,
   description: info.description,

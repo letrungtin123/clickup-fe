@@ -117,7 +117,10 @@ const ConversationList = ({
   // Unread conversations are never hidden behind "show more".
   const visible = expanded
     ? items
-    : items.filter((channel, index) => index < COLLAPSED_LIMIT || channel.unreadCount > 0 || channel.mentionCount > 0);
+    : items.filter(
+        (channel, index) =>
+          index < COLLAPSED_LIMIT || channel.unreadCount > 0 || channel.mentionCount > 0
+      );
   const hidden = items.length - visible.length;
   return (
     <ul className="flex flex-col gap-px px-2">
@@ -186,7 +189,8 @@ const ConversationRow = memo(function ConversationRow({
           "hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           unread && "font-semibold text-foreground",
           (muted || channel.archivedAt) && !isActive && "text-foreground-subtle",
-          isActive && "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
+          isActive &&
+            "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
         )
       }
     >

@@ -131,3 +131,41 @@ describe("misc helpers", () => {
     expect(normalizeHref("javascript:alert(1)")).toBeNull();
   });
 });
+
+describe("editor output vs. the structural sanitizer", () => {
+  it("keeps Tiptap-shaped lists, task items, quotes and code blocks unchanged", () => {
+    const editorDoc: RichTextDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "Một" }] },
+                {
+                  type: "orderedList",
+                  attrs: { start: 1 },
+                  content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Lồng" }] }] }]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: "taskList",
+          content: [
+            { type: "taskItem", attrs: { checked: true }, content: [{ type: "paragraph", content: [{ type: "text", text: "Xong" }] }] },
+            { type: "taskItem", attrs: { checked: false }, content: [{ type: "paragraph" }] }
+          ]
+        },
+        { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Trích" }] }] },
+        { type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "const a = 1;" }] },
+        { type: "paragraph" }
+      ]
+    };
+    const prepared = prepareDoc(editorDoc, "description");
+    expect(prepared.ok && prepared.doc).toEqual(editorDoc);
+  });
+});

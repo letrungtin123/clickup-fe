@@ -149,17 +149,20 @@ export const tasksApi = {
 /**
  * Direct-to-storage upload (signed URL on another origin: no cookies, no CSRF). XMLHttpRequest
  * so we can report progress. Resolves when storage accepted the bytes.
+ * Use uploadMimeType(file) for both the declared type and this PUT.
  */
 export const putFileToSignedUrl = (
   url: string,
   file: File,
+  contentType: string,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal
 ) =>
   new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
-    xhr.setRequestHeader("content-type", file.type || "application/octet-stream");
+    // Must equal the mimeType declared when the upload was created (else ATTACHMENT_TYPE_MISMATCH).
+    xhr.setRequestHeader("content-type", contentType);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
     };
@@ -176,3 +179,6 @@ export const putFileToSignedUrl = (
     signal?.addEventListener("abort", () => xhr.abort(), { once: true });
     xhr.send(file);
   });
+
+/** The single content type used to declare an upload and to PUT its bytes. */
+export const uploadMimeType = (file: File) => (file.type || "application/octet-stream").toLowerCase();

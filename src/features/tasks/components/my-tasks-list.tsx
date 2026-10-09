@@ -11,6 +11,7 @@ import type { Project, TaskSummary } from "@/contracts/work";
 import { P, accessAtLeast } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { useRealtimeRoom } from "@/lib/realtime/hooks";
 
 import { flattenPages } from "../cache";
 import { dueBucket, dueBuckets, type DueBucket } from "../due";
@@ -27,6 +28,24 @@ const bucketTone: Record<DueBucket, string> = {
   later: "text-foreground-muted",
   none: "text-foreground-muted",
   done: "text-foreground-subtle"
+};
+
+/** Joins one project room (task:changed events refresh "My tasks" through the shared handler). */
+const ProjectRoom = ({ projectId }: { projectId: string }) => {
+  useRealtimeRoom({ type: "project", id: projectId });
+  return null;
+};
+
+/** Live updates for cross-project lists: one room per distinct project on screen (bounded). */
+const ProjectRooms = ({ tasks }: { tasks: readonly TaskSummary[] }) => {
+  const ids = useMemo(() => [...new Set(tasks.map((task) => task.projectId))].slice(0, 30), [tasks]);
+  return (
+    <>
+      {ids.map((id) => (
+        <ProjectRoom key={id} projectId={id} />
+      ))}
+    </>
+  );
 };
 
 /** Edit gates per project for cross-project rows (summaries carry no capabilities). */
@@ -78,6 +97,7 @@ export const MyTasksList = ({ includeDone }: { includeDone: boolean }) => {
   return (
     <InlineEditorHost>
       <ConfirmHost />
+      <ProjectRooms tasks={items} />
       <div className="flex flex-col gap-5">
         {groups.map((group, index) => {
           const isCollapsed = collapsed[group.key] ?? false;
@@ -242,6 +262,7 @@ export const MyTasksWidget = () => {
   return (
     <InlineEditorHost>
       <ConfirmHost />
+      <ProjectRooms tasks={items} />
       <div className="flex w-full flex-col self-stretch">
         <div className="flex gap-4 px-4 pt-3 pb-2 text-xs">
           <span className={cn("font-medium", overdue > 0 ? "text-danger" : "text-foreground-muted")}>{overdue} quá hạn</span>

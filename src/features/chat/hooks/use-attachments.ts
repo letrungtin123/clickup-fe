@@ -23,7 +23,8 @@ const flush = () => {
   chatApi.attachmentUrls(ids).then(
     (result) => {
       const urls = new Map(result.items.map((item) => [item.id, item.url]));
-      for (const [id, waiters] of batch) waiters.forEach((waiter) => waiter.resolve(urls.get(id) ?? null));
+      for (const [id, waiters] of batch)
+        waiters.forEach((waiter) => waiter.resolve(urls.get(id) ?? null));
     },
     (error: unknown) => {
       for (const [, waiters] of batch) waiters.forEach((waiter) => waiter.reject(error));
@@ -75,7 +76,12 @@ export type UploadItem = {
 const isPreviewable = (file: File) => /^image\/(png|jpe?g|gif|webp|avif)$/i.test(file.type);
 
 /** PUTs the file straight to storage (other origin, no cookies) with progress. */
-const putFile = (url: string, file: File, onProgress: (ratio: number) => void, signal: AbortSignal) =>
+const putFile = (
+  url: string,
+  file: File,
+  onProgress: (ratio: number) => void,
+  signal: AbortSignal
+) =>
   new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
@@ -111,13 +117,16 @@ export const useUploads = (channelId: string) => {
   useEffect(
     () => () => {
       for (const controller of controllers.current.values()) controller.abort();
-      for (const item of itemsRef.current) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      for (const item of itemsRef.current)
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
     },
     []
   );
 
   const patch = (localId: string, update: Partial<UploadItem>) =>
-    setItems((current) => current.map((item) => (item.localId === localId ? { ...item, ...update } : item)));
+    setItems((current) =>
+      current.map((item) => (item.localId === localId ? { ...item, ...update } : item))
+    );
 
   const upload = useCallback(
     async (item: UploadItem) => {

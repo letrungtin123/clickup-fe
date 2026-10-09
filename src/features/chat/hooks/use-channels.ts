@@ -207,7 +207,11 @@ export const useChannelMembers = (channelId: string, q: string, enabled = true) 
   useInfiniteQuery({
     queryKey: chatKeys.members(channelId, q),
     queryFn: ({ signal, pageParam }) =>
-      chatApi.members(channelId, { q, limit: 50, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+      chatApi.members(
+        channelId,
+        { q, limit: 50, ...(pageParam ? { cursor: pageParam } : {}) },
+        signal
+      ),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => (page.pageInfo.hasMore ? page.pageInfo.nextCursor : null),
     enabled,
@@ -257,7 +261,10 @@ export const useMemberMutations = (channelId: string) => {
 };
 
 /** People search for pickers (DM, create channel, add members) or channel-scoped mention search. */
-export const usePeopleSearch = (q: string, options: { channelId?: string; enabled?: boolean } = {}) =>
+export const usePeopleSearch = (
+  q: string,
+  options: { channelId?: string; enabled?: boolean } = {}
+) =>
   useQuery({
     queryKey: chatKeys.people(q, options.channelId),
     queryFn: ({ signal }) =>

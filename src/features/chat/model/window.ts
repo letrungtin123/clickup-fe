@@ -170,7 +170,10 @@ export const applyDeletion = (message: ChatMessage, deletedAt: string): ChatMess
         mentions: []
       };
 
-export const applyThreadSummary = (message: ChatMessage, summary: ThreadRootSummary): ChatMessage =>
+export const applyThreadSummary = (
+  message: ChatMessage,
+  summary: ThreadRootSummary
+): ChatMessage =>
   message.replyCount === summary.replyCount && message.lastReplyAt === summary.lastReplyAt
     ? message
     : { ...message, replyCount: summary.replyCount, lastReplyAt: summary.lastReplyAt };
@@ -193,9 +196,7 @@ export const setReaction = (
     return [...reactions, { emoji, count, reactedByMe: reactedByMe ?? false }];
   }
   return reactions.map((reaction, i) =>
-    i === index
-      ? { emoji, count, reactedByMe: reactedByMe ?? reaction.reactedByMe }
-      : reaction
+    i === index ? { emoji, count, reactedByMe: reactedByMe ?? reaction.reactedByMe } : reaction
   );
 };
 
@@ -216,6 +217,7 @@ export const applyReactionEvent = (
 /** Optimistic local toggle (the server echo / response then sets the authoritative count). */
 export const toggleReactionLocally = (message: ChatMessage, emoji: string, add: boolean) => {
   const current = message.reactions.find((reaction) => reaction.emoji === emoji);
-  const count = (current?.count ?? 0) + (add ? (current?.reactedByMe ? 0 : 1) : current?.reactedByMe ? -1 : 0);
+  const count =
+    (current?.count ?? 0) + (add ? (current?.reactedByMe ? 0 : 1) : current?.reactedByMe ? -1 : 0);
   return { ...message, reactions: setReaction(message.reactions, emoji, count, add) };
 };

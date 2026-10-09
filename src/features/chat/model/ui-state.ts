@@ -17,10 +17,12 @@ type ActiveConversation = {
   live: boolean;
 };
 
-export const useActiveChannelStore = create<ActiveConversation & {
-  setActive: (channelId: string | null) => void;
-  setLive: (channelId: string, live: boolean) => void;
-}>()((set) => ({
+export const useActiveChannelStore = create<
+  ActiveConversation & {
+    setActive: (channelId: string | null) => void;
+    setLive: (channelId: string, live: boolean) => void;
+  }
+>()((set) => ({
   channelId: null,
   live: false,
   setActive: (channelId) => set({ channelId, live: false }),
@@ -78,10 +80,13 @@ export const useTypingStore = create<TypingState>()((set, get) => ({
       return { byConversation };
     });
     if (nextExpiry !== Infinity) {
-      pruneTimer ??= setTimeout(() => {
-        pruneTimer = null;
-        get().prune();
-      }, Math.max(50, nextExpiry - now + 50));
+      pruneTimer ??= setTimeout(
+        () => {
+          pruneTimer = null;
+          get().prune();
+        },
+        Math.max(50, nextExpiry - now + 50)
+      );
     }
   }
 }));

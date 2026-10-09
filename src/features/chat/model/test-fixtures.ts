@@ -37,7 +37,10 @@ export const makeMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage =
   threadRootId: null,
   kind: "user",
   author: userA,
-  body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Xin chào" }] }] },
+  body: {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text: "Xin chào" }] }]
+  },
   text: "Xin chào",
   systemEvent: null,
   clientMessageId: null,

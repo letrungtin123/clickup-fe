@@ -98,7 +98,9 @@ export const useConversationActions = (input: {
           threadRootId: message.threadRootId
         });
         void copyText(`${window.location.origin}${href}`).then((ok) =>
-          ok ? toast.success("Đã sao chép liên kết tin nhắn") : toast.error("Không sao chép được liên kết.")
+          ok
+            ? toast.success("Đã sao chép liên kết tin nhắn")
+            : toast.error("Không sao chép được liên kết.")
         );
       },
       retry,

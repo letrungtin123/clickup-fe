@@ -16,7 +16,9 @@ import type { MessageWindow } from "../model/window";
 import { useSendMessage } from "./use-message-actions";
 
 const toastError = vi.hoisted(() => vi.fn());
-vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: toastError, success: vi.fn() }) }));
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), { error: toastError, success: vi.fn() })
+}));
 
 const session = {
   user: { id: me.id, displayName: me.displayName, email: me.email },
@@ -43,7 +45,8 @@ const setup = () => {
   return { queryClient, hook };
 };
 
-const pendingList = () => usePendingStore.getState().byConversation[conversationKey(CHANNEL_ID, null)] ?? [];
+const pendingList = () =>
+  usePendingStore.getState().byConversation[conversationKey(CHANNEL_ID, null)] ?? [];
 
 afterEach(() => {
   cleanup();
@@ -56,19 +59,28 @@ describe("useSendMessage", () => {
   it("shows the message immediately and swaps in the server copy", async () => {
     let resolve: (value: Awaited<ReturnType<typeof chatApi.send>>) => void = () => undefined;
     const send = vi.spyOn(chatApi, "send").mockImplementation(
-      () => new Promise((done) => {
-        resolve = done;
-      })
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
     );
     const { queryClient, hook } = setup();
     const body = { type: "doc" as const, content: [] };
     let clientId = "";
     act(() => {
-      clientId = hook.result.current.send({ body, text: "Xin chào", attachments: [], threadRootId: null });
+      clientId = hook.result.current.send({
+        body,
+        text: "Xin chào",
+        attachments: [],
+        threadRootId: null
+      });
     });
     expect(pendingList()).toHaveLength(1);
     expect(pendingList()[0]).toMatchObject({ status: "sending", clientMessageId: clientId });
-    expect(send).toHaveBeenCalledWith(CHANNEL_ID, expect.objectContaining({ clientMessageId: clientId }));
+    expect(send).toHaveBeenCalledWith(
+      CHANNEL_ID,
+      expect.objectContaining({ clientMessageId: clientId })
+    );
 
     await act(async () => {
       resolve(makeMessage({ seq: 2, author: me, clientMessageId: clientId }));
@@ -101,7 +113,10 @@ describe("useSendMessage", () => {
     expect(toastError).toHaveBeenCalledTimes(1);
 
     act(() => hook.result.current.retry(clientId));
-    expect(send).toHaveBeenLastCalledWith(CHANNEL_ID, expect.objectContaining({ clientMessageId: clientId }));
+    expect(send).toHaveBeenLastCalledWith(
+      CHANNEL_ID,
+      expect.objectContaining({ clientMessageId: clientId })
+    );
     await waitFor(() => expect(pendingList()).toHaveLength(0));
   });
 
@@ -117,7 +132,13 @@ describe("useSendMessage", () => {
         body: { type: "doc", content: [] },
         text: "",
         attachments: [
-          { id: "44444444-4444-4444-8444-444444444444", fileName: "a.png", mimeType: "image/png", sizeBytes: 10, isImage: true }
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            fileName: "a.png",
+            mimeType: "image/png",
+            sizeBytes: 10,
+            isImage: true
+          }
         ],
         threadRootId: null
       });

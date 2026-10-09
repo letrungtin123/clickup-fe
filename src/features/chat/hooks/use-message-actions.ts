@@ -67,7 +67,9 @@ export const useSendMessage = (channelId: string) => {
               onClick: () => {
                 const current = usePendingStore.getState().find(pending.clientMessageId);
                 if (current) {
-                  usePendingStore.getState().update(current.clientMessageId, { status: "sending", error: undefined });
+                  usePendingStore
+                    .getState()
+                    .update(current.clientMessageId, { status: "sending", error: undefined });
                   void deliverRef.current?.(current);
                 }
               }
@@ -225,7 +227,10 @@ export const useToggleReaction = () => {
     onError: (error, { message }, context) => {
       if (context?.previous) {
         const previous = context.previous;
-        patchMessage(queryClient, refOf(message), (current) => ({ ...current, reactions: previous }));
+        patchMessage(queryClient, refOf(message), (current) => ({
+          ...current,
+          reactions: previous
+        }));
       }
       toast.error(chatErrorMessage(error, "Không thêm được biểu cảm."));
     }
@@ -283,7 +288,9 @@ export const useMarkRead = (channelId: string, enabled: boolean) => {
               )
             );
             queryClient.setQueryData<ChatChannelDetail>(chatKeys.channel(channelId), (detail) =>
-              detail ? { ...detail, lastReadSeq: state.lastReadSeq, unreadCount: state.unreadCount } : detail
+              detail
+                ? { ...detail, lastReadSeq: state.lastReadSeq, unreadCount: state.unreadCount }
+                : detail
             );
           })
           .catch(() => {

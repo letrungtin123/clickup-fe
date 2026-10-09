@@ -67,7 +67,9 @@ export const useMessageWindow = (
     setOlderState("loading");
     try {
       const page = await chatApi.history(channelId, { before, limit: PAGE });
-      queryClient.setQueryData<MessageWindow>(key, (window) => (window ? mergeOlder(window, page) : window));
+      queryClient.setQueryData<MessageWindow>(key, (window) =>
+        window ? mergeOlder(window, page) : window
+      );
       setOlderState("idle");
     } catch {
       setOlderState("error");
@@ -86,7 +88,9 @@ export const useMessageWindow = (
     setNewerState("loading");
     try {
       const page = await chatApi.history(channelId, { after, limit: PAGE });
-      queryClient.setQueryData<MessageWindow>(key, (window) => (window ? mergeNewer(window, page) : window));
+      queryClient.setQueryData<MessageWindow>(key, (window) =>
+        window ? mergeNewer(window, page) : window
+      );
       setNewerState("idle");
     } catch {
       setNewerState("error");

@@ -20,7 +20,11 @@ import {
 const range = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, index) => makeMessage({ seq: from + index }));
 
-const windowOf = (from: number, to: number, overrides: Partial<MessageWindow> = {}): MessageWindow => ({
+const windowOf = (
+  from: number,
+  to: number,
+  overrides: Partial<MessageWindow> = {}
+): MessageWindow => ({
   items: range(from, to),
   hasOlder: from > 1,
   hasNewer: false,
@@ -50,7 +54,12 @@ describe("message window", () => {
   it("bounds the window when paging older and marks the trimmed end", () => {
     // 380 loaded (seq 101..480) + 50 older (51..100) = 430 > WINDOW_MAX (400)
     const window = windowOf(101, 480);
-    const page: MessageHistory = { items: range(51, 100), hasOlder: true, hasNewer: true, lastReadSeq: 0 };
+    const page: MessageHistory = {
+      items: range(51, 100),
+      hasOlder: true,
+      hasNewer: true,
+      lastReadSeq: 0
+    };
     const merged = mergeOlder(window, page);
     expect(merged.items).toHaveLength(WINDOW_MAX);
     expect(merged.items[0]?.seq).toBe(51);
@@ -61,7 +70,12 @@ describe("message window", () => {
 
   it("refresh merges an overlapping latest page and keeps older loaded history", () => {
     const existing = windowOf(1, 120);
-    const latest = fromHistory({ items: range(80, 130), hasOlder: true, hasNewer: false, lastReadSeq: 125 });
+    const latest = fromHistory({
+      items: range(80, 130),
+      hasOlder: true,
+      hasNewer: false,
+      lastReadSeq: 125
+    });
     const merged = mergeRefresh(existing, latest);
     expect(merged.items[0]?.seq).toBe(1);
     expect(merged.items.at(-1)?.seq).toBe(130);
@@ -70,14 +84,22 @@ describe("message window", () => {
   });
 
   it("refresh replaces the window after a gap and keeps a historical window as is", () => {
-    const latest = fromHistory({ items: range(300, 349), hasOlder: true, hasNewer: false, lastReadSeq: 349 });
+    const latest = fromHistory({
+      items: range(300, 349),
+      hasOlder: true,
+      hasNewer: false,
+      lastReadSeq: 349
+    });
     expect(seqs(mergeRefresh(windowOf(1, 50), latest))[0]).toBe(300);
     const historical = windowOf(1, 50, { hasNewer: true });
     expect(seqs(mergeRefresh(historical, latest))).toEqual(seqs(historical));
   });
 
   it("turns deleted messages into tombstones", () => {
-    const message = makeMessage({ attachments: [], reactions: [{ emoji: "👍", count: 1, reactedByMe: false }] });
+    const message = makeMessage({
+      attachments: [],
+      reactions: [{ emoji: "👍", count: 1, reactedByMe: false }]
+    });
     const deleted = applyDeletion(message, "2026-10-09T09:00:00Z");
     expect(deleted).toMatchObject({ isDeleted: true, body: null, text: "", reactions: [] });
   });
@@ -86,17 +108,32 @@ describe("message window", () => {
 describe("reactions", () => {
   it("sets counts, keeps others' reactedByMe and removes zero counts", () => {
     const start = [{ emoji: "👍", count: 1, reactedByMe: true }];
-    expect(setReaction(start, "👍", 2, undefined)).toEqual([{ emoji: "👍", count: 2, reactedByMe: true }]);
+    expect(setReaction(start, "👍", 2, undefined)).toEqual([
+      { emoji: "👍", count: 2, reactedByMe: true }
+    ]);
     expect(setReaction(start, "👍", 0, undefined)).toEqual([]);
     expect(setReaction(start, "🎉", 1, false)).toHaveLength(2);
   });
 
   it("applies realtime events for the viewer and for others", () => {
     const message = makeMessage({ reactions: [{ emoji: "👍", count: 1, reactedByMe: false }] });
-    const base = { channelId: message.channelId, messageId: message.id, threadRootId: null, emoji: "👍" };
-    const byOther = applyReactionEvent(message, { ...base, count: 2, userId: "other", added: true }, me.id);
+    const base = {
+      channelId: message.channelId,
+      messageId: message.id,
+      threadRootId: null,
+      emoji: "👍"
+    };
+    const byOther = applyReactionEvent(
+      message,
+      { ...base, count: 2, userId: "other", added: true },
+      me.id
+    );
     expect(byOther.reactions[0]).toEqual({ emoji: "👍", count: 2, reactedByMe: false });
-    const byMe = applyReactionEvent(byOther, { ...base, count: 3, userId: me.id, added: true }, me.id);
+    const byMe = applyReactionEvent(
+      byOther,
+      { ...base, count: 3, userId: me.id, added: true },
+      me.id
+    );
     expect(byMe.reactions[0]).toEqual({ emoji: "👍", count: 3, reactedByMe: true });
   });
 

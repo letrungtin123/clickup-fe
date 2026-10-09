@@ -375,6 +375,9 @@ const StatusGroup = memo(function StatusGroup({
     return out;
   }, [items, expanded, children, flat]);
 
+  const emptyHidden =
+    hideWhenEmpty && !collapsed && !pages.isPending && !pages.isError && items.length === 0 && !quickAddOpen;
+
   // Offset of this group's rows inside the shared scroll container (virtualizer scrollMargin).
   const listRef = useRef<HTMLDivElement | null>(null);
   const [margin, setMargin] = useState(0);
@@ -390,7 +393,7 @@ const StatusGroup = memo(function StatusGroup({
     const observer = new ResizeObserver(measure);
     observer.observe(scroller.firstElementChild ?? scroller);
     return () => observer.disconnect();
-  }, [scrollRef, collapsed]);
+  }, [scrollRef, collapsed, emptyHidden, hidden, pages.isPending]);
 
   // eslint-disable-next-line react-hooks/incompatible-library -- virtual rows are read during render on purpose
   const virtualizer = useVirtualizer({
@@ -451,7 +454,7 @@ const StatusGroup = memo(function StatusGroup({
     });
   };
 
-  if (hideWhenEmpty && !collapsed && !pages.isPending && !pages.isError && items.length === 0 && !quickAddOpen) {
+  if (emptyHidden) {
     return null;
   }
 

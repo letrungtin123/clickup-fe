@@ -70,7 +70,12 @@ export const describeNotification = (notification: Notification): NotificationDe
       return {
         segments: [
           actor,
-          { text: notification.payload.reopened === true ? " đã mở lại và giao cho bạn " : " đã giao cho bạn " },
+          {
+            text:
+              notification.payload.reopened === true
+                ? " đã mở lại và giao cho bạn "
+                : " đã giao cho bạn "
+          },
           key
         ],
         subject: notification.title,
@@ -109,7 +114,13 @@ export const describeNotification = (notification: Notification): NotificationDe
         segments: done
           ? [actor, { text: " đã hoàn thành " }, key]
           : status
-            ? [actor, { text: " đã chuyển " }, key, { text: " sang " }, { text: status, strong: true }]
+            ? [
+                actor,
+                { text: " đã chuyển " },
+                key,
+                { text: " sang " },
+                { text: status, strong: true }
+              ]
             : [actor, { text: " đã đổi trạng thái " }, key],
         subject: notification.title,
         excerpt: null,
@@ -173,7 +184,11 @@ export const describeNotification = (notification: Notification): NotificationDe
       return {
         segments: isDirect(notification)
           ? [actor, { text: " đã bắt đầu cuộc trò chuyện với bạn" }]
-          : [actor, { text: " đã thêm bạn vào kênh " }, { text: `#${notification.title}`, strong: true }],
+          : [
+              actor,
+              { text: " đã thêm bạn vào kênh " },
+              { text: `#${notification.title}`, strong: true }
+            ],
         subject: null,
         excerpt: null,
         icon: Hash,
@@ -186,16 +201,17 @@ export const sentenceText = (description: NotificationDescription) =>
   description.segments.map((segment) => segment.text).join("");
 
 /** Types shown under the "Nhắc đến" tab. */
-export const mentionTypes: ReadonlySet<NotificationType> = new Set(["task.mentioned", "chat.mentioned"]);
+export const mentionTypes: ReadonlySet<NotificationType> = new Set([
+  "task.mentioned",
+  "chat.mentioned"
+]);
 
 /**
  * Where a notification leads. Tasks open in the detail panel on top of the current page
  * (`?task=<id>` works on every route); chat targets open the conversation at the message.
  */
 export type NotificationTarget =
-  | { kind: "task"; taskId: string }
-  | { kind: "path"; path: string }
-  | { kind: "none" };
+  { kind: "task"; taskId: string } | { kind: "path"; path: string } | { kind: "none" };
 
 export const notificationTarget = (notification: Notification): NotificationTarget => {
   const { target } = notification;

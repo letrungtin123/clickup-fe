@@ -62,7 +62,9 @@ export const ChatRuntime = () => {
 
   useRealtimeEvent("chat:typing", (event) => {
     if (event.userId === myId) return;
-    useTypingStore.getState().touch(conversationKey(event.channelId, event.threadRootId), event.userId);
+    useTypingStore
+      .getState()
+      .touch(conversationKey(event.channelId, event.threadRootId), event.userId);
   });
 
   useRealtimeEvent("chat:channel", (event) => {
@@ -99,7 +101,10 @@ export const ChatRuntime = () => {
           scheduleInvalidate(chatKeys.membersAll(event.channelId));
         }
         const cached = queryClient.getQueryData<ChatChannelDetail>(detailKey);
-        if (event.kind === "archived" || (event.channel && cached && cached.kind !== event.channel.kind)) {
+        if (
+          event.kind === "archived" ||
+          (event.channel && cached && cached.kind !== event.channel.kind)
+        ) {
           // capabilities (canPost, canJoin…) follow the archived flag and the channel kind
           scheduleInvalidate(detailKey, true);
         }
@@ -114,7 +119,9 @@ export const ChatRuntime = () => {
     const info = event.channel;
     if (info && event.kind !== "deleted" && !(event.kind === "left" && aboutMe)) {
       queryClient.setQueryData<ChatChannelCollection>(chatKeys.channels(), (collection) =>
-        updateSidebarChannel(collection, event.channelId, (channel) => mergeChannelInfo(channel, info))
+        updateSidebarChannel(collection, event.channelId, (channel) =>
+          mergeChannelInfo(channel, info)
+        )
       );
       queryClient.setQueryData<ChatChannelDetail>(detailKey, (detail) => {
         if (!detail) return detail;

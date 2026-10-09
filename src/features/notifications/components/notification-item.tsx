@@ -21,7 +21,6 @@ const toneClasses: Record<NotificationDescription["tone"], string> = {
   muted: "bg-foreground-muted text-background"
 };
 
-
 /** One inbox entry: actor + type badge, Vietnamese sentence, subject / excerpt, time, actions. */
 export const NotificationItem = memo(function NotificationItem({
   notification,
@@ -85,7 +84,12 @@ export const NotificationItem = memo(function NotificationItem({
         ) : null}
       </span>
       <span className="pointer-events-none flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={cn("text-[13px] leading-snug", unread ? "text-foreground" : "text-foreground-muted")}>
+        <span
+          className={cn(
+            "text-[13px] leading-snug",
+            unread ? "text-foreground" : "text-foreground-muted"
+          )}
+        >
           {description.segments.map((segment, index) =>
             segment.strong ? (
               <strong key={index} className="font-semibold text-foreground">
@@ -97,7 +101,9 @@ export const NotificationItem = memo(function NotificationItem({
           )}
         </span>
         {description.subject ? (
-          <span className="truncate text-[13px] font-medium text-foreground">{description.subject}</span>
+          <span className="truncate text-[13px] font-medium text-foreground">
+            {description.subject}
+          </span>
         ) : null}
         {description.excerpt ? (
           <span
@@ -111,7 +117,9 @@ export const NotificationItem = memo(function NotificationItem({
         ) : null}
         <time
           dateTime={notification.createdAt}
-          title={format(new Date(notification.createdAt), "HH:mm, EEEE d MMMM yyyy", { locale: vi })}
+          title={format(new Date(notification.createdAt), "HH:mm, EEEE d MMMM yyyy", {
+            locale: vi
+          })}
           className="text-[11px] text-foreground-subtle"
         >
           {timeAgo(notification.createdAt)}

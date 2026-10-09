@@ -27,9 +27,13 @@ const dayKey = (date: Date) =>
 export const formatDayLabel = (date: Date, now = new Date()) => {
   if (isToday(date)) return "Hôm nay";
   if (isYesterday(date)) return "Hôm qua";
-  const label = format(date, isSameYear(date, now) ? "EEEE, d 'tháng' M" : "EEEE, d 'tháng' M, yyyy", {
-    locale: vi
-  });
+  const label = format(
+    date,
+    isSameYear(date, now) ? "EEEE, d 'tháng' M" : "EEEE, d 'tháng' M, yyyy",
+    {
+      locale: vi
+    }
+  );
   return label.charAt(0).toLocaleUpperCase("vi") + label.slice(1);
 };
 

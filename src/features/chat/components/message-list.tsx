@@ -246,7 +246,11 @@ export const MessageList = memo(function MessageList({
       (row) => row.kind === "message" && row.message.author?.id !== myId
     ).length;
     if (!stick.current && fromOthers > 0) setUnseen((count) => count + fromOthers);
-    if (added.some((row) => row.kind === "message" && row.message.author?.id === myId && row.message.pending)) {
+    if (
+      added.some(
+        (row) => row.kind === "message" && row.message.author?.id === myId && row.message.pending
+      )
+    ) {
       // The viewer just sent something: always bring it into view.
       stick.current = true;
       scrollToBottom();
@@ -274,7 +278,10 @@ export const MessageList = memo(function MessageList({
   useEffect(() => {
     const element = scrollRef.current;
     if (!element || !hasOlder || olderState !== "idle" || !initialised.current) return;
-    if (element.scrollHeight <= element.clientHeight + NEAR_EDGE_PX && element.scrollTop < NEAR_EDGE_PX) {
+    if (
+      element.scrollHeight <= element.clientHeight + NEAR_EDGE_PX &&
+      element.scrollTop < NEAR_EDGE_PX
+    ) {
       onLoadOlder();
     }
   }, [hasOlder, olderState, onLoadOlder, totalSize]);
@@ -294,13 +301,18 @@ export const MessageList = memo(function MessageList({
           if (event.target === event.currentTarget) dragging.current = true;
         }}
         onKeyDown={(event) => {
-          if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) markIntent();
+          if (
+            ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)
+          )
+            markIntent();
           // ↑ / ↓ move between messages (rows are focusable, the toolbar appears for the focused one).
           if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
           const target = event.target as HTMLElement;
           const row = target.closest<HTMLElement>("[data-chat-row]");
           if (target !== event.currentTarget && target !== row) return;
-          const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-chat-row]"));
+          const rows = Array.from(
+            event.currentTarget.querySelectorAll<HTMLElement>("[data-chat-row]")
+          );
           const index = row ? rows.indexOf(row) : -1;
           const next =
             event.key === "ArrowUp"
@@ -403,9 +415,15 @@ const Row = memo(function Row({
     case "top":
       if (!hasOlder) return <div className="px-4 pt-8 pb-4 md:px-5">{intro}</div>;
       return (
-        <div className="flex h-[120px] flex-col justify-end gap-3 px-5 pb-3" aria-hidden={olderState !== "error"}>
+        <div
+          className="flex h-[120px] flex-col justify-end gap-3 px-5 pb-3"
+          aria-hidden={olderState !== "error"}
+        >
           {olderState === "error" ? (
-            <div className="flex items-center justify-center gap-2 text-xs text-foreground-muted" role="alert">
+            <div
+              className="flex items-center justify-center gap-2 text-xs text-foreground-muted"
+              role="alert"
+            >
               Không tải được tin nhắn cũ hơn.
               <Button size="xs" variant="outline" onClick={onLoadOlder}>
                 <RefreshCw />
@@ -446,9 +464,15 @@ const Row = memo(function Row({
       );
     case "unread":
       return (
-        <div className="flex items-center gap-2 px-4 py-1.5 md:px-5" role="separator" aria-label="Tin nhắn mới">
+        <div
+          className="flex items-center gap-2 px-4 py-1.5 md:px-5"
+          role="separator"
+          aria-label="Tin nhắn mới"
+        >
           <span className="h-px flex-1 bg-danger/50" />
-          <span className="text-[11px] font-semibold tracking-wide text-danger uppercase">Tin mới</span>
+          <span className="text-[11px] font-semibold tracking-wide text-danger uppercase">
+            Tin mới
+          </span>
         </div>
       );
     case "message":
@@ -489,4 +513,3 @@ export const ConversationIntro = ({
     {children}
   </div>
 );
-

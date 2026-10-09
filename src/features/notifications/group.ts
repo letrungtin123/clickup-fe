@@ -6,7 +6,10 @@ import { formatDayLabel } from "@/features/chat/model/timeline";
 export type NotificationGroup = { key: string; label: string; items: Notification[] };
 
 /** Consecutive day buckets (input is newest first): "Hôm nay", "Hôm qua", "Thứ Hai, 6 tháng 10"… */
-export const groupByDay = (items: readonly Notification[], now = new Date()): NotificationGroup[] => {
+export const groupByDay = (
+  items: readonly Notification[],
+  now = new Date()
+): NotificationGroup[] => {
   const groups: NotificationGroup[] = [];
   for (const item of items) {
     const date = new Date(item.createdAt);

@@ -48,7 +48,13 @@ const result: GlobalSearchResult = {
 describe("search result mapping", () => {
   it("flattens groups in display order with hrefs", () => {
     const items = mapSearchResults(result);
-    expect(items.map((item) => item.group)).toEqual(["tasks", "messages", "projects", "lists", "people"]);
+    expect(items.map((item) => item.group)).toEqual([
+      "tasks",
+      "messages",
+      "projects",
+      "lists",
+      "people"
+    ]);
     expect(items[0]).toMatchObject({ href: `/p/${id(2)}/l/${id(3)}?task=${id(1)}`, key: "WEB-12" });
     expect(items[1]).toMatchObject({
       href: `/c/${id(7)}?thread=${id(8)}&message=${id(6)}`,
@@ -56,7 +62,13 @@ describe("search result mapping", () => {
     });
     expect(items[2]).toMatchObject({ href: `/p/${id(2)}`, meta: "Dự án riêng tư" });
     expect(items[3]).toMatchObject({ href: `/p/${id(2)}/l/${id(3)}`, meta: "Web" });
-    expect(countByGroup(items)).toEqual({ tasks: 1, messages: 1, projects: 1, lists: 1, people: 1 });
+    expect(countByGroup(items)).toEqual({
+      tasks: 1,
+      messages: 1,
+      projects: 1,
+      lists: 1,
+      people: 1
+    });
     expect(mapSearchResults(undefined)).toEqual([]);
   });
 

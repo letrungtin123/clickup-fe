@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { maxAttachmentBytes, type Attachment } from "@/contracts/work";
 
-import { putFileToSignedUrl, tasksApi } from "./api";
+import { putFileToSignedUrl, tasksApi, uploadMimeType } from "./api";
 import { taskErrorMessage } from "./errors";
 import { taskKeys } from "./hooks";
 
@@ -138,12 +138,9 @@ export const useUploads = (
         ]);
         void (async () => {
           try {
-            const ticket = await tasksApi.createUpload(taskId, {
-              fileName: file.name,
-              mimeType: file.type || "application/octet-stream",
-              sizeBytes: file.size
-            });
-            await putFileToSignedUrl(ticket.uploadUrl, file, (progress) => patch(id, { progress: Math.min(progress, 0.98) }), controller.signal);
+            const mimeType = uploadMimeType(file);
+            const ticket = await tasksApi.createUpload(taskId, { fileName: file.name, mimeType, sizeBytes: file.size });
+            await putFileToSignedUrl(ticket.uploadUrl, file, mimeType, (progress) => patch(id, { progress: Math.min(progress, 0.98) }), controller.signal);
             const attachment = await tasksApi.completeUpload(ticket.attachmentId, target);
             patch(id, { status: "done", progress: 1, attachment });
             callback.current?.(attachment);

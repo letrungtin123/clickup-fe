@@ -20,7 +20,11 @@ import { useChatDialogStore } from "../model/ui-state";
 import { ChannelGlyph } from "./channel-glyph";
 
 const fold = (value: string) =>
-  value.normalize("NFD").replace(/\p{M}+/gu, "").replace(/đ/gi, "d").toLocaleLowerCase("vi");
+  value
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .replace(/đ/gi, "d")
+    .toLocaleLowerCase("vi");
 
 /**
  * `/c` — every conversation in one list (the first pane of the mobile stack: list → channel →
@@ -99,7 +103,11 @@ export const ConversationsPage = () => {
             ))}
           </div>
         ) : channels.isError ? (
-          <ErrorState error={channels.error} onRetry={() => void channels.refetch()} retrying={channels.isFetching} />
+          <ErrorState
+            error={channels.error}
+            onRetry={() => void channels.refetch()}
+            retrying={channels.isFetching}
+          />
         ) : items.length === 0 ? (
           <EmptyState
             icon={q ? Search : MessagesSquare}
@@ -130,7 +138,11 @@ export const ConversationsPage = () => {
               <li key={channel.id}>
                 <ConversationLink
                   channel={channel}
-                  online={channel.kind === "dm" ? online.has(channel.participants[0]?.id ?? "") : undefined}
+                  online={
+                    channel.kind === "dm"
+                      ? online.has(channel.participants[0]?.id ?? "")
+                      : undefined
+                  }
                 />
               </li>
             ))}
@@ -141,7 +153,13 @@ export const ConversationsPage = () => {
   );
 };
 
-const ConversationLink = ({ channel, online }: { channel: ChatChannel; online: boolean | undefined }) => {
+const ConversationLink = ({
+  channel,
+  online
+}: {
+  channel: ChatChannel;
+  online: boolean | undefined;
+}) => {
   const unread = hasUnread(channel);
   const badge = channel.mentionCount > 0 ? channel.mentionCount : unread ? channel.unreadCount : 0;
   return (

@@ -98,7 +98,9 @@ export const SearchPage = () => {
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const nodes = Array.from(resultsRef.current?.querySelectorAll<HTMLElement>("[data-search-result]") ?? []);
+    const nodes = Array.from(
+      resultsRef.current?.querySelectorAll<HTMLElement>("[data-search-result]") ?? []
+    );
     if (nodes.length === 0) return;
     const index = nodes.indexOf(document.activeElement as HTMLElement);
     if (event.key === "ArrowUp" && index <= 0) {
@@ -106,7 +108,10 @@ export const SearchPage = () => {
       inputRef.current?.focus();
       return;
     }
-    const next = nodes[index === -1 ? 0 : Math.min(nodes.length - 1, index + (event.key === "ArrowDown" ? 1 : -1))];
+    const next =
+      nodes[
+        index === -1 ? 0 : Math.min(nodes.length - 1, index + (event.key === "ArrowDown" ? 1 : -1))
+      ];
     if (next) {
       event.preventDefault();
       next.focus();
@@ -136,7 +141,11 @@ export const SearchPage = () => {
             <Spinner className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-foreground-subtle" />
           ) : null}
         </div>
-        <div role="tablist" aria-label="Nhóm kết quả" className="mx-auto -mb-px flex w-full max-w-3xl gap-1 overflow-x-auto scrollbar-none">
+        <div
+          role="tablist"
+          aria-label="Nhóm kết quả"
+          className="mx-auto -mb-px flex w-full max-w-3xl gap-1 overflow-x-auto scrollbar-none"
+        >
           {searchTabs.map((entry) => {
             const active = entry.value === tab;
             const count = entry.value === "all" ? items.length : counts[entry.value];
@@ -295,7 +304,12 @@ const MessageResults = ({ q }: { q: string }) => {
       ))}
       {query.hasNextPage ? (
         <li className="flex justify-center py-3">
-          <Button variant="ghost" size="sm" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
             {query.isFetchingNextPage ? <Spinner /> : null}
             Tải thêm tin nhắn
           </Button>
@@ -319,7 +333,12 @@ const ResultRow = ({ item, q }: { item: SearchItem; q: string }) => {
             <Highlight text={item.key} query={q} />
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className={cn("truncate text-sm font-medium", item.hit.completedAt && "text-foreground-muted line-through")}>
+            <span
+              className={cn(
+                "truncate text-sm font-medium",
+                item.hit.completedAt && "text-foreground-muted line-through"
+              )}
+            >
               <Highlight text={item.title} query={q} />
             </span>
             <span className="truncate text-xs text-foreground-muted">{item.meta}</span>
@@ -340,9 +359,13 @@ const ResultRow = ({ item, q }: { item: SearchItem; q: string }) => {
           )}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex items-center gap-1.5 text-xs text-foreground-muted">
-              <span className="font-medium text-foreground">{item.hit.author?.displayName ?? "Hệ thống"}</span>
+              <span className="font-medium text-foreground">
+                {item.hit.author?.displayName ?? "Hệ thống"}
+              </span>
               <span aria-hidden="true">·</span>
-              <span className="truncate">{direct ? "Tin nhắn trực tiếp" : `#${item.hit.channelName ?? "kênh"}`}</span>
+              <span className="truncate">
+                {direct ? "Tin nhắn trực tiếp" : `#${item.hit.channelName ?? "kênh"}`}
+              </span>
               {item.hit.threadRootId ? <span className="shrink-0">· trong chuỗi</span> : null}
               <span className="ml-auto shrink-0 tabular-nums">
                 {format(new Date(item.hit.createdAt), "HH:mm, dd/MM/yyyy", { locale: vi })}
