@@ -1,24 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  "files": [],
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
   "compilerOptions": {
-    "composite": true,
-    "target": "ES2023",
-    "lib": ["DOM", "DOM.Iterable", "ES2023"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "useUnknownInCatchVariables": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "moduleDetection": "force",
-    "skipLibCheck": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "jsx": "react-jsx",
-    "allowImportingTsExtensions": false,
-    "noEmit": true,
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
-    "types": ["vite/client"]
-  },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
 }

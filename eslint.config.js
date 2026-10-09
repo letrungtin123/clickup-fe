@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 
 export default [
   {
-    ignores: ["dist/**", "coverage/**", "node_modules/**"]
+    ignores: ["dist/**", "coverage/**", "node_modules/**", "public/**"]
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -25,10 +25,21 @@ export default [
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "@typescript-eslint/consistent-type-imports": ["error", { "prefer": "type-imports" }],
+      "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-floating-promises": "error",
-      "react-refresh/only-export-components": ["warn", { "allowConstantExport": true }]
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }
+      ],
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }]
+    }
+  },
+  {
+    // shadcn/ui primitives are generated, application-owned source; they export variant helpers.
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off"
     }
   }
 ];

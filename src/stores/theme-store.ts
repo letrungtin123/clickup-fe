@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -8,7 +9,7 @@ import {
   getAccentPalette,
   type AccentKey,
   type AccentMode
-} from "../lib/theme-palettes.js";
+} from "@/lib/theme-palettes";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -21,7 +22,8 @@ type ThemeState = {
   setAccent: (accentKey: AccentKey) => void;
 };
 
-const isThemeMode = (mode: unknown): mode is ThemeMode => mode === "light" || mode === "dark" || mode === "system";
+const isThemeMode = (mode: unknown): mode is ThemeMode =>
+  mode === "light" || mode === "dark" || mode === "system";
 
 const isAccentMode = (mode: unknown): mode is AccentMode => mode === "solid" || mode === "gradient";
 
@@ -34,7 +36,7 @@ const mergeThemeState = (persistedState: unknown, currentState: ThemeState): The
   const storedPalette = getAccentPalette(persisted.accentKey ?? persisted.accent);
   const accentMode = isAccentMode(persisted.accentMode)
     ? persisted.accentMode
-    : storedPalette?.mode ?? defaultAccentMode;
+    : (storedPalette?.mode ?? defaultAccentMode);
   const accentKey = getAccentKeyForMode(accentMode, storedPalette?.key ?? persisted.accentKey);
 
   return {
@@ -77,3 +79,30 @@ export const useThemeStore = create<ThemeState>()(
   )
 );
 
+const darkQuery = "(prefers-color-scheme: dark)";
+
+const subscribeSystemTheme = (onChange: () => void) => {
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return () => undefined;
+  }
+  const media = window.matchMedia(darkQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+};
+
+const getSystemPrefersDark = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia(darkQuery).matches;
+
+export type ResolvedTheme = "light" | "dark";
+
+/** Effective light/dark theme: the user's explicit choice, or the OS preference for "system". */
+export const useResolvedTheme = (): ResolvedTheme => {
+  const mode = useThemeStore((state) => state.mode);
+  const systemDark = useSyncExternalStore(subscribeSystemTheme, getSystemPrefersDark, () => false);
+  if (mode === "system") {
+    return systemDark ? "dark" : "light";
+  }
+  return mode;
+};

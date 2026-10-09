@@ -1,27 +1,19 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
-import { useThemeStore } from "../stores/theme-store.js";
+import { useResolvedTheme, useThemeStore } from "@/stores/theme-store";
 
+/** Mirrors the theme store onto <html> data attributes consumed by styles.css. */
 export const ThemeEffect = () => {
-  const mode = useThemeStore((state) => state.mode);
+  const resolved = useResolvedTheme();
   const accentMode = useThemeStore((state) => state.accentMode);
   const accentKey = useThemeStore((state) => state.accentKey);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const apply = () => {
-      const resolved = mode === "system" ? (media.matches ? "dark" : "light") : mode;
-      root.dataset.theme = resolved;
-      root.dataset.accentMode = accentMode;
-      root.dataset.accent = accentKey;
-    };
-
-    apply();
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
-  }, [accentKey, accentMode, mode]);
+    root.dataset.theme = resolved;
+    root.dataset.accentMode = accentMode;
+    root.dataset.accent = accentKey;
+  }, [accentKey, accentMode, resolved]);
 
   return null;
 };
