@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Eye, EyeOff, LayoutList, Radio, ShieldCheck } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { z } from "zod";
@@ -11,7 +11,9 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authApi } from "@/features/auth/api";
-import { sessionQueryOptions } from "@/features/auth/hooks";
+import { GoogleSignInButton } from "@/features/auth/components/google-sign-in-button";
+import { googleLoginErrorMessage } from "@/features/auth/google";
+import { sessionQueryOptions, useAuthProviders } from "@/features/auth/hooks";
 import { safeReturnPath } from "@/features/auth/redirect";
 import { getErrorMessage, isApiError } from "@/lib/api/errors";
 
@@ -31,10 +33,21 @@ const loginErrorMessage = (error: unknown) => {
 };
 
 export const LoginRoute = () => {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const location = useLocation();
   const stateFrom = (location.state as { from?: unknown } | null)?.from;
   const next = safeReturnPath(params.get("next")) ?? safeReturnPath(stateFrom) ?? "/";
+  // The Google callback reports failures as ?error=<code>; show it once, then drop it from the URL.
+  const [googleError] = useState(() => googleLoginErrorMessage(params.get("error")));
+  useEffect(() => {
+    if (!params.has("error")) {
+      return;
+    }
+    const rest = new URLSearchParams(params);
+    rest.delete("error");
+    setParams(rest, { replace: true });
+  }, [params, setParams]);
+  const providers = useAuthProviders();
 
   // If the cookies are still valid (or refreshable), skip the form.
   const session = useQuery({ ...sessionQueryOptions, retry: false });
@@ -45,7 +58,7 @@ export const LoginRoute = () => {
   return (
     <div className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
       <BrandPanel />
-      <main className="flex min-h-dvh flex-col px-5 py-8 sm:px-10">
+      <main className="flex min-h-dvh flex-col px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-10">
         <div className="flex items-center gap-2.5 lg:hidden">
           <BrandMark />
           <span className="text-[15px] font-semibold tracking-[-0.01em]">Nesso Work</span>
@@ -58,7 +71,19 @@ export const LoginRoute = () => {
                 Dùng tài khoản công việc do quản trị viên cấp.
               </p>
             </div>
-            <LoginForm next={next} />
+            <div className="flex flex-col gap-5">
+              <LoginForm next={next} initialError={googleError} />
+              {providers.data?.google ? (
+                <>
+                  <div className="flex items-center gap-3 text-xs text-foreground-subtle">
+                    <span aria-hidden="true" className="h-px flex-1 bg-border" />
+                    <span>hoặc</span>
+                    <span aria-hidden="true" className="h-px flex-1 bg-border" />
+                  </div>
+                  <GoogleSignInButton next={next} />
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
         <p className="text-center text-xs text-foreground-subtle lg:text-left">
@@ -69,12 +94,12 @@ export const LoginRoute = () => {
   );
 };
 
-const LoginForm = ({ next }: { next: string }) => {
+const LoginForm = ({ next, initialError }: { next: string; initialError: string | null }) => {
   const ids = useId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [reveal, setReveal] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(initialError);
   const { register, handleSubmit, formState } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: { email: "", password: "" },

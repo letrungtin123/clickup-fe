@@ -101,7 +101,7 @@ export const MembersSettingsRoute = () => {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6 md:px-8">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:max-w-xs">
           <Search
             className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-foreground-subtle"
             aria-hidden="true"
@@ -195,7 +195,7 @@ const MemberRow = ({
     .map((role) => ({ value: role.id, label: roleLabel(role) }));
 
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[minmax(0,2fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_7rem_2.5rem]">
+    <li className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 md:grid-cols-[minmax(0,2fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_7rem_2.5rem] md:gap-x-4">
       <div className="col-span-2 flex min-w-0 items-center gap-3 md:col-span-1">
         <UserAvatar user={member.user} size="md" />
         <div className="flex min-w-0 flex-col">
@@ -249,7 +249,7 @@ const MemberRow = ({
         >
           <SelectTrigger
             size="sm"
-            className="w-full"
+            className="w-full max-md:col-span-2"
             aria-label={`Trạng thái của ${member.user.displayName}`}
           >
             <SelectValue />
@@ -260,7 +260,7 @@ const MemberRow = ({
           </SelectContent>
         </Select>
       ) : (
-        <span className="inline-flex items-center gap-1.5 text-[13px]">
+        <span className="inline-flex items-center gap-1.5 text-[13px] max-md:col-span-2">
           <span
             aria-hidden="true"
             className={
@@ -279,7 +279,8 @@ const MemberRow = ({
         {member.joinedAt ? format(new Date(member.joinedAt), "d MMM yyyy", { locale: vi }) : "—"}
       </span>
 
-      <div className="flex justify-end">
+      {/* Phones: the "…" menu sits on the identity row; role + status share the second row. */}
+      <div className="col-start-3 row-start-1 flex justify-end md:col-start-auto md:row-start-auto">
         {editable ? (
           <DropdownMenu>
             <DropdownMenuTrigger

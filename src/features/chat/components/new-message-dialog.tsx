@@ -68,7 +68,7 @@ const NewMessageForm = ({
       }}
       className="flex flex-col"
     >
-      <DialogHeader className="flex-row items-center gap-3 border-b px-5 py-4">
+      <DialogHeader className="flex-row items-center gap-3 border-b px-5 py-4 pr-12">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-text">
           <MessageSquarePlus className="size-5" aria-hidden="true" />
         </span>

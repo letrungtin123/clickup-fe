@@ -34,6 +34,7 @@ import {
   CommandSeparator,
   CommandShortcut
 } from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { P } from "@/features/auth/permissions";
 import { useLogout, usePermissions, useSessionContext } from "@/features/auth/hooks";
@@ -79,7 +80,8 @@ export const CommandPalette = () => {
         onOpenChange={setOpen}
         title="Bảng lệnh"
         description="Tìm dự án, công việc, tin nhắn, mọi người hoặc chạy lệnh"
-        className="top-[12vh] sm:max-w-xl"
+        className="top-[12vh] sm:max-w-xl max-sm:flex max-sm:flex-col max-sm:rounded-none!"
+        mobileLayout="fullscreen"
       >
         <PaletteBody onDone={() => setOpen(false)} />
       </CommandDialog>
@@ -128,14 +130,23 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
         const haystack = foldText(`${value} ${(keywords ?? []).join(" ")}`).replace(/-/g, " ");
         return haystack.includes(foldText(query).replace(/-/g, " ")) ? 1 : 0;
       }}
+      // Phones: full-screen search; the list takes the remaining height.
+      className="max-sm:min-h-0 max-sm:flex-1 max-sm:rounded-none!"
     >
-      <CommandInput
-        autoFocus
-        value={term}
-        onValueChange={setTerm}
-        placeholder="Tìm kiếm hoặc nhập lệnh…"
-      />
-      <CommandList className="max-h-[min(60vh,28rem)]">
+      <div className="flex items-center gap-1 sm:block">
+        <div className="min-w-0 flex-1">
+          <CommandInput
+            autoFocus
+            value={term}
+            onValueChange={setTerm}
+            placeholder="Tìm kiếm hoặc nhập lệnh…"
+          />
+        </div>
+        <Button variant="ghost" className="mt-1 shrink-0 px-2 sm:hidden" onClick={onDone}>
+          Hủy
+        </Button>
+      </div>
+      <CommandList className="max-h-[min(60vh,28rem)] max-sm:max-h-none max-sm:flex-1 max-sm:pb-(--safe-bottom)">
         <CommandEmpty>
           {searching && (search.isFetching || search.isDebouncing) ? (
             <span className="inline-flex items-center gap-2 text-foreground-muted">

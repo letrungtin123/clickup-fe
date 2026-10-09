@@ -103,8 +103,8 @@ export const SegmentedControl = <T extends string>({
             className={cn(
               "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap text-foreground-muted transition-[background-color,color,box-shadow] duration-150 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none",
               size === "md"
-                ? "h-7 px-3 text-[13px] [&_svg]:size-3.5"
-                : "h-6 px-2 text-xs [&_svg]:size-3.5",
+                ? "h-7 px-3 text-[13px] pointer-coarse:h-9 [&_svg]:size-3.5"
+                : "h-6 px-2 text-xs pointer-coarse:h-9 pointer-coarse:min-w-10 [&_svg]:size-3.5",
               checked &&
                 "bg-surface text-foreground shadow-sm ring-1 ring-border/70 dark:bg-input dark:ring-0"
             )}
@@ -147,7 +147,7 @@ export const ColorSwatchPicker = ({
             onClick={() => onChange(token)}
             className={cn(
               toneClass(token),
-              "flex size-6 items-center justify-center rounded-full bg-(--tone-solid) text-(--tone-on) ring-offset-2 ring-offset-background transition-transform duration-150 outline-none hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+              "flex size-6 items-center justify-center rounded-full bg-(--tone-solid) text-(--tone-on) pointer-coarse:size-8 ring-offset-2 ring-offset-background transition-transform duration-150 outline-none hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
               checked && "ring-2 ring-(--tone)"
             )}
           >

@@ -26,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ChatChannelDetail } from "@/contracts/chat";
 import type { RichTextDoc } from "@/contracts/rich-text";
 import { useSessionContext } from "@/features/auth/hooks";
+import { useTouchPrimary } from "@/hooks/use-pointer";
 import { getSocket } from "@/lib/realtime/socket";
 
 import type { UploadItem, useUploads } from "../hooks/use-attachments";
@@ -72,6 +73,8 @@ export const Composer = ({
   className
 }: ComposerProps) => {
   const session = useSessionContext();
+  // Soft keyboards have no Shift+Enter: on touch, Enter breaks the line and the button sends.
+  const touch = useTouchPrimary();
   const handle = useRef<RichTextEditorHandle | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const draftKey = conversationKey(channel.id, threadRootId);
@@ -147,7 +150,7 @@ export const Composer = ({
             return;
           }
           // Enter with only attachments still sends (the editor ignores empty documents).
-          if (event.key === "Enter" && uploads.items.length > 0) {
+          if (event.key === "Enter" && !touch && uploads.items.length > 0) {
             event.preventDefault();
             event.stopPropagation();
             submit();
@@ -159,7 +162,7 @@ export const Composer = ({
           ref={handle}
           variant="message"
           value={initialDraft}
-          submitOnEnter
+          submitOnEnter={!touch}
           autoFocus={autoFocus}
           toolbar={showToolbar}
           placeholder={placeholder ?? label}
@@ -244,7 +247,7 @@ const ComposerIconButton = ({
           aria-label={label}
           aria-pressed={pressed}
           onClick={onClick}
-          className="flex size-7 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-surface-hover aria-pressed:text-foreground [&_svg]:size-4"
+          className="flex size-7 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:size-10 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-surface-hover aria-pressed:text-foreground [&_svg]:size-4 pointer-coarse:[&_svg]:size-5"
         />
       }
     >

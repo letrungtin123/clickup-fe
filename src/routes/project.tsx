@@ -134,17 +134,17 @@ const ProjectHeader = ({
   return (
     <PageHeader
       eyebrow={
-        <nav aria-label="Vị trí" className="flex items-center gap-1">
+        <nav aria-label="Vị trí" className="flex min-w-0 items-center gap-1">
           <Link
             to={`/p/${project.id}`}
-            className="rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 truncate rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             {project.name}
           </Link>
           {list ? (
             <>
-              <ChevronRight className="size-3" aria-hidden="true" />
-              <span aria-current="page" className="truncate">
+              <ChevronRight className="size-3 shrink-0" aria-hidden="true" />
+              <span aria-current="page" className="min-w-0 shrink-[2] truncate">
                 {list.name}
               </span>
             </>
@@ -161,10 +161,10 @@ const ProjectHeader = ({
         )
       }
       title={
-        <span className="inline-flex items-center gap-2">
-          {list?.name ?? project.name}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{list?.name ?? project.name}</span>
           {project.visibility === "private" ? (
-            <Lock className="size-3.5 text-foreground-subtle" aria-label="Dự án riêng tư" />
+            <Lock className="size-3.5 shrink-0 text-foreground-subtle" aria-label="Dự án riêng tư" />
           ) : null}
         </span>
       }

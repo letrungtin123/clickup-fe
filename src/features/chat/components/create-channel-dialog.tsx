@@ -104,7 +104,7 @@ const CreateChannelForm = ({ onDone }: { onDone: () => void }) => {
 
   return (
     <form onSubmit={submit} noValidate className="flex max-h-[min(88vh,760px)] flex-col">
-      <DialogHeader className="flex-row items-center gap-3 border-b px-5 py-4">
+      <DialogHeader className="flex-row items-center gap-3 border-b px-5 py-4 pr-12">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-text">
           {kind === "private" ? <Lock className="size-5" /> : <Hash className="size-5" />}
         </span>

@@ -1,0 +1,432 @@
+import type { CreditRule, PayMode, ProductionRole, ProductionStatus } from "@/contracts/production-catalog";
+import type {
+  JobSummary,
+  ProductionTask,
+  TaskLog,
+  TaskTransitionOption
+} from "@/contracts/production-jobs";
+
+/**
+ * Pure helpers for production jobs and tasks (SPEC Phase 2, PD-014). The API decides what is allowed
+ * (task.capabilities / job.capabilities); these only shape data for display and give instant form
+ * feedback. Unit tested in jobs-model.test.ts.
+ */
+
+// Time in the organization timezone ------------------------------------------------------------------
+
+const partsIn = (date: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute"), second: get("second") };
+};
+
+/** Offset (minutes east of UTC) of `timeZone` at `date`. */
+const offsetMinutes = (date: Date, timeZone: string) => {
+  const p = partsIn(date, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return Math.round((asUtc - Math.floor(date.getTime() / 1000) * 1000) / 60_000);
+};
+
+/** "2026-10-09" + "17:30" in `timeZone` → ISO instant (UTC). Null when the inputs are malformed. */
+export const zonedToIso = (day: string, time: string, timeZone: string) => {
+  const dayMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!dayMatch || !timeMatch) return null;
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  if (hour > 23 || minute > 59) return null;
+  const guess = Date.UTC(Number(dayMatch[1]), Number(dayMatch[2]) - 1, Number(dayMatch[3]), hour, minute);
+  // Two passes settle DST transitions in zones that have them.
+  let instant = guess - offsetMinutes(new Date(guess), timeZone) * 60_000;
+  instant = guess - offsetMinutes(new Date(instant), timeZone) * 60_000;
+  return new Date(instant).toISOString();
+};
+
+/** ISO instant → { day: "YYYY-MM-DD", time: "HH:mm" } in `timeZone`. */
+export const isoToZoned = (iso: string, timeZone: string) => {
+  const p = partsIn(new Date(iso), timeZone);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return { day: `${p.year}-${pad(p.month)}-${pad(p.day)}`, time: `${pad(p.hour)}:${pad(p.minute)}` };
+};
+
+/** "17:30 · 09/10" (short) or "17:30, 09/10/2026" (long) in the organization timezone. */
+export const formatDateTime = (iso: string | null | undefined, timeZone: string, long = false) => {
+  if (!iso) return "—";
+  const p = partsIn(new Date(iso), timeZone);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const time = `${pad(p.hour)}:${pad(p.minute)}`;
+  return long ? `${time}, ${pad(p.day)}/${pad(p.month)}/${p.year}` : `${time} · ${pad(p.day)}/${pad(p.month)}`;
+};
+
+/** Relative wording for deadlines: "còn 3 giờ", "trễ 2 ngày". */
+export const relativeDeadline = (iso: string, now: Date = new Date()) => {
+  const diff = new Date(iso).getTime() - now.getTime();
+  const late = diff < 0;
+  const minutes = Math.round(Math.abs(diff) / 60_000);
+  const label =
+    minutes < 60
+      ? `${Math.max(1, minutes)} phút`
+      : minutes < 48 * 60
+        ? `${Math.round(minutes / 60)} giờ`
+        : `${Math.round(minutes / (24 * 60))} ngày`;
+  return { late, label: late ? `trễ ${label}` : `còn ${label}` };
+};
+
+/** SPEC Phase 2 §2: a task's default deadline is the job deadline minus the project's QC buffer. */
+export const defaultTaskDeadline = (jobDeadline: string, qcBufferHours: number) =>
+  new Date(new Date(jobDeadline).getTime() - Math.max(0, qcBufferHours) * 3_600_000).toISOString();
+
+// Progress & allocation -----------------------------------------------------------------------------------
+
+const percent = (value: number, total: number) =>
+  total <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((value / total) * 100)));
+
+/** Progress of a job against its total images (assigned may exceed 100% when over-allocated). */
+export const jobProgress = (job: Pick<JobSummary, "totalImages" | "qtyAssigned" | "qtyDone" | "qtyChecked">) => ({
+  assigned: percent(job.qtyAssigned, job.totalImages),
+  done: percent(job.qtyDone, job.totalImages),
+  checked: percent(job.qtyChecked, job.totalImages),
+  overAllocated: job.qtyAssigned > job.totalImages
+});
+
+/** Live totals of the "Chia task" form: what is already assigned plus the new lines. */
+export const allocation = (totalImages: number, alreadyAssigned: number, quantities: readonly number[]) => {
+  const adding = quantities.reduce((sum, qty) => sum + (Number.isFinite(qty) && qty > 0 ? qty : 0), 0);
+  const total = alreadyAssigned + adding;
+  return { adding, total, remaining: totalImages - total, over: total > totalImages };
+};
+
+/** Images already given out in normal (non-feedback) tasks — what over-allocation is measured against. */
+export const assignedNormalQty = (tasks: readonly Pick<ProductionTask, "kind" | "qtyAssigned">[]) =>
+  tasks.reduce((sum, task) => sum + (task.kind === "NORMAL" ? task.qtyAssigned : 0), 0);
+
+/**
+ * Expected credit/money of a task line from the credit rule effective today (PLAN §5: money only for
+ * "Khoán" shifts and only when the process has a price; the matrix hides money from people who may
+ * not see it).
+ */
+export const expectedEarnings = (rule: Pick<CreditRule, "creditPerImage" | "moneyPerImage"> | null, qty: number, payMode: PayMode | null) => {
+  if (!rule || !Number.isFinite(qty) || qty <= 0) return { credit: null, money: null };
+  const credit = Math.round(rule.creditPerImage * qty * 100) / 100;
+  const money = payMode === "MONEY_IF_KPI" && rule.moneyPerImage !== null ? rule.moneyPerImage * qty : null;
+  return { credit, money };
+};
+
+// Task lines (mirrors the API's checks for instant feedback) ----------------------------------------------
+
+export type TaskLineDraft = {
+  assigneeId: string | null;
+  qcId: string | null;
+  processId: string | null;
+  shiftId: string | null;
+  qty: string;
+};
+
+export type LineContext = {
+  callerId: string;
+  roles: ReadonlyMap<string, readonly ProductionRole[]>;
+  qcProcessIds: ReadonlySet<string>;
+};
+
+/** Problems of one "Chia task" line, keyed by field (empty object = valid). */
+export const taskLineProblems = (line: TaskLineDraft, context: LineContext) => {
+  const problems: Partial<Record<"assignee" | "qc" | "process" | "shift" | "qty", string>> = {};
+  if (!line.assigneeId) {
+    problems.assignee = "Chọn người làm.";
+  } else {
+    const roles = context.roles.get(line.assigneeId) ?? [];
+    if (!roles.includes("STAFF") && !roles.includes("LEADER")) problems.assignee = "Cần vai trò Nhân viên hoặc Leader.";
+  }
+  if (line.qcId) {
+    if (!(context.roles.get(line.qcId) ?? []).includes("QC")) problems.qc = "Người QC cần vai trò QC.";
+    else if (line.qcId === line.assigneeId) problems.qc = "QC phải khác người làm.";
+  } else if (line.assigneeId && line.assigneeId === context.callerId) {
+    problems.qc = "Tự giao cho mình thì cần QC là người khác.";
+  }
+  if (!line.processId) problems.process = "Chọn quy trình.";
+  else if (context.qcProcessIds.has(line.processId)) problems.process = "Quy trình QC không giao như task.";
+  if (!line.shiftId) problems.shift = "Chọn ca.";
+  const qty = Number(line.qty);
+  if (!/^\d+$/.test(line.qty.trim()) || qty < 1 || qty > 1_000_000) problems.qty = "Số tấm nguyên ≥ 1.";
+  return problems;
+};
+
+// Transitions ---------------------------------------------------------------------------------------------
+
+/** The moves the API offers, split into the normal flow and ADMIN overrides (reason required). */
+export const splitTransitions = (options: readonly TaskTransitionOption[]) => ({
+  normal: options.filter((option) => !option.override),
+  overrides: options.filter((option) => option.override)
+});
+
+/** True when a move needs the transition dialog (note, Done quantity, OT hours or override reason). */
+export const needsInput = (option: TaskTransitionOption) =>
+  option.requiresNote || option.asksQty || option.asksOtHours || option.override;
+
+type StatusMeta = Pick<ProductionStatus, "id" | "sortOrder" | "countsChecked">;
+
+/**
+ * QC queue buttons: "Pass" is the move into a checked status; "Fail" a backward move that needs a
+ * note (PLAN §4). Both come from the task's own capabilities — never invented here.
+ */
+export const qcActions = (task: Pick<ProductionTask, "status" | "capabilities">, statuses: readonly StatusMeta[]) => {
+  const byId = new Map(statuses.map((status) => [status.id, status]));
+  const current = byId.get(task.status.id);
+  const normal = task.capabilities.transitions.filter((option) => !option.override);
+  const pass = normal.find((option) => byId.get(option.toStatusId)?.countsChecked) ?? null;
+  const fail =
+    normal.find((option) => {
+      const target = byId.get(option.toStatusId);
+      return option.requiresNote && target !== undefined && current !== undefined && target.sortOrder < current.sortOrder;
+    }) ?? null;
+  return { pass, fail };
+};
+
+// Kanban --------------------------------------------------------------------------------------------------
+
+export type BoardColumn<T> = { status: Pick<ProductionStatus, "id" | "name" | "color" | "code">; tasks: T[] };
+
+/**
+ * Columns in workflow order. Columns without tasks are kept for the active flow (so drops have a
+ * target) and dropped for archived statuses.
+ */
+export const boardColumns = <T extends { status: { id: string } }>(
+  tasks: readonly T[],
+  statuses: readonly (Pick<ProductionStatus, "id" | "name" | "color" | "code" | "sortOrder" | "active">)[]
+): BoardColumn<T>[] => {
+  const byStatus = new Map<string, T[]>();
+  for (const task of tasks) {
+    const list = byStatus.get(task.status.id) ?? [];
+    list.push(task);
+    byStatus.set(task.status.id, list);
+  }
+  return [...statuses]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .filter((status) => status.active || byStatus.has(status.id))
+    .map((status) => ({ status, tasks: byStatus.get(status.id) ?? [] }));
+};
+
+// Job list filters (URL state) ------------------------------------------------------------------------------
+
+export type JobFilters = {
+  q: string;
+  projectId: string | null;
+  statusId: string | null;
+  leaderId: string | null;
+  tagId: string | null;
+  /** Calendar days (organization timezone), inclusive. */
+  from: string | null;
+  to: string | null;
+  late: boolean;
+  archived: boolean;
+};
+
+export const emptyJobFilters: JobFilters = {
+  q: "",
+  projectId: null,
+  statusId: null,
+  leaderId: null,
+  tagId: null,
+  from: null,
+  to: null,
+  late: false,
+  archived: false
+};
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+export const jobFiltersFromSearch = (params: URLSearchParams): JobFilters => {
+  const id = (key: string) => {
+    const value = params.get(key);
+    return value && uuid.test(value) ? value : null;
+  };
+  const day = (key: string) => {
+    const value = params.get(key);
+    return value && dayPattern.test(value) ? value : null;
+  };
+  return {
+    q: (params.get("q") ?? "").slice(0, 120),
+    projectId: id("project"),
+    statusId: id("status"),
+    leaderId: id("leader"),
+    tagId: id("tag"),
+    from: day("from"),
+    to: day("to"),
+    late: params.get("late") === "1",
+    archived: params.get("archived") === "1"
+  };
+};
+
+export const jobFiltersToSearch = (filters: JobFilters) => {
+  const params = new URLSearchParams();
+  if (filters.q.trim()) params.set("q", filters.q.trim());
+  if (filters.projectId) params.set("project", filters.projectId);
+  if (filters.statusId) params.set("status", filters.statusId);
+  if (filters.leaderId) params.set("leader", filters.leaderId);
+  if (filters.tagId) params.set("tag", filters.tagId);
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.late) params.set("late", "1");
+  if (filters.archived) params.set("archived", "1");
+  return params;
+};
+
+export const activeFilterCount = (filters: JobFilters) =>
+  [filters.projectId, filters.statusId, filters.leaderId, filters.tagId, filters.from, filters.to].filter(Boolean)
+    .length + (filters.late ? 1 : 0) + (filters.archived ? 1 : 0);
+
+const addDay = (day: string) => {
+  const [year, month, date] = day.split("-").map(Number) as [number, number, number];
+  const next = new Date(Date.UTC(year, month - 1, date + 1));
+  return next.toISOString().slice(0, 10);
+};
+
+/** API query for GET /production/jobs: the day range becomes [from 00:00, to + 1 day 00:00) in the org timezone. */
+export const jobQueryFromFilters = (filters: JobFilters, timeZone: string) => ({
+  q: filters.q.trim() || undefined,
+  projectId: filters.projectId ?? undefined,
+  statusId: filters.statusId ?? undefined,
+  leaderId: filters.leaderId ?? undefined,
+  tagId: filters.tagId ?? undefined,
+  deadlineFrom: filters.from ? (zonedToIso(filters.from, "00:00", timeZone) ?? undefined) : undefined,
+  deadlineTo: filters.to ? (zonedToIso(addDay(filters.to), "00:00", timeZone) ?? undefined) : undefined,
+  late: filters.late ? "true" : undefined,
+  includeArchived: filters.archived ? "true" : undefined
+});
+
+// Timeline sentences ------------------------------------------------------------------------------------------
+
+export type Segment = { text: string; strong?: boolean; tone?: "danger" | "success" | "warning" };
+
+type Names = {
+  user: (id: string) => string | undefined;
+  process: (id: string) => string | undefined;
+  shift: (id: string) => string | undefined;
+  timeZone: string;
+};
+
+const str = (value: unknown) => (typeof value === "string" && value ? value : null);
+const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+const person = (id: unknown, names: Names, fallback = "người khác"): Segment => {
+  const value = str(id);
+  return { text: value ? (names.user(value) ?? fallback) : "không ai", strong: Boolean(value) };
+};
+
+const fieldLabels: Record<string, string> = {
+  qtyAssigned: "số tấm giao",
+  processId: "quy trình",
+  shiftId: "ca làm",
+  deadline: "deadline",
+  customValues: "trường tùy chỉnh"
+};
+
+const fieldValue = (key: string, value: unknown, names: Names) => {
+  if (key === "processId") return str(value) ? (names.process(str(value)!) ?? "quy trình khác") : "—";
+  if (key === "shiftId") return str(value) ? (names.shift(str(value)!) ?? "ca khác") : "—";
+  if (key === "deadline") return str(value) ? formatDateTime(str(value), names.timeZone, true) : "—";
+  if (key === "qtyAssigned") return num(value) !== null ? `${num(value)} tấm` : "—";
+  return null;
+};
+
+/**
+ * One history row as a Vietnamese sentence (actor prepended by the caller): status from → to with
+ * the Done quantity / OT hours / QC fail / override, quantity corrections, (re)assignment, field
+ * edits and creation (with the over-allocation warning stored in the log).
+ */
+export const describeTaskLog = (log: Pick<TaskLog, "action" | "fromValue" | "toValue" | "taskNumber">, names: Names): Segment[] => {
+  const from = log.fromValue ?? {};
+  const to = log.toValue ?? {};
+  const task: Segment = { text: `#${log.taskNumber}`, strong: true };
+  switch (log.action) {
+    case "CREATE": {
+      const kind = str(to.kind);
+      const segments: Segment[] = [
+        { text: kind === "FB_WRONG" ? "giao lại (feedback sai) task " : kind === "FB_EXTRA" ? "giao thêm (feedback) task " : "đã tạo task " },
+        task,
+        { text: " cho " },
+        person(to.assigneeId, names)
+      ];
+      if (num(to.qtyAssigned) !== null) segments.push({ text: ` · ${num(to.qtyAssigned)} tấm` });
+      if (str(to.qcId)) segments.push({ text: " · QC " }, person(to.qcId, names));
+      if (str(to.warning)) segments.push({ text: ` — ${str(to.warning)}`, tone: "warning" });
+      return segments;
+    }
+    case "STATUS": {
+      const segments: Segment[] = [
+        { text: "chuyển " },
+        task,
+        { text: " từ " },
+        { text: str(from.name) ?? "?", strong: true },
+        { text: " sang " },
+        { text: str(to.name) ?? "?", strong: true }
+      ];
+      if (num(to.qtyDone) !== null) segments.push({ text: ` · ${num(to.qtyDone)} tấm` });
+      if (num(to.otHours) !== null) segments.push({ text: ` · ${num(to.otHours)} giờ OT` });
+      if (to.qcFail === true) segments.push({ text: " · QC không đạt", tone: "danger" });
+      if (to.override === true) segments.push({ text: " · chuyển ngoài luồng", tone: "warning" });
+      return segments;
+    }
+    case "QTY":
+      return [
+        { text: "sửa số tấm hoàn thành của " },
+        task,
+        { text: ": " },
+        { text: `${num(from.qtyDone) ?? "?"} → ${num(to.qtyDone) ?? "?"} tấm`, strong: true }
+      ];
+    case "ASSIGN": {
+      const segments: Segment[] = [{ text: "giao lại " }, task];
+      if (str(from.assigneeId) !== str(to.assigneeId)) {
+        segments.push({ text: ": người làm " }, person(from.assigneeId, names), { text: " → " }, person(to.assigneeId, names));
+      }
+      if (str(from.qcId) !== str(to.qcId)) {
+        segments.push({ text: segments.length > 2 ? "; QC " : ": QC " }, person(from.qcId, names), { text: " → " }, person(to.qcId, names));
+      }
+      return segments;
+    }
+    case "NOTE":
+      return str(to.note) ? [{ text: "cập nhật ghi chú của " }, task] : [{ text: "xóa ghi chú của " }, task];
+    case "FIELD": {
+      const keys = Object.keys(to);
+      const parts = keys.map((key) => {
+        const label = fieldLabels[key] ?? key;
+        const before = fieldValue(key, from[key], names);
+        const after = fieldValue(key, to[key], names);
+        return before !== null && after !== null ? `${label} ${before} → ${after}` : label;
+      });
+      return [{ text: "sửa " }, task, { text: `: ${parts.join("; ")}` }];
+    }
+    default:
+      return [{ text: "cập nhật " }, task];
+  }
+};
+
+// Mentions ------------------------------------------------------------------------------------------------------
+
+/** "@abc" right before the caret (start of text or after whitespace) → { query: "abc", start }. */
+export const mentionAt = (text: string, caret: number) => {
+  const before = text.slice(0, caret);
+  const match = /(^|\s)@([\p{L}\p{N}_.-]{0,30})$/u.exec(before);
+  if (!match) return null;
+  return { query: match[2] ?? "", start: before.length - (match[2]?.length ?? 0) - 1 };
+};
+
+/** Replaces the "@query" at `start` with "@Name " and returns the new text and caret. */
+export const insertMention = (text: string, start: number, caret: number, name: string) => {
+  const inserted = `@${name} `;
+  return { text: text.slice(0, start) + inserted + text.slice(caret), caret: start + inserted.length };
+};
+
+/** Ids of the people still mentioned in the final text (a mention removed by editing is dropped). */
+export const mentionedIds = (text: string, picked: ReadonlyMap<string, string>) =>
+  [...picked].filter(([, name]) => text.includes(`@${name}`)).map(([id]) => id);

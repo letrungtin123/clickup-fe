@@ -185,7 +185,7 @@ const ConversationRow = memo(function ConversationRow({
       aria-label={label}
       className={({ isActive }) =>
         cn(
-          "group/row flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-foreground/80 outline-none transition-colors duration-150",
+          "group/row flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-foreground/80 outline-none transition-colors duration-150 pointer-coarse:h-10",
           "hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           unread && "font-semibold text-foreground",
           (muted || channel.archivedAt) && !isActive && "text-foreground-subtle",
@@ -216,7 +216,7 @@ const ConversationRow = memo(function ConversationRow({
 // Section actions ------------------------------------------------------------------------------------
 
 const actionButtonClass =
-  "flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-surface-hover aria-expanded:text-foreground [&_svg]:size-3.5";
+  "flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:size-8 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-surface-hover aria-expanded:text-foreground [&_svg]:size-3.5";
 
 /** "+" menu next to the Channels heading: create, browse, sort. */
 export const ChannelsSectionAction = () => {

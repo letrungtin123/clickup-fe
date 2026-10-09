@@ -4,6 +4,7 @@ import {
   House,
   Inbox,
   ListTodo,
+  MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -27,7 +28,9 @@ import {
   DirectMessagesSection,
   DirectMessagesSectionAction
 } from "@/features/chat/components/sidebar-sections";
+import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
 import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
+import { useProductionNavEntries } from "@/features/production/hooks";
 import { ProjectTree } from "@/features/projects/components/project-tree";
 import { useProjects } from "@/features/projects/hooks";
 import { useRealtimeStatus } from "@/lib/realtime/hooks";
@@ -45,7 +48,7 @@ const primaryNav: NavEntry[] = [
 
 const navItemClass = (active: boolean) =>
   cn(
-    "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] text-foreground/85 outline-none transition-colors duration-150",
+    "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] text-foreground/85 outline-none transition-colors duration-150 pointer-coarse:h-10",
     "hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&_svg]:size-4 [&_svg]:shrink-0",
     active && "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
   );
@@ -72,6 +75,7 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
   const { can } = usePermissions();
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
+  const productionNav = useProductionNavEntries();
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col bg-canvas">
@@ -116,6 +120,27 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
             </li>
           ))}
         </ul>
+
+        {/* Production (retouch) module: only for users holding a production role (PD-011). */}
+        {productionNav.length > 0 ? (
+          <SidebarSection title="Sản xuất">
+            <ul className="flex flex-col gap-px px-2">
+              {productionNav.map((entry) => (
+                <li key={entry.to}>
+                  <NavLink
+                    to={entry.to}
+                    end={entry.end ?? false}
+                    onClick={() => onNavigate?.()}
+                    className={({ isActive }) => navItemClass(isActive)}
+                  >
+                    <entry.icon aria-hidden="true" />
+                    {entry.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </SidebarSection>
+        ) : null}
 
         <SidebarSection
           title="Dự án"
@@ -204,7 +229,7 @@ const SectionActionButton = ({
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
-          className="flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent [&_svg]:size-3.5"
+          className="flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:size-8 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent [&_svg]:size-3.5"
         />
       }
     >
@@ -262,7 +287,7 @@ const RealtimeIndicator = () => {
 
 const railItemClass = (active: boolean) =>
   cn(
-    "flex size-9 items-center justify-center rounded-lg text-foreground-muted outline-none transition-colors duration-150 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[18px]",
+    "flex size-9 items-center justify-center rounded-lg text-foreground-muted outline-none transition-colors duration-150 pointer-coarse:size-10 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[18px]",
     active && "bg-brand-soft text-brand-text hover:bg-brand-soft hover:text-brand-text"
   );
 
@@ -280,6 +305,7 @@ const RailLink = ({ entry }: { entry: NavEntry }) => (
     >
       <entry.icon aria-hidden="true" />
       {entry.to === "/inbox" ? <InboxNavBadge variant="dot" /> : null}
+      {entry.to === "/c" ? <ChatNavBadge /> : null}
     </TooltipTrigger>
     <TooltipContent side="right">{entry.label}</TooltipContent>
   </Tooltip>
@@ -289,6 +315,7 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const projects = useProjects();
   const projectMatch = useMatch("/p/:projectId/*");
+  const productionNav = useProductionNavEntries();
 
   return (
     <div className="flex h-full w-full flex-col items-center gap-1 bg-canvas py-2">
@@ -317,6 +344,16 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
         {primaryNav.map((entry) => (
           <RailLink key={entry.to} entry={entry} />
         ))}
+        {/* Chat lives in sidebar sections on the full sidebar; the rail links to all conversations. */}
+        <RailLink entry={{ to: "/c", label: "Tin nhắn", icon: MessagesSquare }} />
+        {productionNav.length > 0 ? (
+          <>
+            <Separator className="my-1 w-6" />
+            {productionNav.map((entry) => (
+              <RailLink key={entry.to} entry={entry} />
+            ))}
+          </>
+        ) : null}
         <Separator className="my-1 w-6" />
         <ul
           aria-label="Dự án"

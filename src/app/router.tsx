@@ -19,7 +19,50 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /c                             all conversations (mobile chat entry)
  *   /c/:channelId                  channel / DM with ?thread=<rootId> and ?message=<id>
  *   /settings/{profile,members,roles}
+ *   /production                    production (retouch) overview — production roles only (PD-011)
+ *   /production/clients            clients (Account)
+ *   /production/settings/:page     production configuration (see features/production/nav.ts)
  */
+const productionSettingsPages: Record<string, NonNullable<RouteObject["lazy"]>> = {
+  members: async () => ({
+    Component: (await import("@/routes/production/settings/members")).ProductionMembersRoute
+  }),
+  teams: async () => ({
+    Component: (await import("@/routes/production/settings/teams")).ProductionTeamsRoute
+  }),
+  whitelist: async () => ({
+    Component: (await import("@/routes/production/settings/whitelist")).ProductionWhitelistRoute
+  }),
+  clients: async () => ({
+    Component: (await import("@/routes/production/clients")).ProductionClientsSettingsRoute
+  }),
+  projects: async () => ({
+    Component: (await import("@/routes/production/settings/projects")).ProductionProjectsRoute
+  }),
+  processes: async () => ({
+    Component: (await import("@/routes/production/settings/processes")).ProductionProcessesRoute
+  }),
+  shifts: async () => ({
+    Component: (await import("@/routes/production/settings/shifts")).ProductionShiftsRoute
+  }),
+  "credit-rules": async () => ({
+    Component: (await import("@/routes/production/settings/credit-rules")).ProductionCreditRulesRoute
+  }),
+  workflow: async () => ({
+    Component: (await import("@/routes/production/settings/workflow")).ProductionWorkflowRoute
+  }),
+  "custom-fields": async () => ({
+    Component: (await import("@/routes/production/settings/custom-fields"))
+      .ProductionCustomFieldsRoute
+  }),
+  tags: async () => ({
+    Component: (await import("@/routes/production/settings/tags")).ProductionTagsRoute
+  }),
+  general: async () => ({
+    Component: (await import("@/routes/production/settings/general")).ProductionGeneralRoute
+  })
+};
+
 export const routes: RouteObject[] = [
   {
     path: "/login",
@@ -87,6 +130,45 @@ export const routes: RouteObject[] = [
           {
             path: "c/:channelId",
             lazy: async () => ({ Component: (await import("@/routes/channel")).ChannelRoute })
+          },
+          {
+            path: "production",
+            lazy: async () => ({
+              Component: (await import("@/routes/production/layout")).ProductionLayoutRoute
+            }),
+            children: [
+              {
+                index: true,
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/overview")).ProductionOverviewRoute
+                })
+              },
+              {
+                path: "clients",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/clients")).ProductionClientsRoute
+                })
+              },
+              {
+                path: "settings",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/settings/layout"))
+                    .ProductionSettingsLayoutRoute
+                }),
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => ({
+                      Component: (await import("@/routes/production/settings/layout"))
+                        .ProductionSettingsIndexRoute
+                    })
+                  },
+                  ...Object.entries(productionSettingsPages).map(([path, lazy]) => ({ path, lazy })),
+                  { path: "*", element: <NotFoundRoute /> }
+                ]
+              },
+              { path: "*", element: <NotFoundRoute /> }
+            ]
           },
           {
             path: "settings",

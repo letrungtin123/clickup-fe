@@ -1,7 +1,6 @@
 import {
   closestCenter,
   DndContext,
-  PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -50,6 +49,7 @@ import type { List, Project } from "@/contracts/work";
 import { P } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
 import { getErrorMessage } from "@/lib/api/errors";
+import { createControlAwareSensors } from "@/lib/dnd-sensors";
 import { moveItem } from "@/lib/ordering";
 import { useUiStore } from "@/stores/ui-store";
 
@@ -71,6 +71,11 @@ type ArchiveTarget =
   { type: "project"; project: Project } | { type: "list"; project: Project; list: List };
 
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+
+/** Rows are links (whole-row overlay), so only real controls — "+", "…", rename input — opt out. */
+const { MouseSensor: TreeMouseSensor, TouchSensor: TreeTouchSensor } = createControlAwareSensors(
+  "button, input, textarea, [contenteditable='true'], [role='menuitem'], [data-no-drag]"
+);
 
 /** A drag ends with a pointerup on the moved row; swallow the click it produces so it does not navigate. */
 let suppressClicksUntil = 0;
@@ -134,7 +139,10 @@ export const ProjectTree = ({ onNavigate }: ProjectTreeProps) => {
   const activeProjectId = projectMatch?.params.projectId;
   const activeListId = listMatch?.params.listId;
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(TreeMouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TreeTouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } })
+  );
   const projects = useMemo(() => projectsQuery.data?.items ?? [], [projectsQuery.data]);
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -671,7 +679,7 @@ const ListNode = ({
 // --- Row primitives -----------------------------------------------------------------------------------
 
 const rowIconButtonClass =
-  "relative z-[1] flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-border/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-border/70 data-popup-open:text-foreground [&_svg]:size-3.5";
+  "relative z-[1] flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:size-8 hover:bg-border/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-border/70 data-popup-open:text-foreground [&_svg]:size-3.5";
 
 const RowIconButton = ({
   label,
@@ -757,7 +765,7 @@ const TreeRow = ({
     onClickCapture={suppressClickAfterDrag}
     {...(renaming ? {} : dragListeners)}
     className={cn(
-      "group/row relative flex h-8 items-center gap-1.5 rounded-md pr-1 text-[13px] text-foreground/85 outline-none select-none",
+      "group/row relative flex h-8 items-center gap-1.5 rounded-md pr-1 text-[13px] text-foreground/85 outline-none select-none pointer-coarse:h-10",
       "transition-[background-color,color,box-shadow] duration-150 hover:bg-surface-hover hover:text-foreground",
       "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       level === 1 ? "pl-2" : "pl-7",

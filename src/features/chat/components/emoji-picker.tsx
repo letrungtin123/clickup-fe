@@ -5,6 +5,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { useTouchPrimary } from "@/hooks/use-pointer";
 
 /** Quick reactions offered in the message toolbar. */
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"] as const;
@@ -12,10 +13,13 @@ export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"]
 /** Full emoji picker (frimousse, Vietnamese labels, searchable, keyboard navigable). */
 export const EmojiPickerPanel = ({
   onSelect,
-  className
+  className,
+  autoFocusSearch = true
 }: {
   onSelect: (emoji: string) => void;
   className?: string;
+  /** Off on touch: focusing the search would raise the keyboard over the picker. */
+  autoFocusSearch?: boolean;
 }) => (
   <Frimousse.Root
     locale="vi"
@@ -24,7 +28,7 @@ export const EmojiPickerPanel = ({
     className={cn("isolate flex h-[340px] w-[18.5rem] flex-col", className)}
   >
     <Frimousse.Search
-      autoFocus
+      autoFocus={autoFocusSearch}
       placeholder="Tìm biểu cảm…"
       aria-label="Tìm biểu cảm"
       className="mx-2 mt-2 h-8 appearance-none rounded-md border bg-background px-2.5 text-sm outline-none placeholder:text-foreground-subtle focus-visible:ring-2 focus-visible:ring-ring"
@@ -87,6 +91,7 @@ export const EmojiPickerPopover = ({
   onOpenChange?: (open: boolean) => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const touch = useTouchPrimary();
   const change = (next: boolean) => {
     setOpen(next);
     onOpenChange?.(next);
@@ -109,6 +114,7 @@ export const EmojiPickerPopover = ({
       <PopoverContent side={side} align={align} className="w-auto overflow-hidden p-0">
         {open ? (
           <EmojiPickerPanel
+            autoFocusSearch={!touch}
             onSelect={(emoji) => {
               onSelect(emoji);
               change(false);

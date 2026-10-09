@@ -1,13 +1,17 @@
 import { cn } from "cn";
-import { Menu, Search } from "lucide-react";
+import { Inbox, Menu, MessagesSquare, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Suspense, useEffect } from "react";
-import { Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation, useMatch } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useSessionContext } from "@/features/auth/hooks";
+import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
+import { useChatUnreadLabel } from "@/features/chat/hooks/use-chat-unread-label";
 import { CommandPalette } from "@/features/command/command-palette";
+import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
+import { useUnreadNotificationCount } from "@/features/notifications/hooks";
 import { NewProjectDialog } from "@/features/projects/components/new-project-dialog";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useUiStore } from "@/stores/ui-store";
@@ -42,9 +46,13 @@ export const AppShell = () => {
 
   const closeOverlay = () => setOverlayOpen(false);
   const railOnly = breakpoint === "tablet" || (breakpoint === "desktop" && collapsed);
+  const mobile = breakpoint === "mobile";
+  // A conversation brings its own header (back to /c); the global bar would only eat chat space.
+  const inConversation = useMatch("/c/:channelId") !== null;
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
+    // Height follows the on-screen keyboard (see app/ViewportSync) so bottom composers stay visible.
+    <div className="flex h-[calc(100dvh-var(--keyboard-inset))] w-full overflow-hidden bg-background text-foreground">
       <a
         href="#main"
         className="sr-only z-[60] rounded-md bg-surface-raised px-3 py-2 text-sm shadow-lg focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
@@ -111,7 +119,7 @@ export const AppShell = () => {
           <SheetContent
             side="left"
             showCloseButton={false}
-            className="w-[86vw] max-w-[20rem] gap-0 p-0"
+            className="w-[86vw] max-w-[20rem] gap-0 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
           >
             <SheetTitle className="sr-only">Điều hướng</SheetTitle>
             <SheetDescription className="sr-only">Dự án, kênh và cài đặt</SheetDescription>
@@ -121,11 +129,15 @@ export const AppShell = () => {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {breakpoint === "mobile" ? <MobileTopBar onOpenNav={() => setOverlayOpen(true)} /> : null}
+        {mobile && !inConversation ? <MobileTopBar onOpenNav={() => setOverlayOpen(true)} /> : null}
         <main
           id="main"
           tabIndex={-1}
-          className="relative flex min-h-0 flex-1 flex-col overflow-hidden outline-none"
+          className={cn(
+            "relative flex min-h-0 flex-1 flex-col overflow-hidden outline-none",
+            // Phones: keep the last row / the composer clear of the home indicator.
+            mobile && "pb-(--safe-bottom)"
+          )}
         >
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
@@ -145,26 +157,62 @@ export const AppShell = () => {
   );
 };
 
+/** Phone header: navigation drawer, workspace, search, chat and inbox (with unread badges). */
 const MobileTopBar = ({ onOpenNav }: { onOpenNav: () => void }) => {
   const session = useSessionContext();
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
+  const inboxUnread = useUnreadNotificationCount().data ?? 0;
+  const chatLabel = useChatUnreadLabel("Tin nhắn");
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-canvas px-2 pt-[env(safe-area-inset-top)]">
-      <Button variant="ghost" size="icon" onClick={onOpenNav} aria-label="Mở điều hướng">
-        <Menu />
-      </Button>
-      <OrgMark name={session.organization.name} className="size-6 text-xs" />
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-        {session.organization.name}
-      </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setCommandOpen(true)}
-        aria-label="Tìm kiếm"
-      >
-        <Search />
-      </Button>
+    <header className="shrink-0 border-b bg-canvas pt-[env(safe-area-inset-top)] pr-[max(0.25rem,env(safe-area-inset-right))] pl-[max(0.25rem,env(safe-area-inset-left))]">
+      <div className="flex h-12 items-center gap-0.5">
+        <Button variant="ghost" size="icon" onClick={onOpenNav} aria-label="Mở điều hướng">
+          <Menu />
+        </Button>
+        <Link
+          to="/"
+          className="ml-0.5 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`${session.organization.name} — Trang chủ`}
+        >
+          <OrgMark name={session.organization.name} className="size-6 text-xs" />
+          <span className="min-w-0 truncate text-sm font-semibold">
+            {session.organization.name}
+          </span>
+        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setCommandOpen(true)}
+          aria-label="Tìm kiếm"
+        >
+          <Search />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          nativeButton={false}
+          render={<Link to="/c" aria-label={chatLabel} />}
+        >
+          <MessagesSquare />
+          <ChatNavBadge />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          nativeButton={false}
+          render={
+            <Link
+              to="/inbox"
+              aria-label={inboxUnread > 0 ? `Hộp thư, ${inboxUnread} chưa đọc` : "Hộp thư"}
+            />
+          }
+        >
+          <Inbox />
+          <InboxNavBadge variant="dot" />
+        </Button>
+      </div>
     </header>
   );
 };

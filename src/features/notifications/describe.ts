@@ -3,6 +3,7 @@ import { vi } from "date-fns/locale";
 import {
   AlarmClock,
   AtSign,
+  Bell,
   CircleCheckBig,
   FolderPlus,
   Hash,
@@ -193,6 +194,19 @@ export const describeNotification = (notification: Notification): NotificationDe
         excerpt: null,
         icon: Hash,
         tone: "brand"
+      };
+    default:
+      // Types without a dedicated sentence yet (e.g. a module adding new types): never crash the
+      // inbox — show the server-provided title until a specific case is added above.
+      return {
+        segments:
+          notification.actor && notification.title && notification.title !== actor.text
+            ? [actor, { text: ` · ${notification.title}` }]
+            : [{ text: notification.title || actor.text, strong: Boolean(notification.actor) }],
+        subject: null,
+        excerpt,
+        icon: Bell,
+        tone: "muted"
       };
   }
 };

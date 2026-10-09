@@ -130,7 +130,7 @@ const CreateTaskForm = ({
         }
       }}
     >
-      <DialogHeader className="border-b px-4 pt-4 pb-3">
+      <DialogHeader className="border-b px-4 pt-4 pb-3 pr-12">
         <DialogTitle className="flex items-center gap-2 text-sm">
           <span className="text-foreground-muted">{project.name}</span>
           <span className="text-foreground-subtle">/</span>

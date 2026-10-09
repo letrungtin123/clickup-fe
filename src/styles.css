@@ -301,6 +301,11 @@
     background: var(--brand-soft);
   }
 
+  /* Touch: no grey flash on tap — every control draws its own pressed/hover state. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   :focus-visible {
     outline: 2px solid var(--brand-ring);
     outline-offset: 2px;
@@ -324,6 +329,37 @@
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Mobile: safe areas, on-screen keyboard, touch text fields                                       */
+/* ---------------------------------------------------------------------------------------------- */
+
+:root {
+  /* Home-indicator inset for bottom bars/composers; 0 while the keyboard covers it (ViewportSync). */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Height the on-screen keyboard covers (iOS); kept in sync by app/ViewportSync.tsx. */
+  --keyboard-inset: 0px;
+}
+
+:root[data-keyboard="open"] {
+  --safe-bottom: 0px;
+}
+
+/*
+ * iOS Safari zooms the whole page when a focused text field renders below 16px. Touch devices get
+ * 16px fields (unlayered on purpose: beats the size utilities on dense desktop inputs/editors).
+ */
+@media (pointer: coarse) {
+  :root
+    :is(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="file"], [type="color"]),
+      textarea,
+      select,
+      [contenteditable="true"]
+    ) {
+    font-size: max(1rem, 1em);
   }
 }
 

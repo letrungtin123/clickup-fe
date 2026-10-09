@@ -33,11 +33,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatMessage, ReactionSummary } from "@/contracts/chat";
+import { useLongPress } from "@/hooks/use-long-press";
+import { useTouchPrimary } from "@/hooks/use-pointer";
 
 import type { DisplayMessage } from "../model/timeline";
 import { systemSentence } from "../model/system-text";
 import { timeAgo } from "../model/time";
 import { EmojiPickerPopover, QUICK_REACTIONS } from "./emoji-picker";
+import { MessageActionSheet } from "./message-action-sheet";
 import { MessageAttachments } from "./message-attachments";
 import { useMessageActions } from "./message-context";
 
@@ -64,18 +67,25 @@ export const MessageItem = memo(function MessageItem({
   const actions = useMessageActions();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const pinned = menuOpen || pickerOpen;
+  // Touch: no hover toolbar (a tap would pop it over the text); a long press opens the action sheet.
+  const touch = useTouchPrimary();
+  const longPressable =
+    touch && message.kind !== "system" && !message.pending && actions.editingId !== message.id;
+  const longPress = useLongPress(() => setSheetOpen(true), { enabled: longPressable });
   // The toolbar is mounted only for the hovered / focused row (keeps the tab order and DOM small).
   const [active, setActive] = useState(false);
   const rowProps = {
     tabIndex: -1,
     "data-chat-row": true,
-    onMouseEnter: () => setActive(true),
-    onMouseLeave: () => setActive(false),
-    onFocus: () => setActive(true),
+    onMouseEnter: touch ? undefined : () => setActive(true),
+    onMouseLeave: touch ? undefined : () => setActive(false),
+    onFocus: touch ? undefined : () => setActive(true),
     onBlur: (event: React.FocusEvent<HTMLDivElement>) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setActive(false);
-    }
+    },
+    ...longPress
   };
 
   if (message.kind === "system") {
@@ -95,53 +105,34 @@ export const MessageItem = memo(function MessageItem({
   const showHeader = !grouped;
 
   return (
-    <div
-      data-message-id={message.id}
-      {...rowProps}
-      className={cn(
-        "group/message relative flex gap-2.5 px-4 transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:px-5",
-        showHeader ? "pt-2 pb-0.5" : "py-0.5",
-        !editing && "hover:bg-surface-hover/60",
-        (pinned || editing) && "bg-surface-hover/60",
-        highlighted && "bg-warning-soft hover:bg-warning-soft",
-        fresh &&
-          "animate-in duration-200 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
-      )}
-    >
-      <div className="w-9 shrink-0">
-        {showHeader ? (
-          message.author ? (
-            <UserAvatar user={message.author} size="lg" className="size-9" />
-          ) : null
-        ) : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <time
-                  dateTime={message.createdAt}
-                  className="block pt-0.5 text-right text-[10px] leading-5 text-foreground-subtle tabular-nums opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"
-                />
-              }
-            >
-              {shortTime(message.createdAt)}
-            </TooltipTrigger>
-            <TooltipContent>{fullDate(message.createdAt)}</TooltipContent>
-          </Tooltip>
+    <>
+      <div
+        data-message-id={message.id}
+        {...rowProps}
+        className={cn(
+          "group/message relative flex gap-2.5 px-4 transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:px-5",
+          showHeader ? "pt-2 pb-0.5" : "py-0.5",
+          !editing && "hover:bg-surface-hover/60",
+          (pinned || editing || sheetOpen) && "bg-surface-hover/60",
+          // Long press belongs to the action sheet, not to text selection / the iOS callout.
+          longPressable && "select-none [-webkit-touch-callout:none]",
+          highlighted && "bg-warning-soft hover:bg-warning-soft",
+          fresh &&
+            "animate-in duration-200 fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none"
         )}
-      </div>
-
-      <div className={cn("min-w-0 flex-1", pending?.status === "sending" && "opacity-70")}>
-        {showHeader ? (
-          <div className="flex items-baseline gap-2">
-            <span className="truncate text-sm font-semibold text-foreground">
-              {message.author?.displayName ?? "Người dùng"}
-            </span>
+      >
+        <div className="w-9 shrink-0">
+          {showHeader ? (
+            message.author ? (
+              <UserAvatar user={message.author} size="lg" className="size-9" />
+            ) : null
+          ) : (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <time
                     dateTime={message.createdAt}
-                    className="shrink-0 text-xs text-foreground-subtle tabular-nums"
+                    className="block pt-0.5 text-right text-[10px] leading-5 text-foreground-subtle tabular-nums opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"
                   />
                 }
               >
@@ -149,71 +140,108 @@ export const MessageItem = memo(function MessageItem({
               </TooltipTrigger>
               <TooltipContent>{fullDate(message.createdAt)}</TooltipContent>
             </Tooltip>
-          </div>
-        ) : null}
+          )}
+        </div>
 
-        {editing ? (
-          <InlineEditor message={message} />
-        ) : message.isDeleted ? (
-          <p className="flex items-center gap-1.5 py-0.5 text-[13px] text-foreground-subtle italic">
-            <Ban className="size-3.5" aria-hidden="true" />
-            Tin nhắn này đã bị xóa.
-          </p>
-        ) : (
-          <div className="text-sm [&_.rt-content]:inline [&_.rt-content>p:last-child]:inline">
-            <RichTextView
-              doc={message.body}
-              selfId={actions.myId}
-              className="[&_p]:leading-relaxed"
-            />
-            {message.isEdited ? (
+        <div className={cn("min-w-0 flex-1", pending?.status === "sending" && "opacity-70")}>
+          {showHeader ? (
+            <div className="flex items-baseline gap-2">
+              <span className="truncate text-sm font-semibold text-foreground">
+                {message.author?.displayName ?? "Người dùng"}
+              </span>
               <Tooltip>
                 <TooltipTrigger
-                  render={<span className="ml-1 text-[11px] text-foreground-subtle" />}
+                  render={
+                    <time
+                      dateTime={message.createdAt}
+                      className="shrink-0 text-xs text-foreground-subtle tabular-nums"
+                    />
+                  }
                 >
-                  (đã sửa)
+                  {shortTime(message.createdAt)}
                 </TooltipTrigger>
-                <TooltipContent>
-                  {message.editedAt ? `Đã sửa ${fullDate(message.editedAt)}` : "Đã sửa"}
-                </TooltipContent>
+                <TooltipContent>{fullDate(message.createdAt)}</TooltipContent>
               </Tooltip>
-            ) : null}
-          </div>
-        )}
+            </div>
+          ) : null}
 
-        {!message.isDeleted && message.attachments.length > 0 ? (
-          <MessageAttachments attachments={message.attachments} compact={actions.inThread} />
-        ) : null}
+          {editing ? (
+            <InlineEditor message={message} />
+          ) : message.isDeleted ? (
+            <p className="flex items-center gap-1.5 py-0.5 text-[13px] text-foreground-subtle italic">
+              <Ban className="size-3.5" aria-hidden="true" />
+              Tin nhắn này đã bị xóa.
+            </p>
+          ) : (
+            <div className="text-sm [&_.rt-content]:inline [&_.rt-content>p:last-child]:inline">
+              <RichTextView
+                doc={message.body}
+                selfId={actions.myId}
+                className="[&_p]:leading-relaxed"
+              />
+              {message.isEdited ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={<span className="ml-1 text-[11px] text-foreground-subtle" />}
+                  >
+                    (đã sửa)
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {message.editedAt ? `Đã sửa ${fullDate(message.editedAt)}` : "Đã sửa"}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
+          )}
 
-        {message.reactions.length > 0 ? (
-          <ReactionBar
-            message={message}
-            canReact={canInteract}
-            showAdd={active || pinned}
-            onPickerOpenChange={setPickerOpen}
-          />
-        ) : null}
+          {!message.isDeleted && message.attachments.length > 0 ? (
+            <MessageAttachments attachments={message.attachments} compact={actions.inThread} />
+          ) : null}
 
-        {!actions.inThread && message.replyCount > 0 ? <ThreadSummary message={message} /> : null}
+          {message.reactions.length > 0 ? (
+            <ReactionBar
+              message={message}
+              canReact={canInteract}
+              showAdd={active || pinned}
+              onPickerOpenChange={setPickerOpen}
+            />
+          ) : null}
 
-        {pending ? <PendingStatus message={message} /> : null}
-      </div>
+          {!actions.inThread && message.replyCount > 0 ? <ThreadSummary message={message} /> : null}
 
-      {(active || pinned) &&
-      !editing &&
-      (canInteract || canEdit || canDelete || (!pending && !message.isDeleted)) ? (
-        <div
-          className="absolute -top-3.5 right-4 z-10 flex animate-in items-center gap-0.5 rounded-lg border bg-surface-raised p-0.5 shadow-md duration-100 fade-in-0 motion-reduce:animate-none"
-          role="toolbar"
-          aria-label="Thao tác với tin nhắn"
-        >
-          {canInteract ? (
-            <>
-              {QUICK_REACTIONS.slice(0, 3).map((emoji) => (
-                <ToolbarButton
-                  key={emoji}
-                  label={`Thả ${emoji}`}
-                  onClick={() =>
+          {pending ? <PendingStatus message={message} /> : null}
+        </div>
+
+        {(active || pinned) &&
+        !editing &&
+        (canInteract || canEdit || canDelete || (!pending && !message.isDeleted)) ? (
+          <div
+            className="absolute -top-3.5 right-4 z-10 flex animate-in items-center gap-0.5 rounded-lg border bg-surface-raised p-0.5 shadow-md duration-100 fade-in-0 motion-reduce:animate-none"
+            role="toolbar"
+            aria-label="Thao tác với tin nhắn"
+          >
+            {canInteract ? (
+              <>
+                {QUICK_REACTIONS.slice(0, 3).map((emoji) => (
+                  <ToolbarButton
+                    key={emoji}
+                    label={`Thả ${emoji}`}
+                    onClick={() =>
+                      actions.toggleReaction(
+                        message,
+                        emoji,
+                        !message.reactions.some(
+                          (reaction) => reaction.emoji === emoji && reaction.reactedByMe
+                        )
+                      )
+                    }
+                  >
+                    <span className="text-[15px] leading-none">{emoji}</span>
+                  </ToolbarButton>
+                ))}
+                <EmojiPickerPopover
+                  onOpenChange={setPickerOpen}
+                  onSelect={(emoji) =>
                     actions.toggleReaction(
                       message,
                       emoji,
@@ -222,81 +250,88 @@ export const MessageItem = memo(function MessageItem({
                       )
                     )
                   }
-                >
-                  <span className="text-[15px] leading-none">{emoji}</span>
-                </ToolbarButton>
-              ))}
-              <EmojiPickerPopover
-                onOpenChange={setPickerOpen}
-                onSelect={(emoji) =>
-                  actions.toggleReaction(
-                    message,
-                    emoji,
-                    !message.reactions.some(
-                      (reaction) => reaction.emoji === emoji && reaction.reactedByMe
-                    )
-                  )
-                }
-              />
-            </>
-          ) : null}
-          {!actions.inThread &&
-          !pending &&
-          message.seq !== null &&
-          !message.isDeleted &&
-          actions.capabilities.canRead ? (
-            <ToolbarButton label="Trả lời trong chuỗi" onClick={() => actions.openThread(message)}>
-              <MessageSquareReply className="size-4" />
-            </ToolbarButton>
-          ) : null}
-          {canEdit ? (
-            <ToolbarButton label="Sửa tin nhắn" onClick={() => actions.startEdit(message)}>
-              <Pencil className="size-3.5" />
-            </ToolbarButton>
-          ) : null}
-          {!pending ? (
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger
-                aria-label="Thêm thao tác"
-                className="flex size-7 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-surface-hover"
+                />
+              </>
+            ) : null}
+            {!actions.inThread &&
+            !pending &&
+            message.seq !== null &&
+            !message.isDeleted &&
+            actions.capabilities.canRead ? (
+              <ToolbarButton
+                label="Trả lời trong chuỗi"
+                onClick={() => actions.openThread(message)}
               >
-                <MoreHorizontal className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => actions.copyLink(message)}>
-                  <Copy />
-                  Sao chép liên kết
-                </DropdownMenuItem>
-                {!actions.inThread && message.seq !== null && !message.isDeleted ? (
-                  <DropdownMenuItem onClick={() => actions.openThread(message)}>
-                    <MessageSquareReply />
-                    Trả lời trong chuỗi
+                <MessageSquareReply className="size-4" />
+              </ToolbarButton>
+            ) : null}
+            {canEdit ? (
+              <ToolbarButton label="Sửa tin nhắn" onClick={() => actions.startEdit(message)}>
+                <Pencil className="size-3.5" />
+              </ToolbarButton>
+            ) : null}
+            {!pending ? (
+              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                <DropdownMenuTrigger
+                  aria-label="Thêm thao tác"
+                  className="flex size-7 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-surface-hover"
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => actions.copyLink(message)}>
+                    <Copy />
+                    Sao chép liên kết
                   </DropdownMenuItem>
-                ) : null}
-                {canEdit ? (
-                  <DropdownMenuItem onClick={() => actions.startEdit(message)}>
-                    <Pencil />
-                    Sửa tin nhắn
-                  </DropdownMenuItem>
-                ) : null}
-                {canDelete ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => actions.requestDelete(message)}
-                    >
-                      <Trash2 />
-                      Xóa tin nhắn
+                  {!actions.inThread && message.seq !== null && !message.isDeleted ? (
+                    <DropdownMenuItem onClick={() => actions.openThread(message)}>
+                      <MessageSquareReply />
+                      Trả lời trong chuỗi
                     </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
+                  ) : null}
+                  {canEdit ? (
+                    <DropdownMenuItem onClick={() => actions.startEdit(message)}>
+                      <Pencil />
+                      Sửa tin nhắn
+                    </DropdownMenuItem>
+                  ) : null}
+                  {canDelete ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => actions.requestDelete(message)}
+                      >
+                        <Trash2 />
+                        Xóa tin nhắn
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {/* Sibling of the row (not a child): portal events must not bubble into the row's handlers. */}
+      {longPressable ? (
+        <MessageActionSheet
+          message={message}
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          abilities={{
+            canReact: canInteract,
+            canReply:
+              !actions.inThread &&
+              message.seq !== null &&
+              !message.isDeleted &&
+              actions.capabilities.canRead,
+            canEdit,
+            canDelete
+          }}
+        />
       ) : null}
-    </div>
+    </>
   );
 });
 

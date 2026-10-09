@@ -202,13 +202,14 @@ const Lightbox = ({
   return (
     <Dialog open={index !== null} onOpenChange={(open) => !open && onIndexChange(null)}>
       <DialogContent
-        className="flex max-h-[92vh] w-auto max-w-[min(96vw,72rem)] flex-col gap-3 bg-surface p-3 sm:max-w-[min(96vw,72rem)]"
+        mobileLayout="center"
+        className="flex max-h-[92dvh] w-auto max-w-[min(96vw,72rem)] flex-col gap-3 bg-surface p-3 sm:max-w-[min(96vw,72rem)]"
         onKeyDown={(event) => {
           if (event.key === "ArrowRight") step(1);
           if (event.key === "ArrowLeft") step(-1);
         }}
       >
-        <div className="flex items-center gap-2 pr-8">
+        <div className="flex items-center gap-2 pr-8 pointer-coarse:pr-10">
           <DialogTitle className="min-w-0 flex-1 truncate text-sm">{current?.fileName}</DialogTitle>
           <DialogDescription className="sr-only">
             Ảnh đính kèm{images.length > 1 ? ` ${(index ?? 0) + 1} trên ${images.length}` : ""}

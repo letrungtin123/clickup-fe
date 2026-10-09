@@ -233,6 +233,21 @@ export const MessageList = memo(function MessageList({
     scrollToBottom();
   }, [hasNewer, rows.length, scrollToBottom, totalSize]);
 
+  // …and while the viewport shrinks: the on-screen keyboard opening (phones) or the composer
+  // growing would otherwise slide the newest messages under the composer.
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    let height = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (element.clientHeight === height) return;
+      height = element.clientHeight;
+      if (initialised.current && stick.current && !hasNewer) scrollToBottom();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasNewer, scrollToBottom]);
+
   // Track arrivals at the live end: subtle enter motion + "new messages" pill when scrolled up.
   useEffect(() => {
     if (!initialised.current) return;

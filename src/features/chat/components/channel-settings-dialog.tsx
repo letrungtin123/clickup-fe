@@ -103,8 +103,11 @@ export const ChannelSettingsDialog = ({
   const direct = isDirectKind(channel.kind);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(86vh,680px)] flex-col gap-0 p-0 sm:max-w-xl">
-        <DialogHeader className="gap-1 border-b px-5 pt-4 pb-3">
+      <DialogContent
+        mobileLayout="fullscreen"
+        className="flex h-[min(86vh,680px)] flex-col gap-0 p-0 sm:max-w-xl"
+      >
+        <DialogHeader className="gap-1 border-b px-5 pt-4 pb-3 pr-12">
           <DialogTitle className="flex items-center gap-2 text-base">
             {direct ? (
               <Users className="size-4 text-foreground-muted" aria-hidden="true" />

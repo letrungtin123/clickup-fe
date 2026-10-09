@@ -74,7 +74,7 @@ export const WorkflowEditorDialog = ({ open, onOpenChange, project, list }: Prop
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 p-0 sm:max-w-xl">
-        <DialogHeader className="gap-3 border-b px-4 pt-4 pb-3">
+        <DialogHeader className="gap-3 border-b px-4 pt-4 pb-3 pr-12">
           <DialogTitle>Quy trình trạng thái</DialogTitle>
           <DialogDescription>
             Trạng thái dùng cho các nhóm, cột bảng và việc hoàn thành. Danh sách có thể dùng quy trình riêng hoặc kế thừa từ dự án.
@@ -346,14 +346,14 @@ const StatusDraftRow = ({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "flex items-center gap-2 rounded-lg border bg-surface px-2 py-1.5",
+        "flex items-center gap-1.5 rounded-lg border bg-surface px-2 py-1.5 sm:gap-2",
         isDragging && "relative z-10 shadow-lg ring-1 ring-brand/30"
       )}
     >
       <button
         type="button"
         aria-label={`Kéo để sắp xếp ${draft.name || "trạng thái"}`}
-        className="inline-flex size-6 cursor-grab items-center justify-center rounded text-foreground-subtle outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+        className="inline-flex size-6 cursor-grab touch-none items-center justify-center rounded text-foreground-subtle outline-none pointer-coarse:h-9 hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
@@ -362,7 +362,7 @@ const StatusDraftRow = ({
       <Popover>
         <PopoverTrigger
           aria-label="Màu trạng thái"
-          className={cn(toneClass(draft.color), "inline-flex size-6 items-center justify-center rounded-md outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring")}
+          className={cn(toneClass(draft.color), "inline-flex size-6 shrink-0 items-center justify-center rounded-md outline-none pointer-coarse:size-8 hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring")}
         >
           <StatusIcon status={{ color: draft.color, category: draft.category }} size="lg" />
         </PopoverTrigger>
@@ -377,10 +377,10 @@ const StatusDraftRow = ({
         aria-label="Tên trạng thái"
         autoFocus={!draft.id && !draft.name}
         onChange={(event) => onChange({ name: event.target.value })}
-        className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-sm outline-none focus-visible:bg-surface-hover"
+        className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-sm outline-none pointer-coarse:h-9 focus-visible:bg-surface-hover"
       />
       <Select value={draft.category} onValueChange={(value) => onChange({ category: value as Category })}>
-        <SelectTrigger size="sm" className="w-32" aria-label="Loại trạng thái">
+        <SelectTrigger size="sm" className="w-28 shrink-0 sm:w-32" aria-label="Loại trạng thái">
           <SelectValue>{categoryOptions.find((option) => option.value === draft.category)?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent>

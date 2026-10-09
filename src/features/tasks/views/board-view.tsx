@@ -2,8 +2,6 @@ import {
   DndContext,
   DragOverlay,
   MeasuringStrategy,
-  PointerSensor,
-  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -32,7 +30,14 @@ import { InlineEditorHost } from "../components/inline-editor-host";
 import { QuickAdd } from "../components/quick-add";
 import { StatusIcon } from "../components/status-icon";
 import { AssigneesCell, DueCell, PriorityCell, TaskCounts } from "../components/task-cells";
-import { dropIndicatorFrom, groupDroppableId, taskCollisionDetection, type DragData } from "../dnd";
+import {
+  dropIndicatorFrom,
+  groupDroppableId,
+  TaskMouseSensor,
+  TaskTouchSensor,
+  taskCollisionDetection,
+  type DragData
+} from "../dnd";
 import { filtersToQuery, hasNarrowingFilters } from "../filters";
 import { useCreateTask, useMoveTask, useTaskPages, useWorkflow } from "../hooks";
 import { useInlineEditor } from "../inline-editor-context";
@@ -74,8 +79,10 @@ const BoardView = ({ project, list, openTask }: TaskViewProps) => {
   const [activeTask, setActiveTask] = useState<TaskSummary | null>(null);
   const setDropTarget = useDropStore((state) => state.setTarget);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
+    // Mouse + touch (not Pointer): a finger scrolling the list must never start a drag; touch drags
+    // need a short press instead.
+    useSensor(TaskMouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TaskTouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
   );
 
   const onDragStart = (event: DragStartEvent) => {
@@ -128,7 +135,7 @@ const BoardView = ({ project, list, openTask }: TaskViewProps) => {
         onDragCancel={reset}
       >
         <div
-          className="flex h-full snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pt-3 pb-4 sm:snap-none md:px-6"
+          className="flex h-full snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pt-3 pb-4 sm:snap-none md:px-6"
           aria-label="Bảng công việc"
         >
           {statuses.map((status) => (
@@ -265,7 +272,7 @@ const BoardColumn = memo(function BoardColumn({
               setAdding(true);
               requestAnimationFrame(() => virtualizer.scrollToIndex(Math.max(0, items.length - 1), { align: "end" }));
             }}
-            className="ml-auto inline-flex size-6 items-center justify-center rounded-md text-foreground-subtle outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="ml-auto inline-flex size-6 items-center justify-center rounded-md text-foreground-subtle outline-none pointer-coarse:size-9 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Plus className="size-3.5" />
           </button>
@@ -418,7 +425,7 @@ const BoardCard = memo(function BoardCard({
             event.stopPropagation();
             openEditor?.({ kind: "menu", task, anchor: event.currentTarget, actions: menuActions(task) });
           }}
-          className="absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-md bg-surface/80 text-foreground-subtle opacity-0 outline-none group-hover/card:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-md bg-surface/80 text-foreground-subtle opacity-0 outline-none group-hover/card:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:top-1 pointer-coarse:right-1 pointer-coarse:size-8 pointer-coarse:opacity-100"
         >
           <MoreHorizontal className="size-4" />
         </button>

@@ -66,7 +66,7 @@ const ToolButton = ({
           onMouseDown={(event) => event.preventDefault()}
           onClick={onClick}
           className={cn(
-            "inline-flex size-7 items-center justify-center rounded-md text-foreground-muted transition-colors duration-100 outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5",
+            "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-muted transition-colors duration-100 outline-none pointer-coarse:size-9 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5",
             active && "bg-brand-soft text-brand-text hover:bg-brand-soft hover:text-brand-text"
           )}
         />
@@ -205,7 +205,7 @@ const LinkButton = ({ editor, active, disabled }: { editor: Editor; active: bool
               disabled={disabled}
               onMouseDown={(event) => event.preventDefault()}
               className={cn(
-                "inline-flex size-7 items-center justify-center rounded-md text-foreground-muted transition-colors duration-100 outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5",
+                "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-muted transition-colors duration-100 outline-none pointer-coarse:size-9 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5",
                 active && "bg-brand-soft text-brand-text hover:bg-brand-soft hover:text-brand-text"
               )}
             />

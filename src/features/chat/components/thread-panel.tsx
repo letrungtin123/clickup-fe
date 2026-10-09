@@ -133,7 +133,7 @@ export const ThreadPanel = ({
       role="dialog"
       aria-modal="true"
       aria-label="Chuỗi trả lời"
-      className="fixed inset-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top)]"
+      className="fixed inset-x-0 top-0 bottom-(--keyboard-inset) z-50 flex flex-col bg-background pt-[env(safe-area-inset-top)] pb-(--safe-bottom)"
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
@@ -204,6 +204,20 @@ const ThreadBody = ({
     const timer = setTimeout(() => setHighlight(null), 2400);
     return () => clearTimeout(timer);
   }, [highlight]);
+  // Keyboard opening / composer growing shrinks the list: keep the newest reply in view.
+  const loaded = thread !== undefined;
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!loaded || !element || typeof ResizeObserver === "undefined") return undefined;
+    let height = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (element.clientHeight === height) return;
+      height = element.clientHeight;
+      if (stick.current) element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [loaded]);
 
   const lastOwnReply = [...replies]
     .reverse()

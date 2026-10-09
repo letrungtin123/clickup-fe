@@ -182,7 +182,7 @@ const MyTaskRow = memo(function MyTaskRow({
           {task.title}
         </span>
         <span className="flex min-w-0 shrink-0 items-center gap-1.5 text-[11px] text-foreground-subtle">
-          <span className="font-mono">{task.key}</span>
+          <span className="shrink-0 font-mono whitespace-nowrap">{task.key}</span>
           {project ? (
             <span className="inline-flex max-w-[12rem] items-center gap-1 truncate rounded-full border px-1.5 py-px">
               <ColorDot color={project.color} className="size-1.5" />

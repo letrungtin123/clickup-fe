@@ -7,6 +7,7 @@ import {
 } from "@dnd-kit/core";
 
 import type { TaskSummary } from "@/contracts/work";
+import { createControlAwareSensors } from "@/lib/dnd-sensors";
 
 import { positionFromRects } from "./placement";
 import type { DropIndicator } from "./view-stores";
@@ -59,3 +60,9 @@ export const dropIndicatorFrom = (event: DragMoveEvent | DragOverEvent): DropInd
     position: positionFromRects(currentPointerY(event), over.rect)
   };
 };
+
+/** Drag sensors for List/Board rows and cards (see lib/dnd-sensors). */
+export const { MouseSensor: TaskMouseSensor, TouchSensor: TaskTouchSensor } =
+  createControlAwareSensors(
+    "button, a[href], input, textarea, select, [contenteditable='true'], [role='button'], [role='menuitem'], [data-no-drag]"
+  );

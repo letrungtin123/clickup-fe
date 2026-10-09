@@ -2,8 +2,6 @@ import {
   DndContext,
   DragOverlay,
   MeasuringStrategy,
-  PointerSensor,
-  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -42,7 +40,14 @@ import { InlineEditorHost } from "../components/inline-editor-host";
 import { QuickAdd } from "../components/quick-add";
 import { StatusIcon } from "../components/status-icon";
 import { AssigneesCell, DueCell, PriorityCell, StatusCell, TaskCounts } from "../components/task-cells";
-import { dropIndicatorFrom, groupDroppableId, taskCollisionDetection, type DragData } from "../dnd";
+import {
+  dropIndicatorFrom,
+  groupDroppableId,
+  TaskMouseSensor,
+  TaskTouchSensor,
+  taskCollisionDetection,
+  type DragData
+} from "../dnd";
 import { filtersToQuery, hasNarrowingFilters } from "../filters";
 import { useChildTasks, useCreateTask, useMoveTask, useTaskPages, useWorkflow } from "../hooks";
 import { useInlineEditor } from "../inline-editor-context";
@@ -125,8 +130,10 @@ const ListView = ({ project, list, openTask }: TaskViewProps) => {
   const [activeTask, setActiveTask] = useState<TaskSummary | null>(null);
   const setDropTarget = useDropStore((state) => state.setTarget);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
+    // Mouse + touch (not Pointer): a finger scrolling the list must never start a drag; touch drags
+    // need a short press instead.
+    useSensor(TaskMouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TaskTouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
   );
 
   const onDragStart = (event: DragStartEvent) => {
@@ -502,7 +509,7 @@ const StatusGroup = memo(function StatusGroup({
               onQuickAddOpenChange(status.id, true);
             }}
             aria-label={`Thêm công việc vào ${status.name}`}
-            className="inline-flex size-6 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/header:opacity-100 hover:bg-surface-hover hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-6 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/header:opacity-100 hover:bg-surface-hover hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-9 pointer-coarse:opacity-100"
           >
             <Plus className="size-3.5" aria-hidden="true" />
           </button>
@@ -788,7 +795,7 @@ const ListRow = memo(function ListRow({
                   event.stopPropagation();
                   setRenaming(true);
                 }}
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex size-6 shrink-0 items-center justify-center rounded text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:hidden"
               >
                 <PencilLine className="size-3.5" />
               </button>
@@ -814,7 +821,7 @@ const ListRow = memo(function ListRow({
               actions: menuActions(task, { onRename: () => setRenaming(true) })
             });
           }}
-          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:opacity-100"
+          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100"
         >
           <MoreHorizontal className="size-4" />
         </button>

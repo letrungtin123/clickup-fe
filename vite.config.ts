@@ -51,6 +51,12 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5890,
       strictPort: true,
+      // Extra host names the dev server answers to (e.g. a DNS name pointing at this machine),
+      // comma-separated in DEV_ALLOWED_HOSTS; IPs and localhost are always allowed.
+      allowedHosts: (env.DEV_ALLOWED_HOSTS ?? "")
+        .split(",")
+        .map((host) => host.trim())
+        .filter(Boolean),
       // xfwd appends the real client address, so the API (trusting exactly one proxy hop)
       // never rate-limits on a client-supplied X-Forwarded-For.
       proxy: {

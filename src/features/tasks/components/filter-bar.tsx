@@ -84,7 +84,7 @@ export const TaskFilterBar = ({
       <AssigneeFilter projectId={projectId} filters={filters} onChange={(assigneeIds) => setFilters({ assigneeIds })} />
       <PriorityFilter filters={filters} onChange={(next) => setFilters({ priorities: next })} />
       <DueFilterButton filters={filters} onChange={(due) => setFilters({ due })} />
-      <label className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-foreground-muted hover:bg-surface-hover">
+      <label className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-foreground-muted pointer-coarse:h-9 hover:bg-surface-hover">
         <Switch size="sm" checked={filters.includeDone} onCheckedChange={(includeDone) => setFilters({ includeDone })} />
         <span className="whitespace-nowrap">Hiện việc đã xong</span>
       </label>
@@ -114,7 +114,7 @@ const SearchField = ({ value, onChange }: { value: string; onChange: (value: str
   }, [debounced]);
 
   return (
-    <div className="relative flex h-7 w-44 shrink-0 items-center sm:w-56">
+    <div className="relative flex h-7 w-44 shrink-0 items-center pointer-coarse:h-9 sm:w-56">
       <Search className="pointer-events-none absolute left-2 size-3.5 text-foreground-subtle" aria-hidden="true" />
       <input
         type="search"
@@ -128,14 +128,14 @@ const SearchField = ({ value, onChange }: { value: string; onChange: (value: str
         }}
         placeholder="Tìm công việc hoặc mã…"
         aria-label="Tìm công việc"
-        className="h-7 w-full rounded-md border border-input bg-transparent pr-7 pl-7 text-[13px] outline-none placeholder:text-foreground-subtle focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 dark:bg-input/30 [&::-webkit-search-cancel-button]:hidden"
+        className="h-7 w-full rounded-md border border-input bg-transparent pr-7 pl-7 text-[13px] pointer-coarse:h-9 outline-none placeholder:text-foreground-subtle focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 dark:bg-input/30 [&::-webkit-search-cancel-button]:hidden"
       />
       {draft ? (
         <button
           type="button"
           aria-label="Xóa từ khóa"
           onClick={() => setDraft("")}
-          className="absolute right-1 inline-flex size-5 items-center justify-center rounded text-foreground-subtle hover:text-foreground"
+          className="absolute right-1 inline-flex size-5 items-center justify-center rounded text-foreground-subtle pointer-coarse:size-7 hover:text-foreground"
         >
           <X className="size-3" />
         </button>

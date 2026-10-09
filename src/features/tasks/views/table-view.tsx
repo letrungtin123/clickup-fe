@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import type { TaskSort, TaskSummary } from "@/contracts/work";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { flattenPages } from "../cache";
 import { ConfirmHost } from "../components/confirm-host";
@@ -178,7 +179,17 @@ const TableView = ({ project, list, openTask }: TaskViewProps) => {
   });
   const rows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleLeafColumns();
-  const template = visibleColumns.map((column) => columnMeta(column).width).join(" ");
+  // Phones: only the title column stays pinned (key + title would cover the whole screen) and it is
+  // narrower, so the remaining columns get room to scroll under it.
+  const compact = useBreakpoint() === "mobile";
+  const layoutOf = (column: { id: string; columnDef: { meta?: unknown } }) => {
+    const meta = columnMeta(column);
+    if (!compact) return { width: meta.width, sticky: meta.sticky };
+    if (column.id === "key") return { width: "84px", sticky: undefined };
+    if (column.id === "title") return { width: "minmax(11rem, 1fr)", sticky: 0 };
+    return { width: meta.width, sticky: meta.sticky };
+  };
+  const template = visibleColumns.map((column) => layoutOf(column).width).join(" ");
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -272,14 +283,15 @@ const TableView = ({ project, list, openTask }: TaskViewProps) => {
               >
                 {table.getHeaderGroups()[0]?.headers.map((header) => {
                   const meta = columnMeta(header.column);
+                  const { sticky } = layoutOf(header.column);
                   const active = meta.sort !== undefined && filters.sort === meta.sort;
                   return (
                     <div
                       key={header.id}
                       role="columnheader"
                       aria-sort={active ? (filters.order === "asc" ? "ascending" : "descending") : undefined}
-                      className={cn("flex items-center border-r border-border/60 px-2 last:border-r-0", meta.sticky !== undefined && "sticky z-10 bg-background")}
-                      style={meta.sticky !== undefined ? { left: meta.sticky } : undefined}
+                      className={cn("flex items-center border-r border-border/60 px-2 last:border-r-0", sticky !== undefined && "sticky z-10 bg-background")}
+                      style={sticky !== undefined ? { left: sticky } : undefined}
                     >
                       {meta.sort ? (
                         <button
@@ -328,17 +340,17 @@ const TableView = ({ project, list, openTask }: TaskViewProps) => {
                       style={{ height: ROW_HEIGHT, transform: `translateY(${virtualRow.start}px)`, gridTemplateColumns: template }}
                     >
                       {row.getVisibleCells().map((cell) => {
-                        const meta = columnMeta(cell.column);
+                        const { sticky } = layoutOf(cell.column);
                         return (
                           <div
                             key={cell.id}
                             role="gridcell"
                             className={cn(
                               "flex min-w-0 items-center border-r border-border/40 px-2 last:border-r-0",
-                              meta.sticky !== undefined && "sticky z-10 bg-background group-hover/row:bg-surface-hover",
-                              meta.sticky !== undefined && selected && "bg-brand-soft"
+                              sticky !== undefined && "sticky z-10 bg-background group-hover/row:bg-surface-hover",
+                              sticky !== undefined && selected && "bg-brand-soft"
                             )}
-                            style={meta.sticky !== undefined ? { left: meta.sticky } : undefined}
+                            style={sticky !== undefined ? { left: sticky } : undefined}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </div>
@@ -403,7 +415,7 @@ const RowMenuButton = ({ task, menuActions }: { task: TaskSummary; menuActions: 
         event.stopPropagation();
         openEditor?.({ kind: "menu", task, anchor: event.currentTarget, actions: menuActions(task) });
       }}
-      className="inline-flex size-7 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex size-7 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-8 pointer-coarse:opacity-100"
     >
       <MoreHorizontal className="size-4" />
     </button>

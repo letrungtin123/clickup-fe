@@ -85,7 +85,7 @@ const TaskDetailBody = ({ task }: { task: TaskDetail }) => {
           <TimelineSection task={task} />
         </div>
         {caps.canComment ? (
-          <div className="shrink-0 border-t bg-surface/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+          <div className="shrink-0 border-t bg-surface/95 px-4 pt-3 pb-[max(0.75rem,var(--safe-bottom))] backdrop-blur">
             <CommentComposer key={task.id} task={task} onPosted={scrollToEnd} />
           </div>
         ) : (

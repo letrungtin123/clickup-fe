@@ -7,6 +7,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { roleLabel } from "@/components/layout/role-label";
 import { ChangePasswordForm } from "@/features/auth/components/change-password-form";
 import { useLogout, useSessionContext } from "@/features/auth/hooks";
+import { NotificationPreferencesPanel } from "@/features/production/components/notification-preferences";
 import {
   gradientAccentOptions,
   solidAccentOptions,
@@ -57,6 +58,10 @@ export const ProfileSettingsRoute = () => {
       </Card>
 
       <AppearanceCard />
+
+      <Card title="Thông báo" description="Chọn kênh nhận thông báo về việc được giao, QC và tin nhắn.">
+        <NotificationPreferencesPanel />
+      </Card>
 
       <Card
         title="Đổi mật khẩu"

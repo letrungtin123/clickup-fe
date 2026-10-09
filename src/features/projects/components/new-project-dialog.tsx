@@ -151,7 +151,7 @@ const NewProjectForm = ({ onDone }: { onDone: () => void }) => {
       noValidate
       className="flex max-h-[min(88vh,760px)] flex-col"
     >
-      <DialogHeader className="flex-row items-center gap-3 border-b px-5 py-4">
+      <DialogHeader className="flex-row items-center gap-3 border-b px-5 py-4 pr-12">
         <ProjectIcon color={color} icon={icon} name={name || "Dự án"} size="lg" />
         <div className="flex min-w-0 flex-col gap-1">
           <DialogTitle>Dự án mới</DialogTitle>

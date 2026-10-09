@@ -1,17 +1,20 @@
 import { cn } from "cn";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { Archive, Check } from "lucide-react";
+import { Archive, ArrowUpRight, Check } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, useState } from "react";
 
+import { ActionSheet, ActionSheetItem } from "@/components/shared/action-sheet";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Notification } from "@/contracts/notifications";
+import { useLongPress } from "@/hooks/use-long-press";
+import { useTouchPrimary } from "@/hooks/use-pointer";
 
 import { timeAgo } from "@/features/chat/model/time";
 
-import { describeNotification, type NotificationDescription } from "../describe";
+import { describeNotification, sentenceText, type NotificationDescription } from "../describe";
 
 const toneClasses: Record<NotificationDescription["tone"], string> = {
   brand: "bg-brand text-brand-foreground",
@@ -42,13 +45,21 @@ export const NotificationItem = memo(function NotificationItem({
   const reduceMotion = useReducedMotion();
   const [swiping, setSwiping] = useState(false);
   const Icon = description.icon;
+  // Touch: the hover actions become a long-press sheet (swipe-left still archives on phones).
+  const touch = useTouchPrimary();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const hasActions = Boolean(onMarkRead || onArchive);
+  const longPress = useLongPress(() => setSheetOpen(true), { enabled: touch && hasActions });
 
   const body = (
     <div
+      {...longPress}
       className={cn(
         "group/notification relative flex gap-3 rounded-lg px-3 outline-none transition-colors duration-150",
         compact ? "py-2" : "py-2.5",
-        unread ? "bg-brand-soft/40 hover:bg-brand-soft/70" : "hover:bg-surface-hover"
+        unread ? "bg-brand-soft/40 hover:bg-brand-soft/70" : "hover:bg-surface-hover",
+        touch && hasActions && "select-none [-webkit-touch-callout:none]",
+        sheetOpen && "bg-surface-hover"
       )}
     >
       <button
@@ -145,36 +156,76 @@ export const NotificationItem = memo(function NotificationItem({
     </div>
   );
 
-  if (!swipeable || !onArchive || reduceMotion) return body;
+  const run = (action: (notification: Notification) => void) => () => {
+    setSheetOpen(false);
+    action(notification);
+  };
+  const sheet =
+    touch && hasActions ? (
+      <ActionSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        title={sentenceText(description)}
+        description={timeAgo(notification.createdAt)}
+      >
+        <div className="flex flex-col border-t p-2">
+          <ActionSheetItem icon={<ArrowUpRight />} onClick={run(onOpen)}>
+            Mở
+          </ActionSheetItem>
+          {unread && onMarkRead ? (
+            <ActionSheetItem icon={<Check />} onClick={run(onMarkRead)}>
+              Đánh dấu đã đọc
+            </ActionSheetItem>
+          ) : null}
+          {onArchive ? (
+            <ActionSheetItem icon={<Archive />} onClick={run(onArchive)}>
+              Lưu trữ
+            </ActionSheetItem>
+          ) : null}
+        </div>
+      </ActionSheet>
+    ) : null;
+
+  if (!swipeable || !onArchive || reduceMotion) {
+    return (
+      <>
+        {body}
+        {sheet}
+      </>
+    );
+  }
 
   // Touch: swipe left to archive.
   return (
-    <div className="relative overflow-hidden rounded-lg">
-      <div
-        className={cn(
-          "absolute inset-0 flex items-center justify-end rounded-lg bg-danger-soft pr-5 text-danger transition-opacity",
-          swiping ? "opacity-100" : "opacity-0"
-        )}
-        aria-hidden="true"
-      >
-        <Archive className="size-4" />
+    <>
+      <div className="relative overflow-hidden rounded-lg">
+        <div
+          className={cn(
+            "absolute inset-0 flex items-center justify-end rounded-lg bg-danger-soft pr-5 text-danger transition-opacity",
+            swiping ? "opacity-100" : "opacity-0"
+          )}
+          aria-hidden="true"
+        >
+          <Archive className="size-4" />
+        </div>
+        <motion.div
+          drag="x"
+          dragDirectionLock
+          dragConstraints={{ left: -140, right: 0 }}
+          dragElastic={{ left: 0.2, right: 0 }}
+          dragSnapToOrigin
+          onDragStart={() => setSwiping(true)}
+          onDragEnd={(_event, info) => {
+            setSwiping(false);
+            if (info.offset.x < -90) onArchive(notification);
+          }}
+          className="relative bg-background"
+        >
+          {body}
+        </motion.div>
       </div>
-      <motion.div
-        drag="x"
-        dragDirectionLock
-        dragConstraints={{ left: -140, right: 0 }}
-        dragElastic={{ left: 0.2, right: 0 }}
-        dragSnapToOrigin
-        onDragStart={() => setSwiping(true)}
-        onDragEnd={(_event, info) => {
-          setSwiping(false);
-          if (info.offset.x < -90) onArchive(notification);
-        }}
-        className="relative bg-background"
-      >
-        {body}
-      </motion.div>
-    </div>
+      {sheet}
+    </>
   );
 });
 

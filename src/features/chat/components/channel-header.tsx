@@ -54,7 +54,13 @@ export const ChannelHeader = ({
     : channel.topic || channel.description;
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:px-4">
+    <header
+      className={cn(
+        "flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:px-4",
+        // Phones: the global top bar is hidden in a conversation, so this header owns the notch inset.
+        mobile && "h-[calc(3.5rem+env(safe-area-inset-top))] gap-1 pt-[env(safe-area-inset-top)]"
+      )}
+    >
       {mobile ? (
         <Button
           variant="ghost"
@@ -111,7 +117,7 @@ export const ChannelHeader = ({
                   type="button"
                   onClick={() => onOpenSettings("members")}
                   aria-label={`${channel.memberCount} thành viên`}
-                  className="flex h-8 items-center gap-1.5 rounded-md px-1.5 text-xs text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-8 items-center gap-1.5 rounded-md px-1.5 text-xs text-foreground-muted outline-none pointer-coarse:h-10 pointer-coarse:px-2 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 />
               }
             >
@@ -136,7 +142,7 @@ export const ChannelHeader = ({
                   <DropdownMenuTrigger
                     aria-label="Thông báo của kênh"
                     className={cn(
-                      "flex size-8 items-center justify-center rounded-md outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-surface-hover [&_svg]:size-4",
+                      "flex size-8 items-center justify-center rounded-md outline-none pointer-coarse:size-10 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-surface-hover [&_svg]:size-4",
                       level === "none" ? "text-foreground-subtle" : "text-foreground-muted"
                     )}
                   />
@@ -174,7 +180,7 @@ export const ChannelHeader = ({
                 type="button"
                 onClick={() => onOpenSettings(channel.isMember ? "settings" : "about")}
                 aria-label="Chi tiết cuộc trò chuyện"
-                className="flex size-8 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-4"
+                className="flex size-8 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:size-10 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-4"
               />
             }
           >

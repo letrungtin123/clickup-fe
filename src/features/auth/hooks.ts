@@ -22,6 +22,15 @@ export const sessionQueryOptions = {
 /** The session query. `data` is null-free: use `useSessionContext` inside the authenticated shell. */
 export const useSession = () => useQuery(sessionQueryOptions);
 
+/** Extra sign-in methods (Google) for the login page; failure simply means "password only". */
+export const useAuthProviders = () =>
+  useQuery({
+    queryKey: ["auth", "providers"] as const,
+    queryFn: ({ signal }) => authApi.providers(signal),
+    staleTime: 5 * 60_000,
+    retry: false
+  });
+
 /** Session for components rendered inside the authenticated shell (provided by AuthGate). */
 export const useSessionContext = (): SessionContext => {
   const value = useContext(SessionValueContext);

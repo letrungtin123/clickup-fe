@@ -64,6 +64,14 @@ export const SearchPage = () => {
   const debounced = useDebouncedValue(input.trim(), 250);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
+  const tablistRef = useRef<HTMLDivElement | null>(null);
+
+  // Phones scroll the tab row: keep the active tab (deep links, keyboard) in view.
+  useEffect(() => {
+    tablistRef.current
+      ?.querySelector<HTMLElement>("[aria-selected=true]")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [tab]);
 
   // Mirror the debounced term into the URL (shareable, back/forward friendly).
   useEffect(() => {
@@ -143,6 +151,7 @@ export const SearchPage = () => {
         </div>
         <div
           role="tablist"
+          ref={tablistRef}
           aria-label="Nhóm kết quả"
           className="mx-auto -mb-px flex w-full max-w-3xl gap-1 overflow-x-auto scrollbar-none"
         >
@@ -157,7 +166,7 @@ export const SearchPage = () => {
                 aria-selected={active}
                 onClick={() => setTab(entry.value)}
                 className={cn(
-                  "flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-[13px] font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-[13px] font-medium outline-none pointer-coarse:h-10 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
                   active
                     ? "border-foreground text-foreground"
                     : "border-transparent text-foreground-muted hover:text-foreground"

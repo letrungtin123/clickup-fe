@@ -67,7 +67,7 @@ export const StatusCell = ({ task, editable, size = "md" }: { task: TaskSummary;
     kind="status"
     editable={editable}
     label={`Trạng thái: ${task.status.name}`}
-    className="size-6 shrink-0 justify-center"
+    className="size-6 shrink-0 justify-center pointer-coarse:size-8"
   >
     <StatusIcon status={task.status} size={size} />
   </EditableCell>
@@ -93,7 +93,7 @@ export const AssigneesCell = ({
         ? `Người thực hiện: ${task.assignees.map((user) => user.displayName).join(", ")}`
         : "Chưa giao — thêm người thực hiện"
     }
-    className={cn("h-7 min-w-7 justify-center px-0.5", className)}
+    className={cn("h-7 min-w-7 justify-center px-0.5 pointer-coarse:h-8 pointer-coarse:min-w-8", className)}
   >
     {task.assignees.length > 0 ? (
       <AvatarGroup users={task.assignees} max={max} size="xs" />
@@ -132,7 +132,7 @@ export const DueCell = ({
       kind="due"
       editable={editable}
       label={task.dueAt ? `Hạn chót: ${formatFullDate(task.dueAt)} (${dueToneLabel[tone]})` : "Đặt hạn chót"}
-      className={cn("h-7 px-1.5", className)}
+      className={cn("h-7 px-1.5 pointer-coarse:h-8", className)}
     >
       {content}
     </EditableCell>
@@ -165,7 +165,7 @@ export const PriorityCell = ({
     kind="priority"
     editable={editable}
     label={`Ưu tiên: ${priorityMeta[task.priority].label}`}
-    className={cn("h-7 min-w-7 justify-center px-1", className)}
+    className={cn("h-7 min-w-7 justify-center px-1 pointer-coarse:h-8 pointer-coarse:min-w-8", className)}
   >
     {task.priority === "normal" && !showLabel ? (
       <Flag className="size-3.5 text-foreground-subtle/70" aria-hidden="true" />

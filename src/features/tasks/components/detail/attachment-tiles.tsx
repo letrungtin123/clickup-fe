@@ -82,7 +82,7 @@ export const ImageThumb = ({
           type="button"
           aria-label={`Xóa ${attachment.fileName}`}
           onClick={onDelete}
-          className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-md bg-black/55 text-white opacity-0 outline-none group-hover/thumb:opacity-100 hover:bg-black/75 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-md bg-black/55 text-white opacity-0 outline-none group-hover/thumb:opacity-100 hover:bg-black/75 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-8 pointer-coarse:opacity-100"
         >
           <Trash2 className="size-3.5" />
         </button>
@@ -192,6 +192,7 @@ export const ImageLightbox = ({
     <Dialog open={current !== undefined} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
+        mobileLayout="center"
         className="max-h-[92dvh] w-[min(64rem,94vw)] max-w-none gap-0 overflow-hidden bg-surface p-0 sm:max-w-none"
         onKeyDown={(event) => {
           event.stopPropagation();
