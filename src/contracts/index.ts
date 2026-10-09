@@ -1,3 +1,3 @@
-export * from "./pagination";
-export * from "./permissions";
-export * from "./schemas";
+export * from "./pagination.js";
+export * from "./permissions.js";
+export * from "./schemas.js";

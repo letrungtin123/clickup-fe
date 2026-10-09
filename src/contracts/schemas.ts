@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { permissionValues } from "./permissions";
+import { permissionValues } from "./permissions.js";
 export const OpaqueIdSchema = z.string().uuid();
 
 export const IsoDateTimeSchema = z.string().datetime({ offset: true });
