@@ -23,6 +23,7 @@ import {
   type DisplayMessage,
   type TimelineRow
 } from "../model/timeline";
+import { reverseOffsetFrom, reverseScrollMode, reverseScrollTopFor } from "../model/reverse-scroll";
 import { MessageItem } from "./message-item";
 
 /** Rows above the first message: history loader or the conversation intro. */
@@ -89,17 +90,12 @@ type MessageListProps = {
  * Only changes at the newest end (live messages while scrolled up, newer pages, trimming) are compensated,
  * by re-anchoring the first visible message.
  */
-/** Old engines report column-reverse scrollTop as a positive distance from the top. */
-let positiveReverseScroll = false;
-const readOffset = (element: HTMLElement) => {
-  if (element.scrollTop > 0) positiveReverseScroll = true;
-  return positiveReverseScroll
-    ? Math.max(0, element.scrollHeight - element.clientHeight - element.scrollTop)
-    : Math.max(0, -element.scrollTop);
-};
+// The engine's column-reverse convention is probed once (never inferred from live values: iOS
+// rubber-banding reports a positive scrollTop at the bottom) and live values are clamped — see model.
+const readOffset = (element: HTMLElement) =>
+  reverseOffsetFrom(element.scrollTop, element.scrollHeight, element.clientHeight, reverseScrollMode());
 const writeOffset = (element: HTMLElement, offset: number, behavior?: ScrollBehavior) => {
-  const target = Math.max(0, offset);
-  const top = positiveReverseScroll ? element.scrollHeight - element.clientHeight - target : -target;
+  const top = reverseScrollTopFor(offset, element.scrollHeight, element.clientHeight, reverseScrollMode());
   element.scrollTo(behavior ? { top, behavior } : { top });
 };
 const observeInvertedOffset = (
