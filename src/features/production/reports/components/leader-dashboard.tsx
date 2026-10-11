@@ -63,7 +63,8 @@ const TaskRow = ({
       className={cn("h-9 w-1 shrink-0 rounded-full", tone === "late" ? "bg-danger" : "bg-warning")}
     />
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span className="flex min-w-0 items-center gap-1.5 text-sm">
+      {/* Phones: the job code wraps under the number instead of being cut ("ABC 2026…"). */}
+      <span className="flex min-w-0 items-center gap-x-1.5 text-sm max-sm:flex-wrap">
         <span className="shrink-0 font-semibold tabular-nums">#{task.number}</span>
         <span className="truncate text-foreground-muted">{task.job.code}</span>
         <span
@@ -229,7 +230,7 @@ const LoadBar = ({ row, max }: { row: WorkloadRow; max: number }) => {
         <>
           <span className="h-full bg-brand" style={{ width: width(row.qtyProcessing) }} />
           <span
-            className="h-full border-l-2 border-surface bg-[color-mix(in_oklch,var(--brand)_35%,var(--surface))]"
+            className="h-full border-l-2 border-surface bg-[color-mix(in_oklab,var(--brand)_35%,var(--surface))]"
             style={{ width: width(row.qtyNotStarted) }}
           />
         </>
@@ -321,7 +322,7 @@ export const WorkloadPanel = ({
               <ToggleGroupItem
                 key={item.value}
                 value={item.value}
-                className="px-2.5 max-sm:min-w-10"
+                className="px-2.5 pointer-coarse:min-h-10 max-sm:min-w-10"
               >
                 {item.label}
               </ToggleGroupItem>
@@ -469,7 +470,7 @@ export const WorkloadPanel = ({
         <span className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="size-2.5 rounded-sm bg-[color-mix(in_oklch,var(--brand)_35%,var(--surface))]"
+            className="size-2.5 rounded-sm bg-[color-mix(in_oklab,var(--brand)_35%,var(--surface))]"
           />
           Chưa làm
         </span>
@@ -506,10 +507,10 @@ export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["t
           spacing={0}
           aria-label="Loại điểm"
         >
-          <ToggleGroupItem value="points" className="px-2.5">
+          <ToggleGroupItem value="points" className="px-2.5 pointer-coarse:min-h-10">
             Điểm
           </ToggleGroupItem>
-          <ToggleGroupItem value="pointsKhoan" className="px-2.5">
+          <ToggleGroupItem value="pointsKhoan" className="px-2.5 pointer-coarse:min-h-10">
             Điểm khoán
           </ToggleGroupItem>
         </ToggleGroup>

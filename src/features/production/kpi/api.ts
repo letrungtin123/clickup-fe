@@ -16,6 +16,8 @@ import {
 import { api, apiPath } from "@/lib/api/client";
 import { OkResponseSchema } from "@/lib/api/schemas";
 
+import { searchWithPeopleFilter, type PeopleFilter } from "../scores/people-filter";
+
 export type PutKpiTargetsInput = z.input<typeof PutKpiTargetsRequestSchema>;
 export type KpiImportInput = z.input<typeof KpiTargetImportRequestSchema>;
 export type RunSettlementInput = z.input<typeof RunKpiSettlementRequestSchema>;
@@ -42,6 +44,13 @@ export const kpiApi = {
     }),
   runSettlement: (input: RunSettlementInput) =>
     api.post("/production/kpi/settlements/run", KpiSettlementRunResultSchema, input),
-  report: (query: { from: string; to: string; teamId?: string | undefined }, signal?: AbortSignal) =>
-    api.get("/production/kpi/report", KpiReportSchema, { query, signal })
+  /** ADMIN may filter people by USER tags / custom fields (repeated parameters, see people-filter.ts). */
+  report: (
+    query: { from: string; to: string; teamId?: string | undefined },
+    people: PeopleFilter,
+    signal?: AbortSignal
+  ) =>
+    api.get(`/production/kpi/report${searchWithPeopleFilter(query, people)}`, KpiReportSchema, {
+      signal
+    })
 };

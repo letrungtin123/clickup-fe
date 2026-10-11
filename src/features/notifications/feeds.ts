@@ -54,6 +54,12 @@ export const prependToFeed = (name: FeedName, feed: Feed | undefined, notificati
   return { ...feed, pages: [{ ...first, items: [notification, ...first.items] }, ...feed.pages.slice(1)] };
 };
 
+/** Marks `ids` (or everything) read at `readAt`; items already read keep their timestamp. */
+export const applyReadToFeed = (feed: Feed | undefined, ids: readonly string[] | "all", readAt: string) => {
+  const idSet = ids === "all" ? null : new Set(ids);
+  return mapFeed(feed, (item) => (item.readAt || (idSet && !idSet.has(item.id)) ? item : { ...item, readAt }));
+};
+
 /** Archived notifications leave every feed (BUG-WK-48). */
 export const removeFromFeed = (feed: Feed | undefined, ids: readonly string[]) => {
   const idSet = new Set(ids);

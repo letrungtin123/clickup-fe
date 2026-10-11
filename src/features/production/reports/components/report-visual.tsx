@@ -6,11 +6,11 @@ import { EmptyState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   reportMeasureInfo,
-  type ReportDimension,
   type ReportMeasure,
   type ReportResult
 } from "@/contracts/production-reports";
 
+import type { DimensionKey } from "../dimensions";
 import { buildChartModel, canPie } from "../pivot";
 import type { ReportView } from "../model";
 import { PivotTable } from "./pivot-table";
@@ -44,17 +44,20 @@ export const ReportVisual = ({
   chartMeasure,
   sort,
   onSort,
+  multiValue,
   compact = false
 }: {
-  result: Pick<ReportResult, "rows" | "totals">;
-  rows: readonly ReportDimension[];
-  columns: readonly ReportDimension[];
+  result: Pick<ReportResult, "rows" | "totals"> & { columns?: ReportResult["columns"] };
+  rows: readonly DimensionKey[];
+  columns: readonly DimensionKey[];
   measures: readonly ReportMeasure[];
   view: ReportView;
   /** Measure drawn by charts (defaults to the first). */
   chartMeasure?: ReportMeasure | null | undefined;
-  sort?: { key: ReportDimension | ReportMeasure; direction: "asc" | "desc" } | undefined;
-  onSort?: ((key: ReportDimension | ReportMeasure) => void) | undefined;
+  sort?: { key: DimensionKey | ReportMeasure; direction: "asc" | "desc" } | undefined;
+  onSort?: ((key: DimensionKey | ReportMeasure) => void) | undefined;
+  /** MULTISELECT custom-field dimensions (sub-totals across their options are not summed). */
+  multiValue?: ReadonlySet<string> | undefined;
   /** Dashboard cards: shorter table / chart. */
   compact?: boolean;
 }) => {
@@ -72,6 +75,7 @@ export const ReportVisual = ({
         rows={rows}
         columns={columns}
         measures={measures}
+        multiValue={multiValue}
         sort={sort}
         onSort={onSort}
         maxHeightClass={compact ? "max-h-80" : "max-h-[70vh]"}

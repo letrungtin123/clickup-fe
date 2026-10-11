@@ -183,7 +183,11 @@ export const LeaveDayDetail = ({
       </Button>
     </div>
     {entries.length === 0 ? (
-      <EmptyState size="sm" icon={CalendarCheck2} title="Cả team đi làm đủ" />
+      <EmptyState
+        size="sm"
+        icon={CalendarCheck2}
+        title={isSunday(day) ? "Ngày nghỉ cuối tuần" : "Cả team đi làm đủ"}
+      />
     ) : (
       <ul className="flex flex-col divide-y">
         {entries.map((entry) => (

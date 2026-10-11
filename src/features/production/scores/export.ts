@@ -50,19 +50,30 @@ const readError = async (response: Response) => {
 };
 
 const request = (url: string) =>
-  fetch(url, { credentials: "include", headers: { accept: `${XLSX_TYPE}, application/json` } }).catch(
-    () => {
-      throw new ApiError({ status: 0, code: ClientErrorCode.Network, message: "Network request failed" });
-    }
-  );
+  fetch(url, {
+    credentials: "include",
+    headers: { accept: `${XLSX_TYPE}, application/json` }
+  }).catch(() => {
+    throw new ApiError({
+      status: 0,
+      code: ClientErrorCode.Network,
+      message: "Network request failed"
+    });
+  });
 
-/** Downloads an export; resolves with the saved file name. Throws ApiError on any failure. */
+/**
+ * Downloads an export; resolves with the saved file name. Throws ApiError on any failure. `extra` adds
+ * repeated parameters (tagId=…&cf.<key>=…) that the comma-joining query builder cannot express.
+ */
 export const downloadExport = async (
   path: string,
   query: Record<string, QueryValue>,
-  fallbackName: string
+  fallbackName: string,
+  extra: readonly [string, string][] = []
 ) => {
-  const url = `${webEnv.apiBaseUrl}${path}${buildQueryString(query)}`;
+  const search = buildQueryString(query);
+  const more = new URLSearchParams([...extra]).toString();
+  const url = `${webEnv.apiBaseUrl}${path}${search}${more ? `${search ? "&" : "?"}${more}` : ""}`;
   let response = await request(url);
   if (response.status === 401 && (await api.refreshSession())) {
     response = await request(url);

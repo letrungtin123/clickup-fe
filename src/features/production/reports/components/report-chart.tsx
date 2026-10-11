@@ -55,7 +55,17 @@ const Legend = ({
   single: boolean;
   label: string;
 }) =>
-  single ? null : (
+  single ? (
+    // One series: still name the measure being drawn ("■ Giờ OT").
+    <p className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-muted">
+      <span
+        aria-hidden="true"
+        className="size-2.5 shrink-0 rounded-sm"
+        style={{ background: series[0] ? colorOf(series[0], 0, true) : undefined }}
+      />
+      <span className="truncate">{label}</span>
+    </p>
+  ) : (
     <ul
       className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-foreground-muted"
       aria-label={`Chú giải: ${label}`}
@@ -167,11 +177,23 @@ export const ReportChart = ({
       stacked={stacked}
     />
   );
+  // Largest |value| the value axis shows (stacks add up): one tick notation for the whole axis.
+  const axisMax = Math.max(
+    0,
+    ...model.data.map((row) => {
+      const values = model.series.map((series) => {
+        const value = row[series.key];
+        return typeof value === "number" ? Math.abs(value) : 0;
+      });
+      return stacked ? values.reduce((sum, value) => sum + value, 0) : Math.max(0, ...values);
+    })
+  );
+  const compactAxis = axisMax >= 10_000;
   const valueAxisProps = {
     tickLine: false,
     axisLine: false,
     tick: AXIS,
-    tickFormatter: (value: number) => formatAxisValue(value, format),
+    tickFormatter: (value: number) => formatAxisValue(value, format, compactAxis),
     allowDecimals: format !== "count" && format !== "images"
   };
   const tickEvery = Math.max(1, Math.ceil(model.data.length / 12));
@@ -385,7 +407,7 @@ const PieView = ({
         </ResponsiveContainer>
       </div>
       <ul
-        className="flex w-full min-w-0 flex-col gap-1.5 text-sm"
+        className="flex w-full min-w-0 flex-col gap-1.5 text-sm sm:max-w-md"
         aria-label={`Chú giải: ${measureLabel}`}
       >
         {slices.map((slice) => (

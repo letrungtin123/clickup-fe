@@ -1,5 +1,4 @@
 import { cn } from "cn";
-import { AnimatePresence, motion } from "motion/react";
 import { ChevronLeft, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -15,35 +14,28 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { anomalyKindLabels, anomalyKinds, type AnomalyKind } from "@/contracts/production-reports";
 import { RequireProductionRole } from "@/features/production/components/production-gate";
-import { formatDay } from "@/features/production/format";
+import { formatDay, todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
-import { anomalyDescriptions } from "@/features/production/reports/anomalies";
-import { AnomalyRow } from "@/features/production/reports/components/anomalies";
+import {
+  anomalyDescriptions,
+  anomalyKindTitles,
+  anomalyTabLabels,
+  firstAnomalyKind
+} from "@/features/production/reports/anomalies";
+import { AnomalyKindTabs, AnomalyList } from "@/features/production/reports/components/anomalies";
 import { useAnomalies, useLiveReports } from "@/features/production/reports/hooks";
 import { PageBody } from "@/features/production/scores/components/kit";
 import { touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 const windows = [7, 30, 90, 180] as const;
-const isKind = (value: string | null): value is AnomalyKind =>
-  anomalyKinds.includes(value as AnomalyKind);
-
-/** Short tab labels (the contract labels are sentences). */
-const tabLabels: Record<AnomalyKind, string> = {
-  QTY_MISMATCH: "Lệch số lượng",
-  QC_FAIL_REPEAT: "QC trả lại ≥ 2 lần",
-  WORKER_FAIL_RATE: "Tỉ lệ lỗi cao",
-  FAST_DONE: "Xong quá nhanh",
-  MISSING_CREDIT_RULE: "Thiếu đơn giá"
-};
 
 /**
  * /production/anomalies — anomalies report (SPEC Phase 5 §5, PLAN §10). LEADER: tasks of the jobs they
  * lead; ADMIN: every job. Tabs per kind with unreviewed counts, rows link to the task / job, "Đã xem"
- * (optional note) hides a row until it changes again, with undo. Filters in the URL.
+ * (optional note) hides a row until it changes again; "Bỏ đã xem" for whoever marked it (or ADMIN).
+ * Filters in the URL. The Leader dashboard shows the same list in its "Bất thường" tab.
  */
 export const ProductionAnomaliesRoute = () => (
   <RequireProductionRole roles={["LEADER"]}>
@@ -65,9 +57,7 @@ const AnomaliesPage = () => {
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const data = list.data;
 
-  const kind: AnomalyKind = isKind(kindParam)
-    ? kindParam
-    : (anomalyKinds.find((item) => (data?.counts[item] ?? 0) > 0) ?? "QTY_MISMATCH");
+  const kind = firstAnomalyKind(data?.counts, kindParam);
   const items = useMemo(
     () => (data?.items ?? []).filter((item) => item.kind === kind),
     [data, kind]
@@ -147,45 +137,18 @@ const AnomaliesPage = () => {
           </label>
           {data ? (
             <span className="text-xs text-foreground-subtle">
-              Từ {formatDay(data.since.slice(0, 10))}
+              Từ {formatDay(todayIn(timeZone, new Date(data.since)))}
             </span>
           ) : null}
         </div>
       </PageHeader>
       <PageBody>
-        <Tabs value={kind} onValueChange={(next) => update({ kind: next as string })}>
-          <div className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-            <TabsList
-              className={cn(
-                "h-auto! w-max min-w-full justify-start gap-1 p-1 md:min-w-0",
-                touchTargets
-              )}
-            >
-              {anomalyKinds.map((item) => {
-                const count = data?.counts[item] ?? 0;
-                return (
-                  <TabsTrigger
-                    key={item}
-                    value={item}
-                    className="h-9 flex-none gap-1.5 px-3 pointer-coarse:h-10"
-                    title={anomalyKindLabels[item]}
-                  >
-                    {tabLabels[item]}
-                    <span
-                      className={cn(
-                        "min-w-5 rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-                        count > 0 ? "bg-danger-soft text-danger" : "bg-muted text-foreground-subtle"
-                      )}
-                      aria-label={`${count} mục chưa xem`}
-                    >
-                      {data ? count : "·"}
-                    </span>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </div>
-        </Tabs>
+        <AnomalyKindTabs
+          value={kind}
+          onChange={(next) => update({ kind: next })}
+          counts={data?.counts}
+          loaded={data !== undefined}
+        />
 
         <section
           aria-labelledby="anomaly-kind-title"
@@ -194,7 +157,7 @@ const AnomaliesPage = () => {
           <header className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b px-4 py-3">
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <h2 id="anomaly-kind-title" className="text-sm font-semibold">
-                {anomalyKindLabels[kind]}
+                {anomalyKindTitles[kind]}
               </h2>
               <p className="text-xs text-foreground-muted">
                 {anomalyDescriptions[kind](data?.threshold ?? 0.15)}
@@ -226,31 +189,15 @@ const AnomaliesPage = () => {
             <EmptyState
               icon={ShieldCheck}
               title="Không có bất thường"
-              description={`Không có mục "${tabLabels[kind].toLowerCase()}" nào${includeReviewed ? "" : " chưa xem"} trong ${days} ngày qua.`}
+              description={`Không có mục "${anomalyTabLabels[kind].toLowerCase()}" nào${includeReviewed ? "" : " chưa xem"} trong ${days} ngày qua.`}
             />
           ) : (
-            // Keyed by kind: switching tabs replaces the list instead of animating 500 rows out.
-            <ul key={kind} className="divide-y">
-              <AnimatePresence initial={false}>
-                {items.map((item) => (
-                  <motion.li
-                    key={`${item.kind}:${item.key}`}
-                    layout="position"
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, height: 0, transition: { duration: 0.18 } }}
-                    transition={{ duration: 0.18 }}
-                    className="overflow-hidden"
-                  >
-                    <AnomalyRow
-                      item={item}
-                      threshold={data?.threshold ?? 0.15}
-                      timeZone={timeZone}
-                    />
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </ul>
+            <AnomalyList
+              kind={kind}
+              items={items}
+              threshold={data?.threshold ?? 0.15}
+              timeZone={timeZone}
+            />
           )}
         </section>
       </PageBody>

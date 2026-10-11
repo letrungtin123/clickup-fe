@@ -11,9 +11,13 @@ import { Panel } from "../../scores/components/kit";
 import { formatDayRange, periodLabel } from "../../scores/periods";
 import { useKpiSettlementRuns } from "../hooks";
 
+// "10:05 06/10/2026": full dates like the rest of the module (dateStyle short gives "6/10/26").
 const dateTime = new Intl.DateTimeFormat("vi-VN", {
-  dateStyle: "short",
-  timeStyle: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
   timeZone: "Asia/Ho_Chi_Minh"
 });
 
@@ -52,7 +56,7 @@ export const SettlementRuns = () => {
 };
 
 const RunRow = ({ run }: { run: KpiSettlementRun }) => (
-  <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:gap-4">
+  <li className="flex flex-col gap-2 px-4 py-3 xl:flex-row xl:items-start xl:gap-4">
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
         <span className="font-semibold">{periodLabel(run.period)}</span>
@@ -91,7 +95,7 @@ const RunRow = ({ run }: { run: KpiSettlementRun }) => (
         {run.prorateLeave ? " · trừ ngày nghỉ" : ""}
       </p>
     </div>
-    <dl className="grid shrink-0 grid-cols-4 gap-x-4 text-right text-xs tabular-nums sm:w-[26rem]">
+    <dl className="grid shrink-0 grid-cols-4 gap-x-4 text-right text-xs tabular-nums xl:w-[26rem]">
       <RunFigure label="Người" value={formatInteger(run.userCount)} />
       <RunFigure
         label="Đạt / không"

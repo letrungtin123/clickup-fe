@@ -62,7 +62,11 @@ export const ChatRuntime = () => {
   );
   useRealtimeEvent("chat:message:updated", (event) => receiveEdit(queryClient, event));
   useRealtimeEvent("chat:message:deleted", (event) => receiveDeletion(queryClient, event));
-  useRealtimeEvent("chat:reaction", (event) => receiveReaction(queryClient, event, myId));
+  useRealtimeEvent("chat:reaction", (event) => {
+    receiveReaction(queryClient, event, myId);
+    // An open tooltip / reactions sheet refetches; closed ones just go stale.
+    void queryClient.invalidateQueries({ queryKey: chatKeys.reactions(event.messageId) });
+  });
   useRealtimeEvent("chat:read", (event) => receiveReadState(queryClient, event));
 
   useRealtimeEvent("chat:typing", (event) => {

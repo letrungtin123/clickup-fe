@@ -10,6 +10,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Reply,
+  ServerCrash,
   TriangleAlert,
   UserRoundPlus,
   type LucideIcon
@@ -203,6 +204,26 @@ export const describeNotification = (notification: Notification): NotificationDe
         icon: Hash,
         tone: "brand"
       };
+    case "system.dead_letter": {
+      // Ops alert to admins: a worker queue parked messages it could not process ({ queue, count }).
+      const queue = str(notification.payload.queue);
+      const count = notification.payload.count;
+      return {
+        segments: [
+          { text: "Có " },
+          {
+            text: typeof count === "number" && Number.isFinite(count) ? `${count} thông báo/email` : "thông báo/email",
+            strong: true
+          },
+          { text: " gửi lỗi trong hàng đợi" },
+          ...(queue ? [{ text: " " }, { text: queue, strong: true }] : [])
+        ],
+        subject: null,
+        excerpt,
+        icon: ServerCrash,
+        tone: "danger"
+      };
+    }
     default:
       // Types without a dedicated sentence yet (e.g. a module adding new types): never crash the
       // inbox — show the server-provided title until a specific case is added above.

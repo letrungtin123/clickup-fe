@@ -1,11 +1,12 @@
 import { cn } from "cn";
-import { CircleCheck, CircleDashed, CircleX } from "lucide-react";
+import { CircleCheck, CircleDashed, CircleDotDashed, CircleX } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { formatCredit, formatMoney } from "../../format";
 import { formatPercent, formatSignedCredit, progressWidth } from "../../scores/forecast";
+import { rollupStatusInfo, type RollupStatus } from "../report";
 
 /**
  * KPI figures (SPEC Phase 6 §4): target, official points, Khoán converted to points, total, % đạt,
@@ -27,10 +28,40 @@ export type KpiFiguresRow = {
   /** settled = closed by a settlement run; provisional = what a settlement would give now. */
   state?: "settled" | "provisional" | undefined;
   met?: boolean | undefined;
+  /** Quarter / year rows: whole period settled, provisional or not finished (SPEC §8.4). */
+  rollupStatus?: RollupStatus | null | undefined;
+  /** Total rows (team / organization): bold, tinted. */
+  total?: boolean | undefined;
   highlight?: boolean | undefined;
 };
 
+/** "Đã chốt" / "Tạm tính" / "Chưa hết kỳ" of a quarter / year (also used beside the period picker). */
+export const RollupStatusBadge = ({
+  status,
+  className
+}: {
+  status: RollupStatus;
+  className?: string;
+}) => {
+  const Icon =
+    status === "SETTLED" ? CircleCheck : status === "PROVISIONAL" ? CircleDashed : CircleDotDashed;
+  return (
+    <span
+      title={rollupStatusInfo[status].hint}
+      className={cn(
+        "inline-flex items-center gap-1 text-xs whitespace-nowrap",
+        status === "SETTLED" ? "font-medium text-success" : "text-foreground-muted",
+        className
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      {rollupStatusInfo[status].label}
+    </span>
+  );
+};
+
 const StateBadge = ({ row }: { row: KpiFiguresRow }) => {
+  if (row.rollupStatus) return <RollupStatusBadge status={row.rollupStatus} />;
   if (!row.state) return null;
   if (row.state === "provisional") {
     return (
@@ -46,35 +77,57 @@ const StateBadge = ({ row }: { row: KpiFiguresRow }) => {
       Đạt
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-danger">
-      <CircleX className="size-3.5" aria-hidden="true" />
-      Không đạt
+    <span className="inline-flex flex-col items-start gap-0.5">
+      <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-danger">
+        <CircleX className="size-3.5" aria-hidden="true" />
+        Không đạt
+      </span>
+      {row.khoanPointsConverted > 0 ? (
+        // % đạt may still reach 100 once Khoán is converted; say why it is "Không đạt".
+        <span className="pl-[1.125rem] text-[11px] leading-tight text-foreground-muted">
+          Khoán quy điểm
+        </span>
+      ) : null}
     </span>
   );
 };
 
-const Percent = ({ value }: { value: number | null }) => (
-  <span className="inline-flex min-w-20 flex-col items-end gap-1">
-    <span
-      className={cn(
-        "font-semibold tabular-nums",
-        value !== null && value >= 100 && "text-success",
-        value !== null && value < 80 && "text-danger"
-      )}
-    >
-      {formatPercent(value)}
-    </span>
-    <span className="h-1 w-16 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+/**
+ * % đạt with its bar. A settled "Không đạt" (official points under target) never shows green even when
+ * Khoán converted to points lifts the total to 100 % or more.
+ */
+const Percent = ({ value, met }: { value: number | null; met?: boolean | undefined }) => {
+  const tone =
+    value === null
+      ? "muted"
+      : value >= 100 && met !== false
+        ? "success"
+        : value < 80
+          ? "danger"
+          : "warning";
+  return (
+    <span className="inline-flex min-w-16 flex-col items-end gap-1">
       <span
         className={cn(
-          "block h-full rounded-full",
-          value !== null && value >= 100 ? "bg-success" : value !== null && value < 80 ? "bg-danger" : "bg-warning"
+          "font-semibold tabular-nums",
+          tone === "success" && "text-success",
+          tone === "danger" && "text-danger"
         )}
-        style={{ width: `${progressWidth(value)}%` }}
-      />
+      >
+        {formatPercent(value)}
+      </span>
+      <span className="h-1 w-16 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <span
+          className={cn(
+            "block h-full rounded-full",
+            tone === "success" ? "bg-success" : tone === "danger" ? "bg-danger" : "bg-warning"
+          )}
+          style={{ width: `${progressWidth(value)}%` }}
+        />
+      </span>
     </span>
-  </span>
-);
+  );
+};
 
 const Difference = ({ value }: { value: number | null }) => (
   <span
@@ -100,21 +153,36 @@ export const KpiFiguresTable = ({
   caption: string;
 }) => {
   const breakpoint = useBreakpoint();
-  const showState = rows.some((row) => row.state !== undefined);
+  const showState = rows.some((row) => row.state !== undefined || Boolean(row.rollupStatus));
+  const settledMet = (row: KpiFiguresRow) => (row.state === "settled" ? row.met : undefined);
 
   if (breakpoint === "mobile") {
     return (
       <ul className="divide-y" aria-label={caption}>
         {rows.map((row) => (
-          <li key={row.key} className={cn("flex flex-col gap-2 px-4 py-3", row.highlight && "bg-brand-soft/50")}>
+          <li
+            key={row.key}
+            className={cn(
+              "flex flex-col gap-2 px-4 py-3",
+              row.highlight && "bg-brand-soft/50",
+              row.total && "bg-muted/60"
+            )}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 flex-col">
-                <span className="truncate text-[13px] font-medium">{row.label}</span>
+                <span
+                  className={cn(
+                    "truncate text-[13px]",
+                    row.total ? "font-semibold" : "font-medium"
+                  )}
+                >
+                  {row.label}
+                </span>
                 {row.sublabel ? (
                   <span className="truncate text-xs text-foreground-muted">{row.sublabel}</span>
                 ) : null}
               </div>
-              <Percent value={row.percent} />
+              <Percent value={row.percent} met={settledMet(row)} />
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs tabular-nums">
               <Figure label="Chỉ tiêu" value={formatCredit(row.target)} />
@@ -137,7 +205,10 @@ export const KpiFiguresTable = ({
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr className="border-b text-right text-xs text-foreground-muted">
-            <th scope="col" className="sticky left-0 z-10 bg-surface py-2.5 pr-3 pl-4 text-left font-medium">
+            <th
+              scope="col"
+              className="sticky left-0 z-10 bg-surface py-2.5 pr-3 pl-4 text-left font-medium"
+            >
               {firstColumn}
             </th>
             <th scope="col" className="px-3 py-2.5 font-medium">
@@ -146,7 +217,8 @@ export const KpiFiguresTable = ({
             <th scope="col" className="px-3 py-2.5 font-medium">
               Chính thức
             </th>
-            <th scope="col" className="px-3 py-2.5 font-medium">
+            {/* Two lines at most ("Khoán quy / điểm"), never three. */}
+            <th scope="col" className="min-w-24 px-3 py-2.5 font-medium">
               Khoán quy điểm
             </th>
             <th scope="col" className="px-3 py-2.5 font-medium">
@@ -172,17 +244,32 @@ export const KpiFiguresTable = ({
         </thead>
         <tbody className="divide-y divide-border/70">
           {rows.map((row) => (
-            <tr key={row.key} className={cn("text-right tabular-nums", row.highlight && "bg-brand-soft/50")}>
+            <tr
+              key={row.key}
+              className={cn(
+                "text-right tabular-nums",
+                row.highlight && "bg-brand-soft/50",
+                row.total && "bg-muted/60 font-medium"
+              )}
+            >
               <th
                 scope="row"
                 className={cn(
                   "sticky left-0 z-10 max-w-60 py-2.5 pr-3 pl-4 text-left font-normal",
-                  row.highlight ? "bg-[color-mix(in_oklch,var(--brand-soft),var(--surface)_50%)]" : "bg-surface"
+                  row.highlight
+                    ? "bg-[color-mix(in_oklab,var(--brand-soft),var(--surface)_50%)]"
+                    : row.total
+                      ? "bg-[color-mix(in_oklab,var(--muted),var(--surface)_40%)]"
+                      : "bg-surface"
                 )}
               >
-                <span className="block truncate font-medium">{row.label}</span>
+                <span className={cn("block truncate", row.total ? "font-semibold" : "font-medium")}>
+                  {row.label}
+                </span>
                 {row.sublabel ? (
-                  <span className="block truncate text-xs text-foreground-muted">{row.sublabel}</span>
+                  <span className="block truncate text-xs text-foreground-muted">
+                    {row.sublabel}
+                  </span>
                 ) : null}
               </th>
               <td className="px-3 py-2.5 text-foreground-muted">{formatCredit(row.target)}</td>
@@ -190,7 +277,7 @@ export const KpiFiguresTable = ({
               <td className="px-3 py-2.5">{formatCredit(row.khoanPointsConverted)}</td>
               <td className="px-3 py-2.5 font-semibold">{formatCredit(row.totalPoints)}</td>
               <td className="px-3 py-2.5">
-                <Percent value={row.percent} />
+                <Percent value={row.percent} met={settledMet(row)} />
               </td>
               <td className="px-3 py-2.5">
                 <Difference value={row.difference} />
@@ -211,7 +298,15 @@ export const KpiFiguresTable = ({
   );
 };
 
-const Figure = ({ label, value, strong = false }: { label: string; value: ReactNode; strong?: boolean }) => (
+const Figure = ({
+  label,
+  value,
+  strong = false
+}: {
+  label: string;
+  value: ReactNode;
+  strong?: boolean;
+}) => (
   <div className="flex items-baseline justify-between gap-2">
     <dt className="text-foreground-muted">{label}</dt>
     <dd className={cn(strong && "font-semibold")}>{value}</dd>

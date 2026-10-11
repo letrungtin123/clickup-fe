@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Eye, EyeOff } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
@@ -14,29 +14,36 @@ import { qk } from "@/lib/query-keys";
 
 import { authApi } from "../api";
 
-/** Mirrors the API password policy (contracts NewPasswordSchema) with localized messages. */
-const schema = z
-  .object({
-    currentPassword: z.string().min(1, "Nhập mật khẩu hiện tại."),
-    newPassword: z
-      .string()
-      .min(10, "Mật khẩu cần ít nhất 10 ký tự.")
-      .max(128, "Mật khẩu tối đa 128 ký tự.")
-      .refine(
-        (value) => /[A-Za-z]/.test(value) && /[0-9]/.test(value),
-        "Mật khẩu cần có cả chữ và số."
-      ),
-    confirmPassword: z.string()
-  })
-  .refine((value) => value.newPassword !== value.currentPassword, {
-    message: "Mật khẩu mới phải khác mật khẩu hiện tại.",
-    path: ["newPassword"]
-  })
-  .refine((value) => value.newPassword === value.confirmPassword, {
-    message: "Mật khẩu xác nhận không khớp.",
-    path: ["confirmPassword"]
-  });
-type Values = z.infer<typeof schema>;
+/**
+ * Mirrors the API password policy (contracts NewPasswordSchema) with localized messages. Messages
+ * about the first field name it the way its label does ("mật khẩu tạm thời" on the first sign-in).
+ */
+const schemaFor = (current: string) =>
+  z
+    .object({
+      currentPassword: z.string().min(1, `Nhập ${current}.`),
+      newPassword: z
+        .string()
+        .min(10, "Mật khẩu cần ít nhất 10 ký tự.")
+        .max(128, "Mật khẩu tối đa 128 ký tự.")
+        .refine(
+          (value) => /[A-Za-z]/.test(value) && /[0-9]/.test(value),
+          "Mật khẩu cần có cả chữ và số."
+        ),
+      confirmPassword: z.string()
+    })
+    .refine((value) => value.newPassword !== value.currentPassword, {
+      message: `Mật khẩu mới phải khác ${current}.`,
+      path: ["newPassword"]
+    })
+    .refine((value) => value.newPassword === value.confirmPassword, {
+      message: "Mật khẩu xác nhận không khớp.",
+      path: ["confirmPassword"]
+    });
+type Values = z.infer<ReturnType<typeof schemaFor>>;
+
+/** "Mật khẩu tạm thời" → "mật khẩu tạm thời" (for use inside a sentence). */
+const inSentence = (label: string) => label.charAt(0).toLocaleLowerCase("vi") + label.slice(1);
 
 type ChangePasswordFormProps = {
   /** Copy for the current-password label (temporary vs current). */
@@ -54,6 +61,7 @@ export const ChangePasswordForm = ({
   const queryClient = useQueryClient();
   const [reveal, setReveal] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const schema = useMemo(() => schemaFor(inSentence(currentLabel)), [currentLabel]);
   const { register, handleSubmit, formState, setError, control, reset } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
@@ -77,7 +85,7 @@ export const ChangePasswordForm = ({
       if (isApiError(error) && error.code === "CURRENT_PASSWORD_INVALID") {
         setError(
           "currentPassword",
-          { message: "Mật khẩu hiện tại không đúng." },
+          { message: `${currentLabel} không đúng.` },
           { shouldFocus: true }
         );
         return;

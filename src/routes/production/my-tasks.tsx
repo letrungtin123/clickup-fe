@@ -2,17 +2,20 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
-  type DragStartEvent
+  type DragStartEvent,
+  type ScreenReaderInstructions
 } from "@dnd-kit/core";
 import { cn } from "cn";
 import { CheckCheck, ChevronsDown, ClipboardList, Columns3, List } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type HTMLAttributes } from "react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { SegmentedControl } from "@/components/shared/radio-controls";
@@ -21,13 +24,18 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import type { CustomField } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { TaskCard } from "@/features/production/components/jobs/task-card";
 import { TransitionButtons } from "@/features/production/components/jobs/transition-controls";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
 import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
+import { ListFiltersControl } from "@/features/production/components/list-filters";
+import { todayIn } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
+import { emptyListFilters } from "@/features/production/list-filters";
+import { useUrlListFilters } from "@/features/production/list-filters-hooks";
 import type { MyTasksRole } from "@/features/production/jobs-api";
 import { useMyTasks } from "@/features/production/jobs-hooks";
 import {
@@ -74,7 +82,11 @@ export const ProductionMyTasksRoute = () => {
   const [role, setRole] = useState<MyTasksRole>("all");
   const [includeFinished, setIncludeFinished] = useState(false);
   const [view, setView] = useState<View>(readView);
-  const tasks = useMyTasks(role, includeFinished);
+  // TASK tags / custom fields, kept in the URL (?tag=…&cf.<key>=…).
+  const listFilters = useUrlListFilters("TASK");
+  const filtering = listFilters.count > 0;
+  const tasks = useMyTasks(role, includeFinished, listFilters.ready, listFilters.query);
+  const fields = listFilters.fields;
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const items = useMemo(() => flattenPages(tasks.data?.pages), [tasks.data]);
   const statuses = mover.lookup.statuses;
@@ -155,6 +167,15 @@ export const ProductionMyTasksRoute = () => {
             <Switch checked={includeFinished} onCheckedChange={setIncludeFinished} />
             Hiện việc đã xong
           </label>
+          <ListFiltersControl
+            fields={fields}
+            tags={listFilters.tags}
+            filters={listFilters.filters}
+            onChange={listFilters.setFilters}
+            today={todayIn(timeZone)}
+            title="Lọc task theo trường và tag"
+            className="max-sm:ml-auto md:basis-full lg:basis-auto"
+          />
         </div>
       </PageHeader>
 
@@ -177,6 +198,21 @@ export const ProductionMyTasksRoute = () => {
               retrying={tasks.isFetching}
             />
           </div>
+        ) : items.length === 0 && filtering ? (
+          <EmptyState
+            icon={ClipboardList}
+            title="Không có task phù hợp bộ lọc"
+            description="Thử bỏ bớt tag hoặc trường đang lọc."
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => listFilters.setFilters(emptyListFilters)}
+              >
+                Xóa bộ lọc
+              </Button>
+            }
+          />
         ) : items.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
@@ -197,12 +233,19 @@ export const ProductionMyTasksRoute = () => {
               Không tải được luồng trạng thái nên chưa hiện bảng và nút chuyển trạng thái. Bạn vẫn
               mở được từng task.
             </WorkflowUnavailable>
-            <ListView tasks={items} timeZone={timeZone} onOpen={openTask} paging={paging} />
+            <ListView
+              tasks={items}
+              timeZone={timeZone}
+              fields={fields}
+              onOpen={openTask}
+              paging={paging}
+            />
           </div>
         ) : mobile ? (
           <PhoneStatusList
             columns={columns}
             timeZone={timeZone}
+            fields={fields}
             onOpen={openTask}
             onMove={move}
             busyTaskId={mover.pendingTaskId}
@@ -210,13 +253,20 @@ export const ProductionMyTasksRoute = () => {
           />
         ) : view === "board" ? (
           <>
-            <Board columns={columns} timeZone={timeZone} onOpen={openTask} onMove={move} />
+            <Board
+              columns={columns}
+              timeZone={timeZone}
+              fields={fields}
+              onOpen={openTask}
+              onMove={move}
+            />
             <PagingBar paging={paging} className="border-t px-4 md:px-6" />
           </>
         ) : (
           <ListView
             tasks={items}
             timeZone={timeZone}
+            fields={fields}
             onOpen={openTask}
             onMove={move}
             busyTaskId={mover.pendingTaskId}
@@ -258,19 +308,48 @@ const PagingBar = ({ paging, className }: { paging: Paging; className?: string }
     </div>
   ) : null;
 
+/** dnd-kit's screen-reader texts are English by default. */
+const dragInstructions: ScreenReaderInstructions = {
+  draggable:
+    "Nhấn Enter để mở task. Nhấn phím cách để nhấc thẻ, dùng phím mũi tên để di chuyển sang cột khác, nhấn phím cách lần nữa để thả hoặc Esc để hủy."
+};
+
+const taskLabel = (data: unknown) => {
+  const task = (data as { task?: ProductionTask } | undefined)?.task;
+  return task ? `task #${task.number}` : "task";
+};
+
+const dragAnnouncements: Announcements = {
+  onDragStart: ({ active }) => `Đã nhấc ${taskLabel(active.data.current)}.`,
+  onDragOver: ({ active, over }) =>
+    over
+      ? `${taskLabel(active.data.current)} đang ở trên cột ${String(over.data.current?.name ?? "")}.`
+      : `${taskLabel(active.data.current)} không ở trên cột nào.`,
+  onDragEnd: ({ active, over }) =>
+    over
+      ? `Đã thả ${taskLabel(active.data.current)} vào cột ${String(over.data.current?.name ?? "")}.`
+      : `Đã thả ${taskLabel(active.data.current)}.`,
+  onDragCancel: ({ active }) => `Đã hủy kéo ${taskLabel(active.data.current)}.`
+};
+
 const Board = ({
   columns,
   timeZone,
+  fields,
   onOpen,
   onMove
 }: {
   columns: BoardColumn<ProductionTask>[];
   timeZone: string;
+  fields: readonly CustomField[];
   onOpen: (taskId: string) => void;
   onMove: MoveFn;
 }) => {
+  // Touch (tablets) drags after a short press so a swipe over a card still scrolls the board and the
+  // column; mouse drags after a few pixels.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor)
   );
   const [active, setActive] = useState<ProductionTask | null>(null);
@@ -297,6 +376,10 @@ const Board = ({
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{
+        screenReaderInstructions: dragInstructions,
+        announcements: dragAnnouncements
+      }}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragCancel={() => setActive(null)}
@@ -310,6 +393,7 @@ const Board = ({
             key={column.status.id}
             column={column}
             timeZone={timeZone}
+            fields={fields}
             onOpen={onOpen}
             dropState={
               active
@@ -328,6 +412,7 @@ const Board = ({
           <TaskCard
             task={active}
             timeZone={timeZone}
+            fields={fields}
             onOpen={() => undefined}
             dragging
             className="w-72"
@@ -342,17 +427,20 @@ const Board = ({
 const BoardColumnView = memo(function BoardColumnView({
   column,
   timeZone,
+  fields,
   onOpen,
   dropState
 }: {
   column: BoardColumn<ProductionTask>;
   timeZone: string;
+  fields: readonly CustomField[];
   onOpen: (taskId: string) => void;
   dropState: "idle" | "home" | "allowed" | "blocked";
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.status.id,
-    disabled: dropState === "blocked"
+    disabled: dropState === "blocked",
+    data: { name: column.status.name }
   });
   return (
     <section
@@ -374,7 +462,13 @@ const BoardColumnView = memo(function BoardColumnView({
       </header>
       <ul className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
         {column.tasks.map((task) => (
-          <DraggableCard key={task.id} task={task} timeZone={timeZone} onOpen={onOpen} />
+          <DraggableCard
+            key={task.id}
+            task={task}
+            timeZone={timeZone}
+            fields={fields}
+            onOpen={onOpen}
+          />
         ))}
         {column.tasks.length === 0 ? (
           <li className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-foreground-subtle">
@@ -387,18 +481,22 @@ const BoardColumnView = memo(function BoardColumnView({
 });
 
 const cardClass = "cursor-grab active:cursor-grabbing";
+const noop = () => undefined;
 
 /**
  * The draggable wrapper re-renders with the drag state (dnd-kit context); the memoized TaskCard
- * inside does not unless its task changed.
+ * inside does not unless its task changed. The drag listeners/attributes go on the card itself (one
+ * tab stop with a focus ring); `touch-manipulation` keeps swipes over cards scrolling on tablets.
  */
 const DraggableCard = memo(function DraggableCard({
   task,
   timeZone,
+  fields,
   onOpen
 }: {
   task: ProductionTask;
   timeZone: string;
+  fields: readonly CustomField[];
   onOpen: (taskId: string) => void;
 }) {
   const draggable = task.capabilities.transitions.length > 0;
@@ -407,19 +505,29 @@ const DraggableCard = memo(function DraggableCard({
     data: { task },
     disabled: !draggable
   });
+  const dragHandle = useMemo<HTMLAttributes<HTMLDivElement> | undefined>(
+    () =>
+      draggable
+        ? { ...attributes, ...listeners, "aria-roledescription": "thẻ task kéo được" }
+        : undefined,
+    [draggable, attributes, listeners]
+  );
   return (
     <li
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className={cn("touch-none outline-none", isDragging && "opacity-30")}
-      aria-roledescription="Thẻ task kéo được"
+      className={cn(
+        "touch-manipulation select-none [-webkit-touch-callout:none]",
+        isDragging && "opacity-30"
+      )}
     >
       <TaskCard
         task={task}
         timeZone={timeZone}
-        onOpen={onOpen}
+        fields={fields}
+        // Enter while a card is lifted drops it; it must not also open the task.
+        onOpen={isDragging ? noop : onOpen}
         className={draggable ? cardClass : undefined}
+        dragHandle={dragHandle}
       />
     </li>
   );
@@ -428,6 +536,7 @@ const DraggableCard = memo(function DraggableCard({
 const ListView = ({
   tasks,
   timeZone,
+  fields,
   onOpen,
   onMove,
   busyTaskId,
@@ -435,6 +544,7 @@ const ListView = ({
 }: {
   tasks: ProductionTask[];
   timeZone: string;
+  fields: readonly CustomField[];
   onOpen: (taskId: string) => void;
   /** Without it (no workflow) the cards are read-only. */
   onMove?: MoveFn | undefined;
@@ -448,6 +558,7 @@ const ListView = ({
           <TaskCard
             task={task}
             timeZone={timeZone}
+            fields={fields}
             onOpen={onOpen}
             showStatus
             footer={
@@ -471,6 +582,7 @@ const ListView = ({
 const PhoneStatusList = ({
   columns,
   timeZone,
+  fields,
   onOpen,
   onMove,
   busyTaskId,
@@ -478,6 +590,7 @@ const PhoneStatusList = ({
 }: {
   columns: BoardColumn<ProductionTask>[];
   timeZone: string;
+  fields: readonly CustomField[];
   onOpen: (taskId: string) => void;
   onMove: MoveFn;
   busyTaskId: string | null | undefined;
@@ -525,6 +638,7 @@ const PhoneStatusList = ({
                 <TaskCard
                   task={task}
                   timeZone={timeZone}
+                  fields={fields}
                   onOpen={onOpen}
                   footer={
                     <TransitionButtons

@@ -100,7 +100,9 @@ const SortableRow = ({
       type="button"
       aria-label={label}
       disabled={disabled || handleDisabled}
-      className="inline-flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-foreground-subtle outline-none hover:bg-surface-hover hover:text-foreground-muted focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+      // touch-none: without it a touch drag pans the page and the pointer sensor is cancelled.
+      // The pseudo-element widens the hit area to ≥ 40px without shifting the row layout.
+      className="relative inline-flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-foreground-subtle outline-none after:absolute after:-inset-x-2 after:-inset-y-1 hover:bg-surface-hover hover:text-foreground-muted focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
       {...attributes}
       {...listeners}
     >

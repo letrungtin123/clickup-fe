@@ -13,12 +13,15 @@ import { downloadExport } from "../export";
 export const ExportButton = ({
   path,
   query,
+  extra,
   fallbackName,
   size = "default",
   compactOnPhone = true
 }: {
   path: string;
   query: Record<string, QueryValue>;
+  /** Repeated parameters (e.g. peopleFilterPairs). */
+  extra?: readonly [string, string][];
   fallbackName: string;
   size?: "default" | "sm";
   /** Icon only on phones (label kept for assistive tech). */
@@ -28,7 +31,7 @@ export const ExportButton = ({
   const run = async () => {
     setPending(true);
     try {
-      const name = await downloadExport(path, query, fallbackName);
+      const name = await downloadExport(path, query, fallbackName, extra);
       toast.success(`Đã tải ${name}`);
     } catch (error) {
       toast.error(scoreErrorMessage(error, "Không xuất được tệp Excel. Thử lại sau."));

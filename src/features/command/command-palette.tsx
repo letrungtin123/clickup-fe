@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Sun,
+  Trash2,
   UserRound,
   Users
 } from "lucide-react";
@@ -201,7 +202,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
               {opening ? (
                 <Spinner className="size-3.5" />
               ) : exactTask ? (
-                <StatusPill status={exactTask.status} size="xs" className="max-w-28" />
+                <StatusPill status={exactTask.status} size="xs" className="max-w-28 max-sm:hidden" />
               ) : (
                 <CommandShortcut className="tracking-normal">Enter</CommandShortcut>
               )}
@@ -238,7 +239,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
                 <span className="min-w-0 flex-1 truncate">
                   <Highlight text={task.title} query={highlightTerm} />
                 </span>
-                <StatusPill status={task.status} size="xs" className="max-w-28" />
+                <StatusPill status={task.status} size="xs" className="max-w-28 max-sm:hidden" />
               </CommandItem>
             ))}
           </CommandGroup>
@@ -408,6 +409,9 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandItem>
           <CommandItem value="nav tìm kiếm search" onSelect={() => go("/search")}>
             <Search /> Trang tìm kiếm
+          </CommandItem>
+          <CommandItem value="nav thùng rác trash đã xóa khôi phục" onSelect={() => go("/trash")}>
+            <Trash2 /> Thùng rác
           </CommandItem>
           <CommandItem value="nav hồ sơ profile mật khẩu" onSelect={() => go("/settings/profile")}>
             <UserRound /> Hồ sơ của tôi

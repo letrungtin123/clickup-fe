@@ -34,6 +34,9 @@ import {
   Plus,
   Shapes,
   Star,
+  Tag,
+  Tags,
+  TextCursorInput,
   Timer,
   User,
   UsersRound,
@@ -41,7 +44,14 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
-import { useState, type HTMLAttributes, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type HTMLAttributes,
+  type ReactNode
+} from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -53,10 +63,11 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { CustomField } from "@/contracts/production-catalog";
 import {
-  reportDimensionInfo,
   reportDimensions,
   reportMeasureInfo,
+  type CustomFieldDimensionEntity,
   type ReportDimension,
   type ReportValueFormat
 } from "@/contracts/production-reports";
@@ -65,6 +76,15 @@ import { createControlAwareSensors } from "@/lib/dnd-sensors";
 import { toneClass } from "@/lib/colors";
 
 import { touchTargets } from "../../ui";
+import {
+  customEntityLabels,
+  customFieldDimensionId,
+  dimensionMeta,
+  emptyCatalog,
+  fieldCatalog,
+  type DimensionKey,
+  type FieldCatalog
+} from "../dimensions";
 import {
   chipKey,
   maxDimensions,
@@ -80,10 +100,11 @@ import {
 } from "../model";
 
 /**
- * Report-builder fields (SPEC Phase 5 §4): the palette of dimension and measure chips and the three
- * drop zones "Hàng", "Cột", "Giá trị". Mouse: drag (4px threshold); touch: press-and-hold to drag,
- * tap to add. Without dragging: tap a palette chip to add / remove it, "+" adds to a given zone,
- * "⋯" on a placed chip moves it between zones or reorders it.
+ * Report-builder fields (SPEC Phase 5 §4): the palette of dimension, custom-field and measure chips and
+ * the three drop zones "Hàng", "Cột", "Giá trị". Mouse: drag (4px threshold); touch: press-and-hold to
+ * drag, tap to add. Without dragging: tap a palette chip to add / remove it, "+" adds to a given zone,
+ * "⋯" on a placed chip moves it between zones or reorders it. Custom fields (PLAN §10 "Năng lực") are
+ * dimension chips with a badge naming whose value it is (NV / Job / Task / Khách).
  */
 
 const dimensionIcons: Record<ReportDimension, LucideIcon> = {
@@ -112,12 +133,36 @@ const measureIcons: Partial<Record<ReportValueFormat, LucideIcon>> = {
   decimal: Hash
 };
 
-const chipLabel = (chip: Chip) =>
+const fieldTypeIcons: Record<CustomField["type"], LucideIcon> = {
+  SELECT: Tag,
+  MULTISELECT: Tags,
+  TEXT: TextCursorInput,
+  NUMBER: Hash,
+  DATE: Calendar
+};
+
+/** Short badge of a custom-field chip (full wording in its title). */
+const entityBadges: Record<CustomFieldDimensionEntity, string> = {
+  user: "NV",
+  job: "Job",
+  task: "Task",
+  client: "Khách"
+};
+
+/** Custom fields of the builder: definitions for chip labels and the role's usable fields. */
+const FieldsContext = createContext<{ catalog: FieldCatalog; fields: readonly CustomField[] }>({
+  catalog: emptyCatalog,
+  fields: []
+});
+const useCatalog = () => useContext(FieldsContext).catalog;
+
+const chipLabel = (chip: Chip, catalog: FieldCatalog) =>
   chip.kind === "dimension"
-    ? reportDimensionInfo[chip.name].label
+    ? dimensionMeta(chip.name, catalog).label
     : reportMeasureInfo[chip.name].label;
 
-const chipTone = (chip: Chip) => toneClass(chip.kind === "dimension" ? "sky" : "violet");
+const chipTone = (chip: Chip) =>
+  toneClass(chip.kind === "measure" ? "violet" : dimensionMeta(chip.name).custom ? "teal" : "sky");
 
 const { MouseSensor: BuilderMouseSensor, TouchSensor: BuilderTouchSensor } =
   createControlAwareSensors("[data-no-drag]");
@@ -146,15 +191,19 @@ const ChipFace = ({
   /** Props of the drag handle (icon + label) for placed chips. */
   handle?: HTMLAttributes<HTMLSpanElement>;
 }) => {
+  const catalog = useCatalog();
+  const custom = chip.kind === "dimension" ? dimensionMeta(chip.name, catalog).custom : null;
   const Icon =
-    chip.kind === "dimension"
-      ? dimensionIcons[chip.name]
-      : (measureIcons[reportMeasureInfo[chip.name].format] ?? Hash);
+    chip.kind === "measure"
+      ? (measureIcons[reportMeasureInfo[chip.name].format] ?? Hash)
+      : custom
+        ? fieldTypeIcons[custom.field?.type ?? "SELECT"]
+        : dimensionIcons[chip.name as ReportDimension];
   return (
     <span
       className={cn(
         chipTone(chip),
-        "inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-lg border border-(--tone)/25 bg-(--tone-soft) px-2 text-[13px] font-medium text-(--tone-text) max-sm:min-h-10",
+        "inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-lg border border-(--tone)/25 bg-(--tone-soft) px-2 text-[13px] font-medium text-(--tone-text) pointer-coarse:min-h-10 max-sm:min-h-10",
         className
       )}
     >
@@ -166,7 +215,21 @@ const ChipFace = ({
         )}
       >
         <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="truncate">{chipLabel(chip)}</span>
+        {/* Narrow zones (tablet, 1024 with the palette column): wrap instead of cutting the name. */}
+        <span
+          className="line-clamp-2 py-0.5 text-left leading-snug break-words"
+          title={chipLabel(chip, catalog)}
+        >
+          {chipLabel(chip, catalog)}
+        </span>
+        {custom ? (
+          <span
+            className="shrink-0 rounded-[0.3rem] bg-(--tone)/15 px-1 py-px text-[10px] leading-tight font-semibold tracking-wide uppercase"
+            title={`Trường tùy chỉnh của ${customEntityLabels[custom.entity].toLowerCase()}`}
+          >
+            {entityBadges[custom.entity]}
+          </span>
+        ) : null}
       </span>
       {children}
     </span>
@@ -188,7 +251,7 @@ const PaletteChip = ({
     id: `palette:${chipKey(chip)}`,
     data: { chip }
   });
-  const label = chipLabel(chip);
+  const label = chipLabel(chip, useCatalog());
   return (
     <button
       ref={setNodeRef}
@@ -221,10 +284,12 @@ const PaletteChip = ({
 const PaletteGroup = ({
   title,
   hint,
+  note,
   children
 }: {
   title: string;
   hint: string;
+  note?: ReactNode;
   children: ReactNode;
 }) => (
   <div className="flex flex-col gap-2">
@@ -232,11 +297,17 @@ const PaletteGroup = ({
       <h3 className="text-xs font-semibold tracking-wide text-foreground-muted uppercase">
         {title}
       </h3>
-      <span className="text-[11px] text-foreground-subtle">{hint}</span>
+      <span className="text-right text-[11px] text-foreground-subtle">{hint}</span>
     </div>
     <div className="flex flex-wrap gap-1.5">{children}</div>
+    {note ? (
+      <p className="text-[11px] leading-snug text-pretty text-foreground-subtle">{note}</p>
+    ) : null}
   </div>
 );
+
+/** Custom-field chips shown before "N trường khác". */
+const foldedFieldCount = 6;
 
 const Palette = ({
   zones,
@@ -247,6 +318,21 @@ const Palette = ({
   isAdmin: boolean;
   onToggle: (chip: Chip) => void;
 }) => {
+  const { fields } = useContext(FieldsContext);
+  // Choice fields (Năng lực, Ưu tiên…) group well; free-text ones come last. The palette shows the
+  // first few and folds the rest (placed chips always stay visible) so the result stays in reach.
+  const [allFields, setAllFields] = useState(false);
+  const orderedFields = [
+    ...fields.filter((field) => field.type !== "TEXT"),
+    ...fields.filter((field) => field.type === "TEXT")
+  ];
+  const shownFields = orderedFields.filter(
+    (field, index) =>
+      allFields ||
+      index < foldedFieldCount ||
+      zoneOfChip(zones, { kind: "dimension", name: customFieldDimensionId(field) }) !== null
+  );
+  const hiddenFields = orderedFields.length - shownFields.length;
   const { setNodeRef, isOver } = useDroppable({
     id: "palette",
     data: { zone: "palette" } satisfies DropTarget
@@ -297,6 +383,44 @@ const Palette = ({
               );
             })}
           </PaletteGroup>
+          {fields.length > 0 ? (
+            <PaletteGroup
+              title="Trường tùy chỉnh"
+              hint={isAdmin ? "Do Quản trị tạo" : "Của job, task, khách"}
+              note={
+                fields.some((field) => field.type === "MULTISELECT") ? (
+                  <>
+                    <Tags className="mr-1 inline size-3 align-[-2px]" aria-hidden="true" />
+                    Trường chọn nhiều: một bản ghi được đếm cho mỗi lựa chọn, dòng Tổng đếm một lần.
+                  </>
+                ) : undefined
+              }
+            >
+              {shownFields.map((field) => {
+                const chip: Chip = { kind: "dimension", name: customFieldDimensionId(field) };
+                return (
+                  <PaletteChip
+                    key={chip.name}
+                    chip={chip}
+                    placed={zoneOfChip(zones, chip) !== null}
+                    onToggle={() => onToggle(chip)}
+                  />
+                );
+              })}
+              {hiddenFields > 0 || allFields ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-8 rounded-lg px-2 text-[13px] text-foreground-muted pointer-coarse:min-h-10 max-sm:min-h-10"
+                  aria-expanded={allFields}
+                  onClick={() => setAllFields((value) => !value)}
+                >
+                  <ChevronDown className={cn("transition-transform", allFields && "rotate-180")} />
+                  {allFields ? "Thu gọn" : `${hiddenFields} trường khác`}
+                </Button>
+              ) : null}
+            </PaletteGroup>
+          ) : null}
           <PaletteGroup title="Chỉ số" hint={`${zones.values.length} đang dùng`}>
             {measuresForRole(isAdmin).map((name) => {
               const chip: Chip = { kind: "measure", name };
@@ -344,7 +468,7 @@ const ZoneChip = ({
     id: `slot:${zone}:${index}`,
     data: { zone, index } satisfies DropTarget
   });
-  const label = chipLabel(chip);
+  const label = chipLabel(chip, useCatalog());
   const other: Zone | null = zone === "rows" ? "columns" : zone === "columns" ? "rows" : null;
   return (
     <li
@@ -375,7 +499,7 @@ const ZoneChip = ({
             render={
               <button
                 type="button"
-                className="ml-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-(--tone)/15 focus-visible:ring-2 focus-visible:ring-ring max-sm:size-10"
+                className="ml-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-(--tone)/15 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-9 max-sm:size-10"
                 aria-label={`Tuỳ chọn ${label}`}
               />
             }
@@ -406,7 +530,7 @@ const ZoneChip = ({
           type="button"
           data-no-drag=""
           onClick={onRemove}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-(--tone)/15 focus-visible:ring-2 focus-visible:ring-ring max-sm:size-10"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-(--tone)/15 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-9 max-sm:size-10"
           aria-label={`Bỏ ${label}`}
         >
           <X className="size-3.5" aria-hidden="true" />
@@ -428,12 +552,14 @@ const AddToZone = ({
   onAdd: (chip: Chip) => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const { fields } = useContext(FieldsContext);
+  const dimensions: DimensionKey[] = [...reportDimensions, ...fields.map(customFieldDimensionId)];
   const choices: Chip[] =
     zone === "values"
       ? measuresForRole(isAdmin)
           .filter((name) => !zones.values.includes(name))
           .map((name) => ({ kind: "measure", name }))
-      : reportDimensions
+      : dimensions
           .filter((name) => !zones[zone].includes(name))
           .map((name) => ({ kind: "dimension", name }));
   return (
@@ -522,7 +648,7 @@ const ZoneBox = ({
       <div className="flex items-center gap-1.5">
         <div className="flex min-w-0 flex-1 flex-col">
           <h3 className="text-sm font-semibold">{zoneLabels[zone]}</h3>
-          <p className="truncate text-[11px] text-foreground-subtle">{zoneHints[zone]}</p>
+          <p className="text-[11px] text-pretty text-foreground-subtle">{zoneHints[zone]}</p>
         </div>
         {extra}
         <AddToZone
@@ -565,15 +691,25 @@ export const FieldBuilder = ({
   zones,
   onChange,
   isAdmin,
+  fields = [],
+  catalog,
   children
 }: {
   zones: Zones;
   onChange: (zones: Zones) => void;
   isAdmin: boolean;
+  /** Custom fields the role can use (useReportFields). */
+  fields?: readonly CustomField[];
+  /** Definitions of every custom field, for the labels of placed chips. */
+  catalog?: FieldCatalog;
   /** Rendered under the zones (range, filters…). */
   children?: ReactNode;
 }) => {
   const [dragging, setDragging] = useState<Chip | null>(null);
+  const fieldsValue = useMemo(
+    () => ({ catalog: catalog ?? fieldCatalog(fields), fields }),
+    [catalog, fields]
+  );
   const sensors = useSensors(
     useSensor(BuilderMouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(BuilderTouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } })
@@ -607,69 +743,74 @@ export const FieldBuilder = ({
   };
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={collision}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragCancel={() => setDragging(null)}
-      accessibility={{
-        screenReaderInstructions: {
-          draggable:
-            "Chip có thể kéo bằng chuột hoặc giữ ngón tay. Dùng nút ⋯ để chuyển ô bằng bàn phím."
-        }
-      }}
-    >
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start">
-        <Palette zones={zones} isAdmin={isAdmin} onToggle={toggle} />
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="grid min-w-0 gap-3 md:grid-cols-3">
-            <ZoneBox
-              zone="rows"
-              zones={zones}
-              dragging={dragging}
-              isAdmin={isAdmin}
-              onApply={apply}
-            />
-            <ZoneBox
-              zone="columns"
-              zones={zones}
-              dragging={dragging}
-              isAdmin={isAdmin}
-              onApply={apply}
-              extra={
-                zones.rows.length > 0 || zones.columns.length > 0 ? (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-foreground-muted"
-                    aria-label="Đảo Hàng và Cột"
-                    title="Đảo Hàng và Cột"
-                    onClick={() => onChange(swapRowsAndColumns(zones))}
-                  >
-                    <ArrowLeftRight />
-                  </Button>
-                ) : null
-              }
-            />
-            <ZoneBox
-              zone="values"
-              zones={zones}
-              dragging={dragging}
-              isAdmin={isAdmin}
-              onApply={apply}
-            />
+    <FieldsContext.Provider value={fieldsValue}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collision}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setDragging(null)}
+        accessibility={{
+          screenReaderInstructions: {
+            draggable:
+              "Chip có thể kéo bằng chuột hoặc giữ ngón tay. Dùng nút ⋯ để chuyển ô bằng bàn phím."
+          }
+        }}
+      >
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start">
+          <Palette zones={zones} isAdmin={isAdmin} onToggle={toggle} />
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="grid min-w-0 gap-3 md:grid-cols-3">
+              <ZoneBox
+                zone="rows"
+                zones={zones}
+                dragging={dragging}
+                isAdmin={isAdmin}
+                onApply={apply}
+              />
+              <ZoneBox
+                zone="columns"
+                zones={zones}
+                dragging={dragging}
+                isAdmin={isAdmin}
+                onApply={apply}
+                extra={
+                  zones.rows.length > 0 || zones.columns.length > 0 ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-foreground-muted"
+                      aria-label="Đảo Hàng và Cột"
+                      title="Đảo Hàng và Cột"
+                      onClick={() => onChange(swapRowsAndColumns(zones))}
+                    >
+                      <ArrowLeftRight />
+                    </Button>
+                  ) : null
+                }
+              />
+              <ZoneBox
+                zone="values"
+                zones={zones}
+                dragging={dragging}
+                isAdmin={isAdmin}
+                onApply={apply}
+              />
+            </div>
+            {children}
           </div>
-          {children}
         </div>
-      </div>
-      <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }}>
-        {dragging ? (
-          <ChipFace chip={dragging} className="cursor-grabbing shadow-lg ring-1 ring-foreground/10">
-            <GripVertical className="size-3.5 opacity-60" aria-hidden="true" />
-          </ChipFace>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+        <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }}>
+          {dragging ? (
+            <ChipFace
+              chip={dragging}
+              className="cursor-grabbing shadow-lg ring-1 ring-foreground/10"
+            >
+              <GripVertical className="size-3.5 opacity-60" aria-hidden="true" />
+            </ChipFace>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </FieldsContext.Provider>
   );
 };

@@ -62,8 +62,22 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production/settings", label: "Cấu hình", icon: Settings2, roles: ["ADMIN"] }
 ];
 
-export const visibleNavEntries = (roles: readonly ProductionRole[]) =>
-  roles.length === 0 ? [] : productionNavEntries.filter((entry) => hasAnyRole(roles, entry.roles));
+/** Entries only worth showing while the score board is public (G18); Admins always see them. */
+const publicBoardOnly = new Set(["/production/scores/board"]);
+
+export const visibleNavEntries = (
+  roles: readonly ProductionRole[],
+  options: { scoresPublic?: boolean } = {}
+) =>
+  roles.length === 0
+    ? []
+    : productionNavEntries.filter(
+        (entry) =>
+          hasAnyRole(roles, entry.roles) &&
+          (options.scoresPublic !== false ||
+            roles.includes("ADMIN") ||
+            !publicBoardOnly.has(entry.to))
+      );
 
 export type SettingsGroup = "people" | "catalog" | "workflow" | "system";
 

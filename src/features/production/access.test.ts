@@ -56,6 +56,17 @@ describe("navigation by role", () => {
     );
   });
 
+  it("hides the ranking while the board is private, except for Admins (G18)", () => {
+    const privately = (roles: Parameters<typeof visibleNavEntries>[0]) =>
+      visibleNavEntries(roles, { scoresPublic: false }).map((entry) => entry.to);
+    expect(privately(["STAFF", "LEADER"])).not.toContain("/production/scores/board");
+    expect(privately(["STAFF"])).toContain("/production/scores");
+    expect(privately(["ADMIN"])).toContain("/production/scores/board");
+    expect(visibleNavEntries(["STAFF"], { scoresPublic: true }).map((entry) => entry.to)).toContain(
+      "/production/scores/board"
+    );
+  });
+
   it("shows jobs, my tasks and the QC queue by role (Phase 2)", () => {
     expect(paths(["STAFF"])).toContain("/production/my-tasks");
     expect(paths(["STAFF"])).not.toContain("/production/jobs");

@@ -28,7 +28,8 @@ export const App = () => {
           <Toaster
             position={mobile ? "top-center" : "bottom-right"}
             mobileOffset={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
-            closeButton
+            // Phones swipe a toast away; sonner's corner ✕ only stuck out of the card there (P12).
+            closeButton={!mobile}
           />
         </TooltipProvider>
       </MotionConfig>

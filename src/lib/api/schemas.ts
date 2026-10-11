@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   AppUserSchema,
   ManagedRoleSchema,
+  NotificationChannelsSchema,
   OrganizationMemberSchema,
   OrganizationSchema,
   PermissionDefinitionSchema,
@@ -36,7 +37,14 @@ export const SessionContextSchema = z.object({
   role: SessionRoleSchema,
   hasFullOrganizationAuthority: z.boolean(),
   /** Admin-provisioned accounts must replace their temporary password first (PD-005). */
-  mustChangePassword: z.boolean().default(false)
+  mustChangePassword: z.boolean().default(false),
+  /** Explicit production roles (PD-011); superadmins also act as production ADMIN without one. */
+  productionRoles: z.array(z.string().min(1).max(20)).default([]),
+  /**
+   * Personal channels (PD-021), read fresh by /workspace/context. `notifyWeb` off = no toast for new
+   * notifications (inbox, bell and badges still update). Older servers omit it: web on, email off.
+   */
+  notificationPreferences: NotificationChannelsSchema.default({ notifyWeb: true, notifyEmail: false })
 });
 export type SessionContext = z.infer<typeof SessionContextSchema>;
 

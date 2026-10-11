@@ -1,30 +1,51 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router";
 
+import { kpiPeriodOfDay } from "@/contracts/production-scores";
 import { PageIntro, SettingsPage } from "@/features/production/components/settings-kit";
 import { todayIn } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
 import { KpiReportPanel } from "@/features/production/kpi/components/kpi-report";
+import { kpiReportAnchor } from "@/features/production/kpi/report";
 import { SettlementRunPanel } from "@/features/production/kpi/components/settlement-run";
 import { SettlementRuns } from "@/features/production/kpi/components/settlement-runs";
-import { periodOfDay, shiftPeriod } from "@/features/production/scores/periods";
+import { closeDaysOf, isPeriod, shiftPeriod } from "@/features/production/scores/periods";
 
 /**
  * /production/settings/kpi-settlement (ADMIN) — SPEC Phase 6: run the settlement of a period (reason
- * + confirmation), the run history, and the KPI report with quarter/year rollups and Excel export.
+ * + confirmation), the run history, and the KPI report with quarter/year rollups, team totals and Excel
+ * export. `?period=YYYY-MM` opens the report on that period; `#bao-cao-kpi` scrolls to it.
  */
 export const ProductionKpiSettlementRoute = () => {
   const me = useProductionMe();
+  const location = useLocation();
+  const [params] = useSearchParams();
   const settings = me.data?.settings;
-  const closeDay = settings?.kpiCloseDay ?? 25;
+  const closeDays = closeDaysOf(settings);
   const today = todayIn(settings?.timezone ?? "Asia/Ho_Chi_Minh");
-  const currentPeriod = periodOfDay(today, closeDay);
-  const [focus, setFocus] = useState(shiftPeriod(currentPeriod, -1));
+  const currentPeriod = kpiPeriodOfDay(today, closeDays);
+  const requested = params.get("period");
+  const [focus, setFocus] = useState(() =>
+    isPeriod(requested) && requested <= currentPeriod ? requested : shiftPeriod(currentPeriod, -1)
+  );
+  const reportRef = useRef<HTMLDivElement>(null);
+  const wantsReport = location.hash === `#${kpiReportAnchor}`;
+
+  useEffect(() => {
+    if (!wantsReport) return;
+    const frame = window.requestAnimationFrame(() =>
+      reportRef.current?.scrollIntoView({ block: "start" })
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [wantsReport]);
 
   return (
     <SettingsPage wide className="max-w-[min(100%,80rem)]">
       <PageIntro slug="kpi-settlement" />
-      <SettlementRunPanel currentPeriod={currentPeriod} closeDay={closeDay} onDone={setFocus} />
-      <KpiReportPanel key={focus} currentPeriod={currentPeriod} focusPeriod={focus} />
+      <SettlementRunPanel currentPeriod={currentPeriod} closeDays={closeDays} onDone={setFocus} />
+      <div ref={reportRef} id={kpiReportAnchor} className="scroll-mt-4">
+        <KpiReportPanel key={focus} currentPeriod={currentPeriod} focusPeriod={focus} />
+      </div>
       <SettlementRuns />
     </SettingsPage>
   );

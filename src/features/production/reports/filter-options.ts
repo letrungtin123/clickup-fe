@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { customFieldEmptyValue, type CustomField } from "@/contracts/production-catalog";
 import { taskKindLabels, type ReportFilters } from "@/contracts/production-reports";
 
 import { foldText } from "../catalog";
@@ -165,6 +166,22 @@ export const useFilterOptions = (enabled = true) => {
   ]);
   return { options, isPending };
 };
+
+/** "Chưa có" option of custom-field filters: records without a value for the field. */
+export const emptyValueLabel = "Chưa có";
+
+/**
+ * Options of a custom-field filter: the field's options (SELECT / MULTISELECT) then "Chưa có"
+ * (`__empty__`). Text fields have no list — the typed text is matched exactly.
+ */
+export const customFieldFilterOptions = (
+  field: Pick<CustomField, "type" | "options"> | null
+): FilterOption[] => [
+  ...(field && field.type !== "TEXT"
+    ? field.options.map((item) => option(item.value, item.label, { color: item.color }))
+    : []),
+  option(customFieldEmptyValue, emptyValueLabel, { hint: "không có giá trị" })
+];
 
 /** Selected values of a filter as a list of ids / codes. */
 export const filterValues = (filters: ReportFilters, key: FilterKey): string[] => {

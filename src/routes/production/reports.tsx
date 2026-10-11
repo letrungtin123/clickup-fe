@@ -1,16 +1,26 @@
-import { Bookmark, BookmarkCheck, ChevronLeft, FilePlus2, ShieldAlert } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkCheck,
+  ChevronLeft,
+  FilePlus2,
+  LayoutTemplate,
+  ShieldAlert
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
-import type {
-  ReportConfig,
-  ReportDimension,
-  ReportMeasure,
-  SavedReport
-} from "@/contracts/production-reports";
-import { reportDimensionInfo, reportMeasureInfo } from "@/contracts/production-reports";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import type { ReportConfig, ReportMeasure, SavedReport } from "@/contracts/production-reports";
+import { reportMeasureInfo } from "@/contracts/production-reports";
 import { useDebouncedValue } from "@/features/command/search-api";
 import { RequireProductionRole } from "@/features/production/components/production-gate";
 import { todayIn } from "@/features/production/format";
@@ -29,8 +39,10 @@ import {
   SavedReportsSheet
 } from "@/features/production/reports/components/saved-reports";
 import { useFilterOptions } from "@/features/production/reports/filter-options";
+import { dimensionLabel, type DimensionKey } from "@/features/production/reports/dimensions";
 import {
   useLiveReports,
+  useReportFields,
   useReportResult,
   useSavedReports
 } from "@/features/production/reports/hooks";
@@ -40,6 +52,7 @@ import {
   decodeConfig,
   defaultReportConfig,
   encodeConfig,
+  privacyProblem,
   sanitizeForRole,
   viewOfConfig,
   withSort,
@@ -47,6 +60,7 @@ import {
   withZones,
   zonesFromConfig
 } from "@/features/production/reports/model";
+import { availableTemplates } from "@/features/production/reports/templates";
 import { PageBody } from "@/features/production/scores/components/kit";
 import { touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
@@ -65,14 +79,16 @@ export const ProductionReportsRoute = () => (
 const ReportsPage = () => {
   const [params] = useSearchParams();
   const location = useLocation();
-  // A bare /production/reports (sidebar link, "Báo cáo mới") starts a fresh builder.
+  // A bare /production/reports (sidebar link, "Báo cáo mới") starts a fresh builder. Only entering a
+  // bare URL remounts: leaving it (the first edit writes ?config=) keeps the builder and its UI state.
   const fresh = !params.has("config") && !params.has("saved");
-  return <ReportBuilder key={fresh ? `fresh-${location.key}` : "builder"} />;
+  const [builderKey, setBuilderKey] = useState(location.key);
+  if (fresh && builderKey !== location.key) setBuilderKey(location.key);
+  return <ReportBuilder key={builderKey} />;
 };
 
-const dimensionOrMeasureIsDimension = (
-  key: ReportDimension | ReportMeasure
-): key is ReportDimension => key in reportDimensionInfo;
+const dimensionOrMeasureIsDimension = (key: DimensionKey | ReportMeasure): key is DimensionKey =>
+  !(key in reportMeasureInfo);
 
 const ReportBuilder = () => {
   const access = useProductionAccess();
@@ -101,6 +117,8 @@ const ReportBuilder = () => {
   const [saveOpen, setSaveOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const filterOptions = useFilterOptions();
+  const reportFields = useReportFields();
+  const templates = availableTemplates({ today, isAdmin, catalog: reportFields.catalog });
 
   // Run the config a moment after the last edit (toggling several filters = one request).
   const signature = config ? configSignature(config) : "";
@@ -109,7 +127,15 @@ const ReportBuilder = () => {
     () => (debounced ? (JSON.parse(debounced) as ReportConfig) : null),
     [debounced]
   );
-  const problem = config ? configProblem(config) : null;
+  // Run-time blockers, explained inline: an incomplete config, or a breakdown the role may not see
+  // while scores are private (the API would answer 403 SCORES_PRIVATE).
+  const problem = config
+    ? (configProblem(config) ??
+      privacyProblem(config, {
+        isAdmin,
+        scoresPublic: me.data?.settings.scoresPublic ?? true
+      }))
+    : null;
   const runnable = runConfig && !configProblem(runConfig) && !problem ? runConfig : null;
   const result = useReportResult(runnable);
 
@@ -163,7 +189,19 @@ const ReportBuilder = () => {
     );
   };
 
-  const onSort = (key: ReportDimension | ReportMeasure) => {
+  const openTemplate = (name: string, next: ReportConfig) => {
+    setDraft(next);
+    setChartMeasure(null);
+    setParams((previous) => {
+      const nextParams = new URLSearchParams(previous);
+      nextParams.delete("saved");
+      nextParams.set("config", encodeConfig(next));
+      nextParams.set("title", name);
+      return nextParams;
+    });
+  };
+
+  const onSort = (key: DimensionKey | ReportMeasure) => {
     if (!config) return;
     const current = config.sort;
     const firstDirection: "asc" | "desc" = dimensionOrMeasureIsDimension(key) ? "asc" : "desc";
@@ -222,6 +260,32 @@ const ReportBuilder = () => {
               <FilePlus2 />
               <span className="max-lg:sr-only">Mới</span>
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" aria-label="Mẫu báo cáo" />}>
+                <LayoutTemplate />
+                <span className="max-sm:sr-only">Mẫu</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Mẫu báo cáo · chọn để dựng sẵn</DropdownMenuLabel>
+                  {templates.map(({ template, config: templateConfig }) => (
+                    <DropdownMenuItem
+                      key={template.id}
+                      className="items-start py-2"
+                      onClick={() => openTemplate(template.name, templateConfig)}
+                    >
+                      <LayoutTemplate className="mt-0.5 text-foreground-muted" />
+                      <span className="flex min-w-0 flex-col gap-0.5">
+                        <span className="font-medium">{template.name}</span>
+                        <span className="text-xs text-pretty text-foreground-muted">
+                          {template.description}
+                        </span>
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" onClick={() => setListOpen(true)}>
               <BookmarkCheck />
               <span className="max-sm:sr-only">Đã lưu</span>
@@ -260,6 +324,19 @@ const ReportBuilder = () => {
             vì chỉ Quản trị được xem tiền.
           </p>
         ) : null}
+        {sanitized && sanitized.removedFields.length > 0 ? (
+          <p
+            role="status"
+            className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm"
+          >
+            <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+            Đã bỏ{" "}
+            {sanitized.removedFields
+              .map((field) => `"${dimensionLabel(field as DimensionKey, reportFields.catalog)}"`)
+              .join(", ")}{" "}
+            vì trường tùy chỉnh của nhân viên chỉ Quản trị được dùng trong báo cáo.
+          </p>
+        ) : null}
         {savedMissing ? (
           <p
             role="status"
@@ -275,6 +352,8 @@ const ReportBuilder = () => {
               zones={zones}
               onChange={(next) => update(withZones(config, next))}
               isAdmin={isAdmin}
+              fields={reportFields.fields}
+              catalog={reportFields.catalog}
             >
               <section
                 aria-label="Thời gian và bộ lọc"
@@ -289,8 +368,10 @@ const ReportBuilder = () => {
                   onChange={update}
                   options={filterOptions.options}
                   optionsPending={filterOptions.isPending}
+                  fields={reportFields.fields}
+                  catalog={reportFields.catalog}
                 />
-                <SortControl config={config} onChange={update} />
+                <SortControl config={config} onChange={update} catalog={reportFields.catalog} />
               </section>
             </FieldBuilder>
             <ResultPanel
@@ -307,6 +388,7 @@ const ReportBuilder = () => {
               onRetry={() => void result.refetch()}
               problem={problem}
               onSort={onSort}
+              catalog={reportFields.catalog}
             />
           </>
         ) : (

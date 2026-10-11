@@ -193,7 +193,8 @@ const ProcessHeader = ({ process }: { process: Process }) => (
       !process.active && "text-foreground-subtle"
     )}
   >
-    <span className="truncate text-foreground">{process.name}</span>
+    {/* Two lines before ellipsis: phone columns are 112px and names like "Premium Retouch" matter. */}
+    <span className="line-clamp-2 leading-tight break-words text-foreground">{process.name}</span>
     {process.isQc || !process.active ? (
       <span className="flex items-center gap-1 text-[10px] font-normal text-foreground-muted">
         {process.isQc ? (

@@ -3,19 +3,34 @@ import { ListTodo } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import { EmptyState } from "@/components/shared/states";
+import type { CustomField } from "@/contracts/production-catalog";
 import type { ProductionTask } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { formatDateTime } from "../../jobs-model";
+import { CustomFieldValue } from "../custom-field-input";
+import { CustomFieldChips } from "../list-filters";
 import { KindBadge, LateBadge, Person, StatusChip } from "./job-bits";
 import { TransitionButtons } from "./transition-controls";
 
 /**
  * Most-used columns first (who, status, quantity, deadline, moves) so a narrow desktop column next to
- * the timeline shows them without scrolling; QC and process/shift follow.
+ * the timeline shows them without scrolling; QC, process/shift and the TASK custom fields marked
+ * "hiện trong bảng" follow. "Chuyển" is dropped when nobody can move any task (e.g. Account
+ * mid-production, archived job).
  */
-const template =
-  "5.5rem minmax(9rem,1.2fr) 8.5rem 6.5rem 7rem minmax(11rem,1.3fr) minmax(8.5rem,1fr) minmax(9rem,1fr)";
+const columnsTemplate = (showMoves: boolean, fieldCount: number) =>
+  [
+    "5.5rem",
+    "minmax(9rem,1.2fr)",
+    "8.5rem",
+    "6.5rem",
+    "7rem",
+    ...(showMoves ? ["minmax(11rem,1.3fr)"] : []),
+    "minmax(8.5rem,1fr)",
+    "minmax(9rem,1fr)",
+    ...Array.from({ length: fieldCount }, () => "minmax(7.5rem,1fr)")
+  ].join(" ");
 
 /**
  * Tasks of a job: a table with a pinned first column (scrolls inside its card) on tablet/desktop,
@@ -23,6 +38,7 @@ const template =
  */
 export const JobTasks = ({
   tasks,
+  fields = [],
   timeZone,
   onOpen,
   onMove,
@@ -30,6 +46,8 @@ export const JobTasks = ({
   readOnly = false
 }: {
   tasks: ProductionTask[];
+  /** Active TASK custom fields: `showInTable` ones become columns (chips on phone cards). */
+  fields?: readonly CustomField[];
   timeZone: string;
   onOpen: (taskId: string) => void;
   onMove: (
@@ -74,8 +92,15 @@ export const JobTasks = ({
                     {task.isLate ? <LateBadge /> : null}
                   </span>
                   <span className="text-xs text-foreground-muted">
-                    {task.shift.name} · {task.qtyDone !== null ? `${task.qtyDone}/` : ""}
-                    {task.qtyAssigned} tấm · {formatDateTime(task.deadline, timeZone)}
+                    {task.shift.name} ·{" "}
+                    <span className="whitespace-nowrap">
+                      {task.qtyDone !== null ? `${task.qtyDone}/` : ""}
+                      {task.qtyAssigned} tấm
+                    </span>{" "}
+                    ·{" "}
+                    <span className="whitespace-nowrap">
+                      {formatDateTime(task.deadline, timeZone)}
+                    </span>
                   </span>
                 </span>
                 <StatusChip status={task.status} size="sm" className="shrink-0" />
@@ -86,6 +111,7 @@ export const JobTasks = ({
                   QC <Person user={task.qc} size="xs" fallback="chưa gán" />
                 </span>
               </div>
+              <CustomFieldChips fields={fields} values={task.customValues} />
               {readOnly ? null : (
                 <TransitionButtons
                   task={task}
@@ -100,10 +126,13 @@ export const JobTasks = ({
     );
   }
 
+  const showMoves = !readOnly && tasks.some((task) => task.capabilities.transitions.length > 0);
+  const columns = fields.filter((field) => field.showInTable);
   return (
     <div
-      className="overflow-x-auto overscroll-x-contain rounded-xl border bg-surface shadow-xs"
-      style={{ "--task-cols": template } as CSSProperties}
+      // relative: keeps any absolutely positioned descendant inside this scroller.
+      className="relative overflow-x-auto overscroll-x-contain rounded-xl border bg-surface shadow-xs"
+      style={{ "--task-cols": columnsTemplate(showMoves, columns.length) } as CSSProperties}
     >
       <div role="table" aria-label="Task của job" className="min-w-max">
         <div
@@ -128,15 +157,27 @@ export const JobTasks = ({
           <span role="columnheader" className="px-3">
             Deadline
           </span>
-          <span role="columnheader" className="px-3">
-            Chuyển
-          </span>
+          {showMoves ? (
+            <span role="columnheader" className="px-3">
+              Chuyển
+            </span>
+          ) : null}
           <span role="columnheader" className="px-3">
             QC
           </span>
           <span role="columnheader" className="px-3">
             Quy trình · Ca
           </span>
+          {columns.map((field) => (
+            <span
+              key={field.id}
+              role="columnheader"
+              className="truncate px-3 whitespace-nowrap"
+              title={field.label}
+            >
+              {field.label}
+            </span>
+          ))}
         </div>
         {tasks.map((task) => (
           <div
@@ -173,10 +214,8 @@ export const JobTasks = ({
               </span>
               {task.isLate ? <LateBadge className="self-start" /> : null}
             </span>
-            <span role="cell" className="px-3 py-2">
-              {readOnly ? (
-                <span className="text-xs text-foreground-subtle">—</span>
-              ) : (
+            {showMoves ? (
+              <span role="cell" className="px-3 py-2">
                 <TransitionButtons
                   task={task}
                   busy={busyTaskId === task.id}
@@ -184,8 +223,8 @@ export const JobTasks = ({
                   size="xs"
                   max={2}
                 />
-              )}
-            </span>
+              </span>
+            ) : null}
             <span role="cell" className="min-w-0 px-3">
               <Person user={task.qc} size="xs" fallback="Chưa gán" />
             </span>
@@ -193,6 +232,15 @@ export const JobTasks = ({
               <span className="truncate">{task.process.name}</span>
               <span className="truncate text-xs text-foreground-muted">{task.shift.name}</span>
             </span>
+            {columns.map((field) => (
+              <span key={field.id} role="cell" className="flex min-w-0 px-3">
+                <CustomFieldValue
+                  field={field}
+                  value={task.customValues[field.key]}
+                  className="min-w-0"
+                />
+              </span>
+            ))}
           </div>
         ))}
       </div>

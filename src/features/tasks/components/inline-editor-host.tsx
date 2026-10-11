@@ -166,7 +166,7 @@ const MenuPanel = ({ actions, onDone }: { actions: RowMenuAction[]; onDone: () =
     </CommandItem>
   );
   return (
-    <Command loop className="w-56 outline-none" tabIndex={0}>
+    <Command loop className="w-max max-w-[min(20rem,calc(100vw-1rem))] min-w-56 outline-none" tabIndex={0}>
       <CommandList>
         <CommandGroup>{regular.map(item)}</CommandGroup>
         {destructive.length > 0 ? (

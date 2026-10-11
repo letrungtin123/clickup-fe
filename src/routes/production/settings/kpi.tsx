@@ -36,7 +36,8 @@ import {
   matrixColumns
 } from "@/features/production/kpi/matrix";
 import { TeamSelect } from "@/features/production/scores/components/kit";
-import { periodOfDay, periodsBetween } from "@/features/production/scores/periods";
+import { closeDaysOf, periodsBetween } from "@/features/production/scores/periods";
+import { kpiPeriodOfDay } from "@/contracts/production-scores";
 import { sheetOnPhone, touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
@@ -49,9 +50,8 @@ export const ProductionKpiTargetsRoute = () => {
   const me = useProductionMe();
   const breakpoint = useBreakpoint();
   const settings = me.data?.settings;
-  const closeDay = settings?.kpiCloseDay ?? 25;
   const today = todayIn(settings?.timezone ?? "Asia/Ho_Chi_Minh");
-  const currentPeriod = periodOfDay(today, closeDay);
+  const currentPeriod = kpiPeriodOfDay(today, closeDaysOf(settings));
   const [year, setYear] = useState(Number(currentPeriod.slice(0, 4)));
   const [term, setTerm] = useState("");
   const [teamId, setTeamId] = useState<string | null>(null);

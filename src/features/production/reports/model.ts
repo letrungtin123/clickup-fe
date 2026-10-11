@@ -2,28 +2,31 @@ import {
   ReportConfigSchema,
   reportDimensionInfo,
   reportMeasureInfo,
+  type CustomFieldDimension,
   type ReportConfig,
   type ReportConfigInput,
-  type ReportDimension,
   type ReportFilters,
   type ReportMeasure,
   type ReportRangePreset
 } from "@/contracts/production-reports";
 
+import { isUserFieldDimension, type DimensionKey } from "./dimensions";
+
 /**
  * Report-builder model (SPEC Phase 5 §4): the builder edits a ReportConfig through three drop zones —
  * "Hàng" and "Cột" hold dimensions (config.dimensions = rows + columns, split kept in config.view),
- * "Giá trị" holds measures. Pure functions — unit tested in model.test.ts.
+ * "Giá trị" holds measures. Dimensions are fixed ones or custom fields (`cf_<entity>:<key>`, see
+ * dimensions.ts). Pure functions — unit tested in model.test.ts.
  */
 
 export type Zone = "rows" | "columns" | "values";
 export type Zones = {
-  rows: ReportDimension[];
-  columns: ReportDimension[];
+  rows: DimensionKey[];
+  columns: DimensionKey[];
   values: ReportMeasure[];
 };
 export type Chip =
-  { kind: "dimension"; name: ReportDimension } | { kind: "measure"; name: ReportMeasure };
+  { kind: "dimension"; name: DimensionKey } | { kind: "measure"; name: ReportMeasure };
 
 /** Views offered by the builder. The contract's PIVOT is the table with "Cột" dimensions. */
 export type ReportView = "TABLE" | "BAR" | "LINE" | "PIE";
@@ -58,7 +61,7 @@ export const viewOfConfig = (config: Pick<ReportConfig, "view">): ReportView => 
   return type === "PIVOT" ? "TABLE" : type;
 };
 
-const contractView = (view: ReportView, columns: readonly ReportDimension[]) =>
+const contractView = (view: ReportView, columns: readonly DimensionKey[]) =>
   view === "TABLE" && columns.length > 0 ? "PIVOT" : view;
 
 /** Writes the zones back: dimensions = rows + columns; a sort on a removed key is dropped. */
@@ -172,22 +175,76 @@ export const measuresForRole = (isAdmin: boolean) =>
   );
 
 /**
- * Removes what the role may not run (money for non-admins — the API answers 403 otherwise). A config
- * left without measures gets "Điểm". `removed` lists the dropped measures for a notice.
+ * Removes what the role may not run — the API answers 403 otherwise: money measures (MONEY_FORBIDDEN)
+ * and members' custom fields, e.g. "Năng lực" (CUSTOM_FIELDS_FORBIDDEN), for non-admins. A config left
+ * without measures gets "Điểm". `removed` / `removedFields` list what was dropped, for a notice.
  */
 export const sanitizeForRole = (
   config: ReportConfig,
   isAdmin: boolean
-): { config: ReportConfig; removed: ReportMeasure[] } => {
-  if (isAdmin) return { config, removed: [] };
+): { config: ReportConfig; removed: ReportMeasure[]; removedFields: string[] } => {
+  if (isAdmin) return { config, removed: [], removedFields: [] };
   const removed = config.measures.filter((measure) => reportMeasureInfo[measure].adminOnly);
-  if (removed.length === 0) return { config, removed };
+  const removedFields = [
+    ...new Set([
+      ...config.dimensions.filter(isUserFieldDimension),
+      ...(config.filters.customFields ?? [])
+        .map((filter) => filter.field)
+        .filter(isUserFieldDimension)
+    ])
+  ];
+  if (removed.length === 0 && removedFields.length === 0) {
+    return { config, removed, removedFields };
+  }
   const zones = zonesFromConfig(config);
   const values = zones.values.filter((measure) => !removed.includes(measure));
+  const keep = (dimension: DimensionKey) => !removedFields.includes(dimension);
+  const next = withZones(config, {
+    rows: zones.rows.filter(keep),
+    columns: zones.columns.filter(keep),
+    values: values.length > 0 ? values : ["points"]
+  });
+  const customFields = (config.filters.customFields ?? []).filter((filter) => keep(filter.field));
   return {
-    config: withZones(config, { ...zones, values: values.length > 0 ? values : ["points"] }),
-    removed
+    config: withFilter(next, "customFields", customFields.length > 0 ? customFields : undefined),
+    removed,
+    removedFields
   };
+};
+
+const pointMeasures: ReadonlySet<ReportMeasure> = new Set<ReportMeasure>([
+  "points",
+  "points_khoan"
+]);
+
+/**
+ * Why the role cannot run this config, mirroring the API (PR-11), so the builder explains it inline instead
+ * of failing with 403 SCORES_PRIVATE: while settings.scoresPublic is off, non-admins cannot break points
+ * down by person — no `user` / `job` dimension, no `user` / `job` / `tag` filter and no job or task custom
+ * field (they single out a job's work) together with a point measure. null = allowed.
+ */
+export const privacyProblem = (
+  config: Pick<ReportConfig, "dimensions" | "measures" | "filters">,
+  access: { isAdmin: boolean; scoresPublic: boolean }
+): string | null => {
+  if (access.isAdmin || access.scoresPublic) return null;
+  if (!config.measures.some((measure) => pointMeasures.has(measure))) return null;
+  const reasons: string[] = [];
+  const dims = config.dimensions as readonly string[];
+  if (dims.includes("user")) reasons.push("chiều Nhân viên");
+  if (dims.includes("job")) reasons.push("chiều Job");
+  for (const key of ["user", "job", "tag"] as const) {
+    if ((config.filters[key]?.length ?? 0) > 0) reasons.push(`bộ lọc ${filterLabels[key]}`);
+  }
+  const fields = [
+    ...config.dimensions.filter((dimension) => /^cf_(job|task):/.test(dimension)),
+    ...(config.filters.customFields ?? [])
+      .map((filter) => filter.field)
+      .filter((field) => /^cf_(job|task):/.test(field))
+  ];
+  if (fields.length > 0) reasons.push("trường tùy chỉnh của job/task");
+  if (reasons.length === 0) return null;
+  return `Bảng điểm đang để riêng tư nên không xem được Điểm theo từng người hay từng job (đang dùng ${reasons.join(", ")}). Bỏ các mục đó, hoặc chọn chỉ số khác như Số tấm, Số task.`;
 };
 
 // Sources -------------------------------------------------------------------------------------------
@@ -296,16 +353,44 @@ export const withFilter = <K extends keyof ReportFilters>(
   return { ...config, filters };
 };
 
+/** Every set filter; each custom-field filter counts as one. */
 export const activeFilterCount = (filters: ReportFilters) =>
-  Object.values(filters).filter(
-    (value) => value !== undefined && (!Array.isArray(value) || value.length > 0)
-  ).length;
+  Object.entries(filters).reduce((count, [key, value]) => {
+    if (value === undefined || (Array.isArray(value) && value.length === 0)) return count;
+    return count + (key === "customFields" && Array.isArray(value) ? value.length : 1);
+  }, 0);
+
+/** Values of one custom-field filter ("__empty__" = no value). */
+export const customFieldFilterValues = (filters: ReportFilters, field: string): string[] => [
+  ...(filters.customFields?.find((filter) => filter.field === field)?.values ?? [])
+];
+
+/**
+ * Sets the values of one custom-field filter (kept in the order fields were added); an empty list
+ * removes it. The contract allows 10 custom-field filters and 100 values each.
+ */
+export const withCustomFieldFilter = (
+  config: ReportConfig,
+  field: CustomFieldDimension,
+  values: readonly string[]
+): ReportConfig => {
+  const current = config.filters.customFields ?? [];
+  const unique = [...new Set(values)].slice(0, 100);
+  const exists = current.some((filter) => filter.field === field);
+  const next =
+    unique.length === 0
+      ? current.filter((filter) => filter.field !== field)
+      : exists
+        ? current.map((filter) => (filter.field === field ? { field, values: unique } : filter))
+        : [...current, { field, values: unique }].slice(0, 10);
+  return withFilter(config, "customFields", next.length > 0 ? next : undefined);
+};
 
 // Sort & limit ----------------------------------------------------------------------------------------
 
 export const withSort = (
   config: ReportConfig,
-  sort: { key: ReportDimension | ReportMeasure; direction: "asc" | "desc" } | null
+  sort: { key: DimensionKey | ReportMeasure; direction: "asc" | "desc" } | null
 ): ReportConfig => {
   const next: ReportConfig = { ...config };
   if (sort === null) delete next.sort;

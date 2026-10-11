@@ -13,7 +13,6 @@ import {
   ProcessCollectionSchema,
   ProductionMeSchema,
   ProductionMemberCollectionSchema,
-  ProductionMemberSchema,
   ProductionProjectCollectionSchema,
   ProductionSettingsSchema,
   ShiftCollectionSchema,
@@ -35,8 +34,17 @@ import {
   type UpsertTagRequestSchema,
   type UpsertTeamRequestSchema
 } from "@/contracts/production-catalog";
-import { api, apiPath } from "@/lib/api/client";
+import {
+  CreatedProductionUserSchema,
+  LedJobsSchema,
+  ProductionUserChangeResultSchema,
+  ProductionUserPasswordResetSchema,
+  type CreateProductionUserRequestSchema
+} from "@/contracts/users-admin";
+import { api, apiPath, type QueryValue } from "@/lib/api/client";
 import { OkResponseSchema } from "@/lib/api/schemas";
+
+import { queryPath } from "./list-filters";
 
 /**
  * Production catalog API (BE modules/production, SPEC Phase 0–1). Every response is parsed with the
@@ -45,6 +53,7 @@ import { OkResponseSchema } from "@/lib/api/schemas";
  */
 
 export type UpdateMemberInput = z.input<typeof UpdateProductionMemberRequestSchema>;
+export type CreateUserInput = z.input<typeof CreateProductionUserRequestSchema>;
 export type TeamInput = z.input<typeof UpsertTeamRequestSchema>;
 export type ClientInput = z.input<typeof UpsertClientRequestSchema>;
 export type ProjectInput = z.input<typeof UpsertProductionProjectRequestSchema>;
@@ -64,18 +73,46 @@ export type NotificationPreferencesInput = z.input<
 export const productionApi = {
   me: (signal?: AbortSignal) => api.get("/production/me", ProductionMeSchema, { signal }),
 
-  members: (signal?: AbortSignal) =>
-    api.get("/production/members", ProductionMemberCollectionSchema, { signal }),
+  /** `filters`: USER tag / custom-field query (ADMIN only, 403 CUSTOM_FIELDS_FORBIDDEN otherwise). */
+  members: (signal?: AbortSignal, filters: Record<string, QueryValue> = {}) =>
+    api.get(queryPath("/production/members", filters), ProductionMemberCollectionSchema, {
+      signal
+    }),
+  /**
+   * Roles / team / custom values / tags of one member through the production user administration
+   * (PATCH /production/users/:userId, PD-024): same body as PATCH /production/members, but it also
+   * guards organization admins (403 ORG_ADMIN_PROTECTED) and answers the jobs a demoted leader still
+   * leads (`orphanedJobs`).
+   */
   updateMember: (userId: string, input: UpdateMemberInput) =>
-    api.patch(apiPath`/production/members/${userId}`, ProductionMemberSchema, input),
+    api.patch(apiPath`/production/users/${userId}`, ProductionUserChangeResultSchema, input),
+
+  // Production user administration (SPEC Phase 0 /admin/users, contracts/users-admin.ts) ----------
+  /** 201: the member and a one-time temporary password (shown once, never stored). */
+  createUser: (input: CreateUserInput) =>
+    api.post("/production/users", CreatedProductionUserSchema, input),
+  deactivateUser: (userId: string) =>
+    api.post(apiPath`/production/users/${userId}/deactivate`, ProductionUserChangeResultSchema),
+  activateUser: (userId: string) =>
+    api.post(apiPath`/production/users/${userId}/activate`, ProductionUserChangeResultSchema),
+  /** A new one-time temporary password; the person's sessions end. */
+  resetUserPassword: (userId: string) =>
+    api.post(
+      apiPath`/production/users/${userId}/reset-password`,
+      ProductionUserPasswordResetSchema
+    ),
+  /** Open jobs the person still leads (ADMIN or ACCOUNT). */
+  ledJobs: (userId: string, signal?: AbortSignal) =>
+    api.get(apiPath`/production/users/${userId}/led-jobs`, LedJobsSchema, { signal }),
 
   teams: (signal?: AbortSignal) => api.get("/production/teams", TeamCollectionSchema, { signal }),
   createTeam: (input: TeamInput) => api.post("/production/teams", TeamCollectionSchema, input),
   updateTeam: (id: string, input: Partial<TeamInput>) =>
     api.patch(apiPath`/production/teams/${id}`, TeamCollectionSchema, input),
 
-  clients: (signal?: AbortSignal) =>
-    api.get("/production/clients", ClientCollectionSchema, { signal }),
+  /** `filters`: CLIENT tag / custom-field query (list-filters.ts). */
+  clients: (signal?: AbortSignal, filters: Record<string, QueryValue> = {}) =>
+    api.get(queryPath("/production/clients", filters), ClientCollectionSchema, { signal }),
   createClient: (input: ClientInput) =>
     api.post("/production/clients", ClientCollectionSchema, input),
   updateClient: (id: string, input: Partial<ClientInput>) =>

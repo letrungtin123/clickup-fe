@@ -24,12 +24,47 @@ const productionMessages: Record<string, string> = {
   INVALID_DATE: "Ngày không hợp lệ.",
   REFERENCE_INVALID: "Dữ liệu liên quan không còn tồn tại. Hãy tải lại.",
   RULE_VIOLATION: "Thay đổi vi phạm quy tắc dữ liệu.",
-  PAYLOAD_TOO_LARGE: "Nội dung quá lớn. Hãy chia nhỏ rồi thử lại."
+  PAYLOAD_TOO_LARGE: "Nội dung quá lớn. Hãy chia nhỏ rồi thử lại.",
+  // Fallbacks when the server sends no message (the server-worded set below wins otherwise).
+  QTY_DONE_TOO_HIGH:
+    "Số tấm hoàn thành vượt mức cho phép. Nếu thực tế làm nhiều hơn, hãy báo Leader của job sửa sau khi Done.",
+  CUSTOM_FIELD_FILTER_INVALID: "Bộ lọc trường tùy chỉnh không còn hợp lệ. Hãy xóa lọc rồi chọn lại.",
+  CUSTOM_FIELDS_FORBIDDEN: "Chỉ Quản trị lọc theo trường tùy chỉnh hoặc tag của thành viên.",
+  CUSTOM_FIELDS_INVALID: "Kiểm tra lại các trường tùy chỉnh.",
+  ANOMALY_REVIEW_NOT_OWNER:
+    "Chỉ người đã đánh dấu “Đã xem” (hoặc Quản trị) được bỏ đánh dấu.",
+  // Production user administration (/production/users, PD-024).
+  ORG_ADMIN_PROTECTED: "Tài khoản quản trị tổ chức chỉ superadmin mới thao tác được.",
+  SELF_DEACTIVATE_FORBIDDEN: "Bạn không thể tự vô hiệu hóa tài khoản của mình.",
+  SELF_RESET_FORBIDDEN: "Dùng “Đổi mật khẩu” trong hồ sơ cho tài khoản của chính bạn.",
+  DEFAULT_ROLE_MISSING:
+    "Tổ chức chưa có vai trò mặc định “Thành viên”. Nhờ quản trị tổ chức tạo trước.",
+  DEFAULT_ROLE_UNSAFE:
+    "Vai trò mặc định “Thành viên” đang có quyền quản trị tổ chức. Nhờ quản trị tổ chức sửa lại.",
+  // The server words these two in English: keep production copy.
+  MEMBER_EXISTS: "Email này đã là thành viên. Tìm người đó trong danh sách để gán vai trò sản xuất.",
+  ACCOUNT_EXISTS: "Email này đã có tài khoản. Tìm người đó trong danh sách để gán vai trò sản xuất."
 };
 
 /** Codes whose server message is already user-facing Vietnamese naming the offending fields. */
 const serverWorded = new Set([
+  // Custom fields & tags: list filters name the field; split / "Giao lại" prefix "Dòng N: …".
   "CUSTOM_FIELDS_INVALID",
+  "CUSTOM_FIELD_FILTER_INVALID",
+  "CUSTOM_FIELDS_FORBIDDEN",
+  "TAG_NOT_FOUND",
+  // SEC2-03: names the maximum for the assigned quantity and says to ask the job Leader.
+  "QTY_DONE_TOO_HIGH",
+  // SEC2-11 (anomalies page, reports agent): only the reviewer or an Admin may undo "Đã xem".
+  "ANOMALY_REVIEW_NOT_OWNER",
+  // Production user administration (/production/users): Vietnamese, user-facing.
+  "ORG_ADMIN_PROTECTED",
+  "SELF_DEACTIVATE_FORBIDDEN",
+  "SELF_RESET_FORBIDDEN",
+  "SELF_ADMIN_REMOVAL",
+  "DEFAULT_ROLE_MISSING",
+  "DEFAULT_ROLE_UNSAFE",
+  "TEAM_NOT_FOUND",
   // Phase 2 (jobs/tasks): the workflow engine words these with the status names / failing lines.
   "TRANSITION_NOT_ALLOWED",
   "NOTE_REQUIRED",
@@ -81,9 +116,13 @@ type MessageOptions = {
   fallback?: string | undefined;
 };
 
+/** Vietnamese-only letters: a server message without any is an English leftover, not user copy. */
+const looksVietnamese = (message: string) => /[ăâđêôơưàáảãạèéẻẽẹìíỉĩịòóỏõọùúủũụỳýỷỹỵ]/i.test(message);
+
 export const productionErrorMessage = (error: unknown, options: MessageOptions = {}) => {
   if (isApiError(error)) {
-    if (serverWorded.has(error.code) && error.message) return error.message;
+    if (serverWorded.has(error.code) && error.message && looksVietnamese(error.message))
+      return error.message;
     if (error.code === "FORBIDDEN" && productionForbidden(error.message)) return error.message;
     if (error.code === "CONFLICT" && options.conflict) return options.conflict;
     const message = productionMessages[error.code];

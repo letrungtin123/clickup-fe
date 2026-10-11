@@ -4,6 +4,7 @@ import { isApiError } from "@/lib/api/errors";
 
 import { scoresApi } from "./api";
 import { scoreKeys } from "./keys";
+import { emptyPeopleFilter, peopleFilterKey, type PeopleFilter } from "./people-filter";
 
 /** Client errors (403 private board, 400 range) are answers, not glitches: never retried. */
 export const retryUnlessClientError = (failureCount: number, error: unknown) =>
@@ -33,11 +34,16 @@ export const useScoreForecast = (period: string | null) =>
   });
 
 /** GET /production/scores/board — 403 SCORES_PRIVATE when the board is private for the caller. */
-export const useScoreBoard = (period: string | null, teamId: string | null, enabled = true) =>
+export const useScoreBoard = (
+  period: string | null,
+  teamId: string | null,
+  people: PeopleFilter = emptyPeopleFilter,
+  enabled = true
+) =>
   useQuery({
-    queryKey: scoreKeys.board(period, teamId),
+    queryKey: scoreKeys.board(period, teamId, peopleFilterKey(people)),
     queryFn: ({ signal }) =>
-      scoresApi.board({ period: period ?? undefined, teamId: teamId ?? undefined }, signal),
+      scoresApi.board({ period: period ?? undefined, teamId: teamId ?? undefined }, people, signal),
     placeholderData: keepPreviousData,
     retry: retryUnlessClientError,
     enabled

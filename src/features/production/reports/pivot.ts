@@ -1,11 +1,6 @@
-import {
-  reportDimensionInfo,
-  type ReportDimension,
-  type ReportMeasure,
-  type ReportResult,
-  type ReportRow
-} from "@/contracts/production-reports";
+import type { ReportMeasure, ReportResult, ReportRow } from "@/contracts/production-reports";
 
+import { dimensionMeta, type DimensionKey } from "./dimensions";
 import { derivedRates, dimensionKeyLabel, isAdditive } from "./format";
 
 /**
@@ -24,8 +19,8 @@ export type PivotRow = PivotHeader & {
   total: Map<ReportMeasure, Cell>;
 };
 export type Pivot = {
-  rowDimensions: ReportDimension[];
-  columnDimensions: ReportDimension[];
+  rowDimensions: DimensionKey[];
+  columnDimensions: DimensionKey[];
   measures: ReportMeasure[];
   /** Column groups (one per combination of "Cột" values); a single empty group without them. */
   groups: PivotHeader[];
@@ -33,6 +28,11 @@ export type Pivot = {
   /** Totals row: per group and measure (cellKey), plus the server totals per measure. */
   groupTotals: Map<string, Cell>;
   grandTotals: Map<ReportMeasure, Cell>;
+  /**
+   * Sub-totals left empty because they would add up a multi-value (MULTISELECT) dimension, where one
+   * record is counted once per option: row totals across "Cột", group totals down "Hàng".
+   */
+  unsummed: { rowTotals: boolean; groupTotals: boolean };
 };
 
 const SEPARATOR = "\u0000";
@@ -42,25 +42,25 @@ export const cellKey = (groupKey: string, measure: ReportMeasure) =>
 const asNumber = (value: unknown): Cell =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-const keyOf = (row: ReportRow, dimension: ReportDimension) => {
+const keyOf = (row: ReportRow, dimension: DimensionKey) => {
   const value = row[dimension];
   return value === null || value === undefined ? "" : String(value);
 };
 
-export const labelOf = (row: ReportRow, dimension: ReportDimension) => {
+export const labelOf = (row: ReportRow, dimension: DimensionKey) => {
   const label = row[`${dimension}_label`];
   return typeof label === "string" && label !== ""
     ? label
     : dimensionKeyLabel(dimension, keyOf(row, dimension) || null);
 };
 
-const headerOf = (row: ReportRow, dimensions: readonly ReportDimension[]): PivotHeader => ({
+const headerOf = (row: ReportRow, dimensions: readonly DimensionKey[]): PivotHeader => ({
   key: dimensions.map((dimension) => keyOf(row, dimension)).join(SEPARATOR),
   labels: dimensions.map((dimension) => labelOf(row, dimension))
 });
 
 /** Column order: time dimensions chronologically, others by label; "Không rõ" (empty key) last. */
-const compareHeaders = (dimensions: readonly ReportDimension[]) => {
+const compareHeaders = (dimensions: readonly DimensionKey[]) => {
   const collator = new Intl.Collator("vi", { numeric: true, sensitivity: "base" });
   return (a: PivotHeader, b: PivotHeader) => {
     const aKeys = a.key.split(SEPARATOR);
@@ -73,7 +73,7 @@ const compareHeaders = (dimensions: readonly ReportDimension[]) => {
       if (aKey === "") return 1;
       if (bKey === "") return -1;
       const order =
-        reportDimensionInfo[dimension].kind === "time"
+        dimensionMeta(dimension).kind === "time"
           ? aKey.localeCompare(bKey)
           : collator.compare(a.labels[index] ?? "", b.labels[index] ?? "");
       if (order !== 0) return order;
@@ -99,9 +99,11 @@ const aggregate = (measure: ReportMeasure, values: Map<ReportMeasure, Cell[]>): 
 
 export const buildPivot = (
   result: Pick<ReportResult, "rows" | "totals">,
-  rowDimensions: readonly ReportDimension[],
-  columnDimensions: readonly ReportDimension[],
-  measures: readonly ReportMeasure[]
+  rowDimensions: readonly DimensionKey[],
+  columnDimensions: readonly DimensionKey[],
+  measures: readonly ReportMeasure[],
+  /** MULTISELECT custom-field dimensions (a record appears under each of its options). */
+  multiValue: ReadonlySet<string> = new Set()
 ): Pivot => {
   const groupsByKey = new Map<string, PivotHeader>();
   const rowsByKey = new Map<string, PivotRow>();
@@ -145,6 +147,13 @@ export const buildPivot = (
     measures.map((measure) => [measure, asNumber(result.totals[measure])])
   );
   const groupTotals = new Map<string, Cell>();
+  // Adding up the options of a multi-value dimension would count a record several times: leave
+  // those sub-totals empty (the server's grand totals count each record once).
+  const unsummed = {
+    rowTotals: columnDimensions.some((dimension) => multiValue.has(dimension)),
+    groupTotals:
+      columnDimensions.length > 0 && rowDimensions.some((dimension) => multiValue.has(dimension))
+  };
 
   if (columnDimensions.length === 0) {
     for (const measure of measures)
@@ -153,11 +162,15 @@ export const buildPivot = (
     for (const group of groups) {
       const parts = groupParts.get(group.key) ?? new Map<ReportMeasure, Cell[]>();
       for (const measure of measures)
-        groupTotals.set(cellKey(group.key, measure), aggregate(measure, parts));
+        groupTotals.set(
+          cellKey(group.key, measure),
+          unsummed.groupTotals ? null : aggregate(measure, parts)
+        );
     }
     for (const row of rows) {
       const parts = rowParts.get(row.key) ?? new Map<ReportMeasure, Cell[]>();
-      for (const measure of measures) row.total.set(measure, aggregate(measure, parts));
+      for (const measure of measures)
+        row.total.set(measure, unsummed.rowTotals ? null : aggregate(measure, parts));
     }
   }
 
@@ -168,7 +181,8 @@ export const buildPivot = (
     groups,
     rows,
     groupTotals,
-    grandTotals
+    grandTotals,
+    unsummed
   };
 };
 
@@ -202,14 +216,14 @@ const joinLabels = (labels: readonly string[]) => labels.join(" · ") || "Tổng
  */
 export const buildChartModel = (
   result: Pick<ReportResult, "rows">,
-  rowDimensions: readonly ReportDimension[],
-  columnDimensions: readonly ReportDimension[],
+  rowDimensions: readonly DimensionKey[],
+  columnDimensions: readonly DimensionKey[],
   measure: ReportMeasure,
   kind: ChartKind
 ): ChartModel => {
-  const isTime = (dimensions: readonly ReportDimension[]) =>
+  const isTime = (dimensions: readonly DimensionKey[]) =>
     dimensions.length > 0 &&
-    dimensions.every((dimension) => reportDimensionInfo[dimension].kind === "time");
+    dimensions.every((dimension) => dimensionMeta(dimension).kind === "time");
   // Lines follow time: with time only in "Cột", the time dimension becomes the x axis.
   const swap = kind === "LINE" && !isTime(rowDimensions) && isTime(columnDimensions);
   const rows = swap ? columnDimensions : rowDimensions;
@@ -260,13 +274,11 @@ export const buildChartModel = (
   type Slot = ChartSeries & { source: string };
   let slots: Slot[] =
     seriesDimensions.length > 0
-      ? [...seriesHeaders.values()]
-          .sort(compareHeaders(seriesDimensions))
-          .map((header, index) => ({
-            key: `s${index}`,
-            label: joinLabels(header.labels),
-            source: header.key
-          }))
+      ? [...seriesHeaders.values()].sort(compareHeaders(seriesDimensions)).map((header, index) => ({
+          key: `s${index}`,
+          label: joinLabels(header.labels),
+          source: header.key
+        }))
       : [{ key: "s0", label: "", source: measure }];
   let hiddenSeries = 0;
   let folded: string[] = [];

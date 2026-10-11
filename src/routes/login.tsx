@@ -16,6 +16,7 @@ import { googleLoginErrorMessage } from "@/features/auth/google";
 import { sessionQueryOptions, useAuthProviders } from "@/features/auth/hooks";
 import { safeReturnPath } from "@/features/auth/redirect";
 import { useCrossTabSession } from "@/features/auth/use-session-sync";
+import { api } from "@/lib/api/client";
 import { getErrorMessage, isApiError } from "@/lib/api/errors";
 
 const noop = () => undefined;
@@ -115,6 +116,10 @@ const LoginForm = ({ next, initialError }: { next: string; initialError: string 
     mutationFn: (values: Values) => authApi.login(values),
     meta: { errorMessage: false },
     onSuccess: async () => {
+      // The server rotates the CSRF token at sign-in (SEC2-23): drop the pre-login one and fetch the
+      // new one now, so the first write after sign-in never needs the 403 → refetch → retry round trip.
+      api.resetCsrfToken();
+      api.warmCsrfToken();
       // Never show a previous user's cached data.
       queryClient.removeQueries();
       try {
@@ -260,7 +265,7 @@ const BrandPanel = () => (
     </div>
 
     <p className="relative text-xs text-foreground-subtle">
-      © {new Date().getFullYear()} Nesso · Bảo mật bằng phiên HttpOnly và CSRF.
+      © {new Date().getFullYear()} Nesso · Nhớ đăng xuất khi dùng máy tính chung.
     </p>
   </aside>
 );

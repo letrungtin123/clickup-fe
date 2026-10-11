@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -16,11 +17,13 @@ import type {
   Shift
 } from "@/contracts/production-catalog";
 import { useSessionContext } from "@/features/auth/hooks";
+import type { QueryValue } from "@/lib/api/client";
 import { isApiError } from "@/lib/api/errors";
 
 import {
   productionApi,
   type ClientInput,
+  type CreateUserInput,
   type CustomFieldInput,
   type NotificationPreferencesInput,
   type ProcessInput,
@@ -77,18 +80,36 @@ export const useProductionAccess = () => {
   }, [data]);
 };
 
-/** Sidebar entries for the signed-in user's roles; empty for non-members (module hidden). */
+/**
+ * Sidebar entries for the signed-in user's roles; empty for non-members (module hidden). "Xếp hạng"
+ * is left out while the board is private for the viewer (G18; the page itself still explains it).
+ */
 export const useProductionNavEntries = () => {
-  const { roles } = useProductionAccess();
-  return useMemo(() => visibleNavEntries(roles), [roles]);
+  const me = useProductionMe();
+  const { roles, isAdmin } = useProductionAccess();
+  const scoresPublic = me.data?.settings.scoresPublic ?? true;
+  return useMemo(
+    () => visibleNavEntries(roles, { scoresPublic: scoresPublic || isAdmin }),
+    [roles, isAdmin, scoresPublic]
+  );
 };
 
 // --- Reads ---------------------------------------------------------------------------------------
 
-export const useProductionMembers = (enabled = true) =>
+const noFilters: Record<string, QueryValue> = {};
+
+/**
+ * Production members. `filters` (USER tags / custom fields, list-filters.ts) is Admin-only: the API
+ * answers 403 CUSTOM_FIELDS_FORBIDDEN to anyone else.
+ */
+export const useProductionMembers = (
+  enabled = true,
+  filters: Record<string, QueryValue> = noFilters
+) =>
   useQuery({
-    queryKey: productionKeys.members(),
-    queryFn: ({ signal }) => productionApi.members(signal),
+    queryKey: productionKeys.members(filters),
+    queryFn: ({ signal }) => productionApi.members(signal, filters),
+    placeholderData: keepPreviousData,
     enabled
   });
 
@@ -100,10 +121,12 @@ export const useTeams = (enabled = true) =>
     enabled
   });
 
-export const useClients = (enabled = true) =>
+/** Clients; `filters` = CLIENT tags / custom fields (list-filters.ts), a variant under the same prefix. */
+export const useClients = (enabled = true, filters: Record<string, QueryValue> = noFilters) =>
   useQuery({
-    queryKey: productionKeys.clients(),
-    queryFn: ({ signal }) => productionApi.clients(signal),
+    queryKey: productionKeys.clients(filters),
+    queryFn: ({ signal }) => productionApi.clients(signal, filters),
+    placeholderData: keepPreviousData,
     enabled
   });
 
@@ -205,6 +228,11 @@ const useCollectionMutation = <TVariables, TData>(
     meta: { errorMessage: false },
     onSuccess: (data) => {
       client.setQueryData(key, data);
+      // Filtered variants of the list (tag / custom-field filters) are refetched, not patched.
+      void client.invalidateQueries({
+        queryKey: key,
+        predicate: (query) => query.queryKey.length > key.length
+      });
       void invalidateAll(client, related);
     }
   });
@@ -387,9 +415,32 @@ export const useReorderShifts = () => useCatalogReorder<Shift>("shifts", product
 export const useReorderCustomFields = () =>
   useCatalogReorder<CustomField>("custom-fields", productionKeys.customFields());
 
+type MemberList = { items: ProductionMember[] };
+
+/** Replaces one member in every cached member list (plain and filtered). */
+const storeMember = (client: QueryClient, member: ProductionMember) =>
+  client.setQueriesData<MemberList>({ queryKey: productionKeys.members() }, (current) =>
+    current
+      ? { items: current.items.map((item) => (item.userId === member.userId ? member : item)) }
+      : current
+  );
+
 /**
- * Role/team/custom-field/tag changes for one member, applied optimistically to the cached list.
- * Changing your own roles refreshes /production/me (menus follow immediately).
+ * After an account / role change: other member lists may now match or not (filters), the person's
+ * led jobs may have changed, and your own roles drive the menus (/production/me).
+ */
+const afterMemberChange = (client: QueryClient, member: ProductionMember, myId: string) => {
+  storeMember(client, member);
+  void client.invalidateQueries({ queryKey: productionKeys.members(), refetchType: "none" });
+  void client.invalidateQueries({ queryKey: productionKeys.ledJobs(member.userId) });
+  void client.invalidateQueries({ queryKey: productionKeys.teams() });
+  if (member.userId === myId) void client.invalidateQueries({ queryKey: productionKeys.me() });
+};
+
+/**
+ * Role/team/custom-field/tag changes for one member (PATCH /production/users/:id), applied
+ * optimistically to every cached member list. The answer carries `orphanedJobs`: open jobs a person
+ * who just lost LEADER still leads (show them, SEC2-04).
  */
 export const useUpdateMember = () => {
   const client = useQueryClient();
@@ -400,8 +451,8 @@ export const useUpdateMember = () => {
     meta: { errorMessage: false },
     onMutate: async ({ userId, input }) => {
       await client.cancelQueries({ queryKey: productionKeys.members() });
-      const previous = client.getQueryData<{ items: ProductionMember[] }>(productionKeys.members());
-      client.setQueryData<{ items: ProductionMember[] }>(productionKeys.members(), (current) =>
+      const previous = client.getQueriesData<MemberList>({ queryKey: productionKeys.members() });
+      client.setQueriesData<MemberList>({ queryKey: productionKeys.members() }, (current) =>
         current
           ? {
               items: current.items.map((member) =>
@@ -420,23 +471,55 @@ export const useUpdateMember = () => {
       return { previous };
     },
     onError: (_error, _variables, context) => {
-      if (context?.previous) client.setQueryData(productionKeys.members(), context.previous);
+      for (const [key, data] of context?.previous ?? []) client.setQueryData(key, data);
     },
-    onSuccess: (member) => {
-      client.setQueryData<{ items: ProductionMember[] }>(productionKeys.members(), (current) =>
-        current
-          ? {
-              items: current.items.map((item) => (item.userId === member.userId ? member : item))
-            }
-          : current
-      );
-      if (member.userId === session.user.id) {
-        void client.invalidateQueries({ queryKey: productionKeys.me() });
-      }
+    onSuccess: (result) => afterMemberChange(client, result.member, session.user.id)
+  });
+};
+
+// --- Production user administration (contracts/users-admin.ts) -----------------------------------
+
+/** POST /production/users: the new member joins the lists; the temporary password is shown once. */
+export const useCreateProductionUser = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateUserInput) => productionApi.createUser(input),
+    meta: { errorMessage: false },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: productionKeys.members() });
       void client.invalidateQueries({ queryKey: productionKeys.teams() });
+      void client.invalidateQueries({ queryKey: productionKeys.allowedEmails() });
     }
   });
 };
+
+/** Vô hiệu / Kích hoạt lại: sessions end on deactivate; `orphanedJobs` lists jobs still led. */
+export const useSetProductionUserActive = () => {
+  const client = useQueryClient();
+  const session = useSessionContext();
+  return useMutation({
+    mutationFn: ({ userId, active }: { userId: string; active: boolean }) =>
+      active ? productionApi.activateUser(userId) : productionApi.deactivateUser(userId),
+    meta: { errorMessage: false },
+    onSuccess: (result) => afterMemberChange(client, result.member, session.user.id)
+  });
+};
+
+/** A new temporary password for someone else (never cached). */
+export const useResetProductionUserPassword = () =>
+  useMutation({
+    mutationFn: (userId: string) => productionApi.resetUserPassword(userId),
+    meta: { errorMessage: false }
+  });
+
+/** Open jobs a person still leads; `leaderActive` false = they need another Leader. */
+export const useLedJobs = (userId: string | null | undefined, enabled = true) =>
+  useQuery({
+    queryKey: productionKeys.ledJobs(userId ?? ""),
+    queryFn: ({ signal }) => productionApi.ledJobs(userId ?? "", signal),
+    enabled: Boolean(userId) && enabled,
+    retry: retryUnlessClientError
+  });
 
 /** PUT /credit-rules: the response is the cell's history; every matrix day may have changed. */
 export const useSetCreditRule = () => {

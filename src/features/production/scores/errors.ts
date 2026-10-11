@@ -23,11 +23,19 @@ const messages: Record<string, string> = {
   LEAVE_DATE_INVALID: "Ngày nghỉ không hợp lệ.",
   LEAVE_RANGE_INVALID: "Ngày kết thúc phải sau hoặc trùng ngày bắt đầu.",
   LEAVE_HALF_DAY_RANGE: "Nghỉ nửa ngày chỉ áp dụng cho đơn nghỉ trong một ngày.",
-  LEAVE_WINDOW_TOO_LONG: "Khoảng ngày xem lịch quá dài."
+  LEAVE_WINDOW_TOO_LONG: "Khoảng ngày xem lịch quá dài.",
+  CUSTOM_FIELDS_FORBIDDEN: "Chỉ Quản trị lọc được theo trường tùy chỉnh hoặc tag của nhân viên.",
+  CUSTOM_FIELD_FILTER_INVALID:
+    "Bộ lọc nhân viên không còn hợp lệ (trường hoặc lựa chọn đã đổi). Hãy bỏ lọc rồi chọn lại."
 };
 
-/** Codes whose server message carries numbers from the limits (kept verbatim). */
-const serverWorded = new Set(["LEAVE_TOO_LONG", "LEAVE_TOO_OLD", "LEAVE_TOO_FAR"]);
+/** Codes whose server message carries details (limits, the field at fault): kept verbatim. */
+const serverWorded = new Set([
+  "LEAVE_TOO_LONG",
+  "LEAVE_TOO_OLD",
+  "LEAVE_TOO_FAR",
+  "CUSTOM_FIELD_FILTER_INVALID"
+]);
 
 export const scoreErrorMessage = (error: unknown, fallback?: string) => {
   if (isApiError(error)) {
@@ -40,4 +48,6 @@ export const scoreErrorMessage = (error: unknown, fallback?: string) => {
 
 /** The board is private for this user (settings.scoresPublic off and not ADMIN). */
 export const isScoresPrivate = (error: unknown) =>
-  isApiError(error) && (error.code === "SCORES_PRIVATE" || error.status === 403);
+  isApiError(error) &&
+  (error.code === "SCORES_PRIVATE" ||
+    (error.status === 403 && error.code !== "CUSTOM_FIELDS_FORBIDDEN"));

@@ -42,6 +42,14 @@ export const CreditVersionDialog = ({
   const [effectiveFrom, setEffectiveFrom] = useState(today);
   const [error, setError] = useState<string | null>(null);
 
+  const close = (next: boolean) => {
+    if (!next) {
+      setError(null);
+      setEffectiveFrom(today);
+    }
+    onOpenChange(next);
+  };
+
   const submit = () =>
     create.mutate(effectiveFrom, {
       onSuccess: ({ created }) => {
@@ -55,22 +63,13 @@ export const CreditVersionDialog = ({
           );
         }
         onCreated(effectiveFrom);
-        onOpenChange(false);
+        close(false);
       },
       onError: (failure) => setError(productionErrorMessage(failure))
     });
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          setError(null);
-          setEffectiveFrom(today);
-        }
-        onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={close}>
       <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
         <DialogHeader>
           <DialogTitle>Tạo phiên bản mới từ ngày…</DialogTitle>
@@ -97,7 +96,7 @@ export const CreditVersionDialog = ({
         </InfoNote>
         <FormAlert>{error}</FormAlert>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => close(false)}>
             Hủy
           </Button>
           <Button onClick={submit} disabled={create.isPending}>

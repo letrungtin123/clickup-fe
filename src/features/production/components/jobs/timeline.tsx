@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import {
   ArrowRightLeft,
+  Briefcase,
   CirclePlus,
   History,
   Ellipsis,
@@ -37,10 +38,18 @@ import { useSessionContext } from "@/features/auth/hooks";
 
 import { foldText } from "../../catalog";
 import { productionErrorMessage } from "../../errors";
-import { useProcesses, useProductionAccess, useProductionMe, useShifts } from "../../hooks";
+import {
+  useCustomFields,
+  useProcesses,
+  useProductionAccess,
+  useProductionMe,
+  useShifts,
+  useTags
+} from "../../hooks";
 import { useCommentMutations, useProductionTimeline } from "../../jobs-hooks";
 import type { TimelineEntity } from "../../jobs-api";
 import {
+  describeJobEdit,
   describeTaskLog,
   formatDateTime,
   insertMention,
@@ -60,7 +69,9 @@ const logIcons: Record<TaskLog["action"], LucideIcon> = {
   QTY: SlidersHorizontal,
   ASSIGN: UserRoundCog,
   NOTE: NotebookPen,
-  FIELD: Pencil
+  FIELD: Pencil,
+  // Job-level edit history (task_id null): deadline, Leader, custom fields, tags…
+  JOB: Briefcase
 };
 
 const itemTime = (item: TimelineItem) =>
@@ -95,6 +106,8 @@ export const ProductionTimeline = ({
   const timeline = useProductionTimeline(entity, id);
   const processes = useProcesses();
   const shifts = useShifts();
+  const tags = useTags();
+  const fields = useCustomFields();
   const me = useProductionMe();
   const [filter, setFilter] = useState<Filter>("all");
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
@@ -104,13 +117,19 @@ export const ProductionTimeline = ({
       (processes.data?.items ?? []).map((process) => [process.id, process.name])
     );
     const shiftNames = new Map((shifts.data?.items ?? []).map((shift) => [shift.id, shift.name]));
+    const tagNames = new Map((tags.data?.items ?? []).map((tag) => [tag.id, tag.name]));
+    // Archived fields too: history may name a field that is no longer in use.
+    const fieldList = fields.data?.items ?? [];
     return {
       user: people.nameOf,
       process: (value: string) => processNames.get(value),
       shift: (value: string) => shiftNames.get(value),
+      tag: (value: string) => tagNames.get(value),
+      field: (fieldEntity: "JOB" | "TASK", key: string) =>
+        fieldList.find((field) => field.entity === fieldEntity && field.key === key),
       timeZone
     };
-  }, [people.nameOf, processes.data, shifts.data, timeZone]);
+  }, [people.nameOf, processes.data, shifts.data, tags.data, fields.data, timeZone]);
 
   const items = useMemo(() => {
     const seen = new Set<string>();
@@ -146,7 +165,9 @@ export const ProductionTimeline = ({
           size="sm"
           value={filter}
           onChange={setFilter}
-          className="ml-auto max-sm:[&_button]:min-h-9"
+          // min-w-fit: on touch the control's min-w-10 lets flex-1 split it evenly, which squeezed
+          // "Bình luận" into its padding.
+          className="ml-auto max-sm:[&_button]:min-h-9 [&_button]:min-w-fit"
           options={[
             { value: "all", label: "Tất cả" },
             { value: "comments", label: "Bình luận" }
@@ -236,7 +257,10 @@ const LogRow = ({
 }) => {
   const Icon = logIcons[log.action];
   const segments = describeTaskLog(log, names);
-  const taskLabel = `#${log.taskNumber}`;
+  const jobEdit = log.action === "JOB" ? describeJobEdit(log, names) : null;
+  // Job-level rows (action JOB) have no task to open.
+  const taskId = log.taskId;
+  const taskLabel = log.taskNumber === null ? null : `#${log.taskNumber}`;
   const qcFail = log.toValue?.qcFail === true;
   return (
     <li className="relative flex gap-3 py-2 pl-0.5">
@@ -250,23 +274,49 @@ const LogRow = ({
         <Icon className="size-3.5" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-[13px] leading-relaxed text-foreground-muted">
-          <span className="font-medium text-foreground">{log.user?.displayName ?? "Hệ thống"}</span>{" "}
-          {segments.map((segment, index) =>
-            segment.text === taskLabel && onOpenTask ? (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onOpenTask(log.taskId)}
-                className="rounded font-semibold text-brand-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {segment.text}
-              </button>
-            ) : (
-              <SegmentText key={index} segment={segment} />
-            )
-          )}
-        </p>
+        {jobEdit && jobEdit.changes.length > 1 ? (
+          // A job edit touching several fields: one line per change reads better than a long run.
+          <>
+            <p className="text-[13px] leading-relaxed text-foreground-muted">
+              <span className="font-medium text-foreground">
+                {log.user?.displayName ?? "Hệ thống"}
+              </span>{" "}
+              {jobEdit.verb}:
+            </p>
+            <ul className="flex flex-col gap-0.5 text-[13px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
+              {jobEdit.changes.map((change) => (
+                <li key={change} className="flex gap-1.5">
+                  <span aria-hidden="true" className="text-foreground-subtle">
+                    ·
+                  </span>
+                  <span className="min-w-0">{change}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="text-[13px] leading-relaxed text-foreground-muted">
+            <span className="font-medium text-foreground">
+              {log.user?.displayName ?? "Hệ thống"}
+            </span>{" "}
+            {segments.map((segment, index) =>
+              taskLabel !== null && segment.text === taskLabel && onOpenTask && taskId ? (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => onOpenTask(taskId)}
+                  // Inline in a sentence: exempt from the phone min-height of `touchTargets`, which
+                  // would otherwise push the following line 40px down.
+                  className="rounded font-semibold text-brand-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-0!"
+                >
+                  {segment.text}
+                </button>
+              ) : (
+                <SegmentText key={index} segment={segment} />
+              )
+            )}
+          </p>
+        )}
         {log.note ? (
           <p
             className={cn(

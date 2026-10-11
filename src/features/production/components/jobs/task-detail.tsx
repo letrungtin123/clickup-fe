@@ -2,6 +2,7 @@ import { cn } from "cn";
 import {
   ExternalLink,
   FolderOpen,
+  MessageSquareWarning,
   PencilLine,
   SlidersHorizontal,
   UserRoundCog
@@ -30,12 +31,12 @@ import type { ProductionTask } from "@/contracts/production-jobs";
 
 import { fieldsFor, toCustomValuesPayload, validateCustomValues } from "../../custom-fields";
 import { productionErrorMessage } from "../../errors";
-import { formatNumber, todayIn } from "../../format";
+import { formatCredit, formatNumber, todayIn } from "../../format";
 import { useCustomFields, useProcesses, useProductionMe, useShifts, useTags } from "../../hooks";
 import { useCachedJob, useProductionTask, useTaskMutations } from "../../jobs-hooks";
-import { canSeeTask, formatDateTime, relativeDeadline } from "../../jobs-model";
+import { canSeeTask, formatDateTime, myCreditSummary, relativeDeadline } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
-import { sheetOnPhone } from "../../ui";
+import { phoneSheetColumn, sheetOnPhone, touchTargets } from "../../ui";
 import { CustomFieldsForm, CustomFieldValue } from "../custom-field-input";
 import { FormAlert } from "../settings-kit";
 import { TagChips, TagPicker } from "../tag-picker";
@@ -110,6 +111,8 @@ const TaskDetailBody = ({
   const job = useCachedJob(task.jobId);
   const deadline = relativeDeadline(task.deadline);
   const late = task.isLate;
+  // "Điểm của tôi" (worker or QC, adjustments included) — PLAN §7.
+  const credits = myCreditSummary(task);
   // Tasks of an archived job are read-only (the API refuses changes too).
   const archived = task.jobArchived || (job?.archived ?? false);
   const caps = archived
@@ -149,6 +152,34 @@ const TaskDetailBody = ({
         </div>
         {archived ? (
           <p className="text-xs text-foreground-muted">Job đã lưu trữ — task chỉ xem được.</p>
+        ) : null}
+        {task.lastQcFail ? (
+          // PLAN §7 "xem note QC": the latest QC fail, who and when (history keeps every one).
+          <div
+            className={cn(
+              "flex gap-2 rounded-lg px-3 py-2 text-[13px]",
+              task.checkedAt === null ? "bg-danger-soft" : "bg-muted/60"
+            )}
+          >
+            <MessageSquareWarning
+              className={cn(
+                "mt-0.5 size-4 shrink-0",
+                task.checkedAt === null ? "text-danger" : "text-foreground-muted"
+              )}
+              aria-hidden="true"
+            />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-xs font-medium text-foreground-muted">
+                {task.checkedAt === null ? "QC trả lại gần nhất" : "Lần QC trả lại gần nhất"}
+                {" · "}
+                {task.lastQcFail.by?.displayName ?? "QC"},{" "}
+                {formatDateTime(task.lastQcFail.at, timeZone)}
+              </span>
+              <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {task.lastQcFail.note ?? "Không ghi lý do."}
+              </p>
+            </div>
+          </div>
         ) : null}
         <TransitionButtons
           task={
@@ -201,6 +232,13 @@ const TaskDetailBody = ({
         ) : null}
         {task.otHours !== null ? (
           <Fact label="Giờ OT">{formatNumber(task.otHours)} giờ</Fact>
+        ) : null}
+        {credits ? (
+          <Fact label="Điểm của tôi">
+            <span className="font-medium text-success tabular-nums" title={credits.detail}>
+              {formatCredit(credits.credits)} điểm{credits.khoan ? " Khoán" : ""}
+            </span>
+          </Fact>
         ) : null}
       </dl>
 
@@ -354,8 +392,9 @@ const AssignDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
-        <DialogHeader>
+      {/* Already a bottom sheet on phones (DialogContent); see transition-dialog.tsx. */}
+      <DialogContent className={cn("sm:max-w-md", touchTargets)}>
+        <DialogHeader className="pr-8">
           <DialogTitle>Đổi người làm / QC · #{task.number}</DialogTitle>
           <DialogDescription>
             Người được giao và QC mới sẽ nhận thông báo. QC phải khác người làm.
@@ -400,7 +439,7 @@ const AssignDialog = ({
           />
         </Field>
         <FormAlert>{error}</FormAlert>
-        <DialogFooter>
+        <DialogFooter className="max-sm:-bottom-4">
           <Button variant="ghost" onClick={onClose}>
             Hủy
           </Button>
@@ -453,8 +492,8 @@ const QtyDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
-        <DialogHeader>
+      <DialogContent className={cn("sm:max-w-md", touchTargets)}>
+        <DialogHeader className="pr-8">
           <DialogTitle>Sửa số tấm hoàn thành · #{task.number}</DialogTitle>
           <DialogDescription>
             Điểm được tính lại theo số mới; bản ghi cũ giữ trong lịch sử và người làm nhận thông
@@ -485,7 +524,7 @@ const QtyDialog = ({
           />
         </Field>
         <FormAlert>{error}</FormAlert>
-        <DialogFooter>
+        <DialogFooter className="max-sm:-bottom-4">
           <Button variant="ghost" onClick={onClose}>
             Hủy
           </Button>
@@ -536,7 +575,9 @@ const EditTaskDialog = ({
     .map((shift) => ({ id: shift.id, label: shift.name }));
 
   const submit = () => {
-    const problems = validateCustomValues(taskFields, values, { enforceRequired: false });
+    // The API enforces required fields whenever custom values are sent (they are only sent once
+    // touched), so a task created before a field became required must fill it then.
+    const problems = validateCustomValues(taskFields, values, { enforceRequired: valuesTouched });
     setFieldErrors(problems);
     const qtyValue = Number(qty);
     if (!done && (!/^\d+$/.test(qty.trim()) || qtyValue < 1)) {
@@ -579,13 +620,13 @@ const EditTaskDialog = ({
       >
         <form
           noValidate
-          className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]"
+          className={cn("flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col", phoneSheetColumn)}
           onSubmit={(event) => {
             event.preventDefault();
             submit();
           }}
         >
-          <DialogHeader className="border-b px-4 pt-4 pb-3">
+          <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
             <DialogTitle>Sửa task #{task.number}</DialogTitle>
             <DialogDescription>
               {done

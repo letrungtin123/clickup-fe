@@ -3,13 +3,14 @@ import {
   ChartColumnBig,
   ChartLine,
   ChartPie,
+  Info,
   RefreshCw,
   Sheet as SheetIcon,
   TableProperties,
   TriangleAlert
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { EmptyState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -26,13 +27,19 @@ import {
 import {
   reportMeasureInfo,
   type ReportConfig,
-  type ReportDimension,
   type ReportMeasure,
   type ReportResult
 } from "@/contracts/production-reports";
 import { isApiError } from "@/lib/api/errors";
 
 import { formatInteger } from "../../format";
+import {
+  dimensionLabel,
+  emptyCatalog,
+  multiValueDimensions,
+  type DimensionKey,
+  type FieldCatalog
+} from "../dimensions";
 import { reportErrorMessage } from "../errors";
 import { formatRange } from "../format";
 import type { ReportView, Zones } from "../model";
@@ -68,7 +75,7 @@ export const ViewSwitch = ({
         key={option.value}
         value={option.value}
         aria-label={option.label}
-        className="gap-1 px-2.5 max-sm:min-w-10"
+        className="gap-1 px-2.5 pointer-coarse:min-h-10 max-sm:min-w-10"
       >
         <option.icon aria-hidden="true" />
         <span className="max-sm:sr-only">{option.label}</span>
@@ -104,6 +111,7 @@ export const ResultPanel = ({
   onRetry,
   problem,
   onSort,
+  catalog = emptyCatalog,
   actions
 }: {
   config: ReportConfig;
@@ -119,9 +127,15 @@ export const ResultPanel = ({
   onRetry: () => void;
   /** Why the config cannot run (shown instead of the result). */
   problem: string | null;
-  onSort: (key: ReportDimension | ReportMeasure) => void;
+  onSort: (key: DimensionKey | ReportMeasure) => void;
+  /** Custom-field definitions (multi-value fields and their labels). */
+  catalog?: FieldCatalog;
   actions?: ReactNode;
 }) => {
+  const multiValue = useMemo(
+    () => multiValueDimensions(config.dimensions, catalog),
+    [config.dimensions, catalog]
+  );
   const measures = zones.values;
   const measure =
     chartMeasure && measures.includes(chartMeasure) ? chartMeasure : (measures[0] ?? null);
@@ -139,7 +153,8 @@ export const ResultPanel = ({
       className="min-w-0 rounded-xl border bg-surface shadow-xs"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {/* min-w-48: on phones the controls wrap below instead of squeezing the range into 4 lines. */}
+        <div className="flex min-w-48 flex-1 flex-col gap-0.5">
           <h2 id="report-result-title" className="flex items-center gap-2 text-sm font-semibold">
             Kết quả
             {isFetching ? <Spinner className="size-3.5 text-foreground-muted" /> : null}
@@ -197,6 +212,17 @@ export const ResultPanel = ({
           </motion.div>
         ) : null}
       </AnimatePresence>
+      {multiValue.size > 0 && !problem ? (
+        <p className="flex items-start gap-2 border-b px-4 py-2 text-xs text-foreground-muted">
+          <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            {[...multiValue]
+              .map((dimension) => `"${dimensionLabel(dimension, catalog)}"`)
+              .join(", ")}{" "}
+            chọn được nhiều giá trị: một bản ghi được đếm cho mỗi lựa chọn, dòng Tổng đếm một lần.
+          </span>
+        </p>
+      ) : null}
       <div className={cn("min-w-0 transition-opacity duration-200", stale && "opacity-60")}>
         {problem ? (
           <EmptyState icon={SheetIcon} title="Báo cáo chưa sẵn sàng" description={problem} />
@@ -230,6 +256,7 @@ export const ResultPanel = ({
             rows={zones.rows}
             columns={zones.columns}
             measures={measures}
+            multiValue={multiValue}
             view={view}
             chartMeasure={measure}
             sort={config.sort}

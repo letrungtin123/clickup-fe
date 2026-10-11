@@ -143,7 +143,8 @@ const TrashRow = ({
   onPurge: () => void;
 }) => (
   <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-3 py-2.5 last:border-b-0 sm:flex-nowrap">
-    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+    {/* Phones: the text takes the whole first line and the actions wrap below it. */}
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5 max-sm:basis-full">
       <div className="flex min-w-0 items-center gap-2">
         <span className="shrink-0 font-mono text-[11px] text-foreground-subtle">{item.key}</span>
         <span className="truncate text-[13px] font-medium">{item.title}</span>

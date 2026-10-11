@@ -16,6 +16,7 @@ import type {
   ProductionTaskPage
 } from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
+import type { QueryValue } from "@/lib/api/client";
 
 import {
   jobsApi,
@@ -50,6 +51,8 @@ import {
 
 const nextCursor = (page: { pageInfo: { hasMore: boolean; nextCursor: string | null } }) =>
   page.pageInfo.hasMore ? (page.pageInfo.nextCursor ?? undefined) : undefined;
+
+const noFilters: Record<string, QueryValue> = {};
 
 // --- Reads ---------------------------------------------------------------------------------------------
 
@@ -93,20 +96,28 @@ export const useTaskScores = (taskId: string | null | undefined, enabled = true)
   });
 
 /** My tasks in pages of MY_TASKS_PAGE (deadline order); `fetchNextPage` loads more (BUG-PR-18). */
-export const useMyTasks = (role: MyTasksRole, includeFinished: boolean, enabled = true) =>
+export const useMyTasks = (
+  role: MyTasksRole,
+  includeFinished: boolean,
+  enabled = true,
+  /** TASK tag / custom-field query (list-filters.ts `listFiltersToQuery`). */
+  filters: Record<string, QueryValue> = noFilters
+) =>
   useInfiniteQuery({
-    queryKey: productionKeys.myTasks(role, includeFinished),
-    queryFn: ({ pageParam, signal }) => jobsApi.myTasks(role, includeFinished, pageParam, signal),
+    queryKey: productionKeys.myTasks(role, includeFinished, filters),
+    queryFn: ({ pageParam, signal }) =>
+      jobsApi.myTasks(role, includeFinished, pageParam, signal, filters),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
     placeholderData: keepPreviousData,
     enabled
   });
 
-export const useQcQueue = (enabled = true) =>
+export const useQcQueue = (enabled = true, filters: Record<string, QueryValue> = noFilters) =>
   useQuery({
-    queryKey: productionKeys.qcQueue(),
-    queryFn: ({ signal }) => jobsApi.qcQueue(signal),
+    queryKey: productionKeys.qcQueue(filters),
+    queryFn: ({ signal }) => jobsApi.qcQueue(signal, filters),
+    placeholderData: keepPreviousData,
     enabled
   });
 
@@ -176,9 +187,14 @@ export const applyTask = (
     (data) => replaceTaskInPages(data, task)
   );
   void client.invalidateQueries({ queryKey: productionKeys.myTasks(), refetchType: "none" });
-  client.setQueryData<ProductionTaskPage>(productionKeys.qcQueue(), (data) =>
-    patchQcQueue(data, task, myId)
-  );
+  const plainQueue = productionKeys.qcQueue();
+  for (const [key] of client.getQueriesData<ProductionTaskPage>({ queryKey: plainQueue })) {
+    // Filtered queues (tag / custom fields) only replace or drop the row: the task may not match.
+    const filtered = key.length > plainQueue.length;
+    client.setQueryData<ProductionTaskPage>(key, (data) =>
+      patchQcQueue(data, task, filtered ? null : myId)
+    );
+  }
   void client.invalidateQueries({ queryKey: productionKeys.qcQueue(), refetchType: "none" });
   void client.invalidateQueries({ queryKey: productionKeys.jobs() });
   void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", task.jobId) });

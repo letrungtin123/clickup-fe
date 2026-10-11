@@ -2,7 +2,7 @@
  * Production query keys. One prefix `["production"]` invalidates the whole module:
  *
  *   ["production", "me"]                                     roles, team, public settings
- *   ["production", "members"]                                production members (admin: all org members)
+ *   ["production", "members"(, filters)]                     production members (admin: all org members)
  *   ["production", "teams" | "clients" | "projects" | "processes" | "shifts" | "tags"]
  *   ["production", "credit-rules", "matrix", day]            rules effective on `day`
  *   ["production", "credit-rules", "history", project, process]
@@ -13,16 +13,26 @@
  *   ["me", "notification-preferences"]                       personal (not production-only)
  *   ["production", "jobs", query]                            job list pages (infinite)
  *   ["production", "job", id] / ["production", "task", id]  job detail / task detail
- *   ["production", "my-tasks", role, includeFinished]        my tasks (infinite)
- *   ["production", "qc-queue"]                               tasks waiting for my QC
+ *   ["production", "my-tasks", role, includeFinished(, filters)]  my tasks (infinite)
+ *   ["production", "qc-queue"(, filters)]                    tasks waiting for my QC
+ *   (filters = tag / custom-field query, list-filters.ts; only present when non-empty)
  *   ["production", "timeline", "jobs"|"tasks", id]           comments + history (infinite)
  */
 export const productionKeys = {
   all: () => ["production"] as const,
   me: () => ["production", "me"] as const,
-  members: () => ["production", "members"] as const,
+  /** With a tag / custom-field query: a filtered variant under the same prefix. */
+  members: (filters?: Record<string, unknown>) =>
+    filters && Object.keys(filters).length > 0
+      ? (["production", "members", filters] as const)
+      : (["production", "members"] as const),
+  /** Open jobs a person still leads (GET /production/users/:id/led-jobs). */
+  ledJobs: (userId: string) => ["production", "led-jobs", userId] as const,
   teams: () => ["production", "teams"] as const,
-  clients: () => ["production", "clients"] as const,
+  clients: (filters?: Record<string, unknown>) =>
+    filters && Object.keys(filters).length > 0
+      ? (["production", "clients", filters] as const)
+      : (["production", "clients"] as const),
   projects: () => ["production", "projects"] as const,
   processes: () => ["production", "processes"] as const,
   shifts: () => ["production", "shifts"] as const,
@@ -48,11 +58,18 @@ export const productionKeys = {
   taskAll: () => ["production", "task"] as const,
   /** Under the task key: refreshed with it (realtime, invalidations). */
   taskScores: (taskId: string) => ["production", "task", taskId, "scores"] as const,
-  myTasks: (role?: string, includeFinished?: boolean) =>
+  /** `filters`: tag / custom-field query of the list (omitted when empty, so plain keys stay short). */
+  myTasks: (role?: string, includeFinished?: boolean, filters?: Record<string, unknown>) =>
     role === undefined
       ? (["production", "my-tasks"] as const)
-      : (["production", "my-tasks", role, includeFinished ?? false] as const),
-  qcQueue: () => ["production", "qc-queue"] as const,
+      : filters && Object.keys(filters).length > 0
+        ? (["production", "my-tasks", role, includeFinished ?? false, filters] as const)
+        : (["production", "my-tasks", role, includeFinished ?? false] as const),
+  /** Without `filters`: the plain queue (also the prefix of every filtered variant). */
+  qcQueue: (filters?: Record<string, unknown>) =>
+    filters && Object.keys(filters).length > 0
+      ? (["production", "qc-queue", filters] as const)
+      : (["production", "qc-queue"] as const),
   timeline: (entity?: "jobs" | "tasks", id?: string) =>
     entity === undefined
       ? (["production", "timeline"] as const)

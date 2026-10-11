@@ -1,4 +1,4 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, Hash, Lock, RefreshCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -80,9 +80,57 @@ type MessageListProps = {
   intro: ReactNode;
 };
 
+/*
+ * Inverted scrolling. The scroll container is `flex-col-reverse`, so browsers measure scrollTop from the
+ * bottom (0 at the newest message, negative upwards) and the virtualizer works with the distance from the
+ * bottom: row 0 is the newest message, older rows have larger offsets. Older history pages and late
+ * measurements (estimated → real heights, images) therefore land AHEAD of the reader while they scroll up
+ * and never need a scroll correction — no jumps while scrolling up, and iOS momentum is never cut short.
+ * Only changes at the newest end (live messages while scrolled up, newer pages, trimming) are compensated,
+ * by re-anchoring the first visible message.
+ */
+/** Old engines report column-reverse scrollTop as a positive distance from the top. */
+let positiveReverseScroll = false;
+const readOffset = (element: HTMLElement) => {
+  if (element.scrollTop > 0) positiveReverseScroll = true;
+  return positiveReverseScroll
+    ? Math.max(0, element.scrollHeight - element.clientHeight - element.scrollTop)
+    : Math.max(0, -element.scrollTop);
+};
+const writeOffset = (element: HTMLElement, offset: number, behavior?: ScrollBehavior) => {
+  const target = Math.max(0, offset);
+  const top = positiveReverseScroll ? element.scrollHeight - element.clientHeight - target : -target;
+  element.scrollTo(behavior ? { top, behavior } : { top });
+};
+const observeInvertedOffset = (
+  instance: Virtualizer<HTMLDivElement, Element>,
+  callback: (offset: number, isScrolling: boolean) => void
+) => {
+  const element = instance.scrollElement;
+  if (!element) return undefined;
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const onScroll = () => {
+    callback(readOffset(element), true);
+    clearTimeout(idle);
+    idle = setTimeout(() => callback(readOffset(element), false), 150);
+  };
+  element.addEventListener("scroll", onScroll, { passive: true });
+  return () => {
+    element.removeEventListener("scroll", onScroll);
+    clearTimeout(idle);
+  };
+};
+const scrollInverted = (
+  offset: number,
+  { adjustments = 0, behavior }: { adjustments?: number; behavior?: ScrollBehavior },
+  instance: Virtualizer<HTMLDivElement, Element>
+) => {
+  if (instance.scrollElement) writeOffset(instance.scrollElement, offset + adjustments, behavior);
+};
+
 /**
- * Virtualized, bottom-anchored conversation (TanStack Virtual):
- * - reverse infinite scroll (older pages prepend; the visible message keeps its position);
+ * Virtualized, bottom-anchored conversation (TanStack Virtual, inverted — see above):
+ * - reverse infinite scroll (older pages load above without moving what the viewer reads);
  * - sticks to the bottom while the viewer is there, otherwise shows a "new messages" pill;
  * - day separators, "Tin mới" divider, per-author grouping (rows are memoized).
  */
@@ -109,11 +157,12 @@ export const MessageList = memo(function MessageList({
     () => buildTimeline(messages, { lastReadSeq: dividerSeq, myId }),
     [dividerSeq, messages, myId]
   );
+  /** Newest first (row 0 sits at the bottom of the view). */
   const rows = useMemo<ListRow[]>(
     () => [
-      { kind: "top", key: "top" },
-      ...timeline,
-      ...(hasNewer ? [{ kind: "bottom", key: "bottom" } as const] : [])
+      ...(hasNewer ? [{ kind: "bottom", key: "bottom" } as const] : []),
+      ...[...timeline].reverse(),
+      { kind: "top", key: "top" }
     ],
     [hasNewer, timeline]
   );
@@ -124,9 +173,11 @@ export const MessageList = memo(function MessageList({
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => estimateRow(rows[index]),
     getItemKey: (index) => rows[index]?.key ?? index,
+    observeElementOffset: observeInvertedOffset,
+    scrollToFn: scrollInverted,
     overscan: 10,
-    paddingStart: 4,
-    paddingEnd: 12
+    paddingStart: 12,
+    paddingEnd: 4
   });
   const measureRef = useMeasureAfterCommit(virtualizer);
 
@@ -149,6 +200,7 @@ export const MessageList = memo(function MessageList({
       window.removeEventListener("pointercancel", release);
     };
   }, []);
+  /** First visible row from the bottom and its distance above the viewport's bottom edge. */
   const anchor = useRef<{ key: string | number | bigint; delta: number } | null>(null);
   const initialised = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
@@ -159,11 +211,11 @@ export const MessageList = memo(function MessageList({
   const captureAnchor = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const top = element.scrollTop;
+    const offset = readOffset(element);
     const first = virtualizer
       .getVirtualItems()
-      .find((item) => item.end > top + 1 && rows[item.index]?.kind !== "top");
-    anchor.current = first ? { key: first.key, delta: first.start - top } : null;
+      .find((item) => item.end > offset + 1 && rows[item.index]?.kind !== "bottom");
+    anchor.current = first ? { key: first.key, delta: first.start - offset } : null;
   }, [rows, virtualizer]);
 
   const syncScroll = (element: HTMLDivElement) => {
@@ -175,16 +227,20 @@ export const MessageList = memo(function MessageList({
 
   const scrollToBottom = useCallback(() => {
     const element = scrollRef.current;
-    if (!element) return;
-    element.scrollTop = element.scrollHeight;
+    // Already there: no write (a redundant scroll write would interrupt touch momentum).
+    if (!element || readOffset(element) === 0) return;
+    writeOffset(element, 0);
     syncScroll(element);
   }, []);
 
   const onScroll = () => {
     const element = scrollRef.current;
     if (!element) return;
-    const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-    const bottom = distance < STICK_THRESHOLD_PX;
+    // A browser-initiated move right after rows changed at an end: put the reader back first.
+    restorePending();
+    const offset = readOffset(element);
+    const toTop = element.scrollHeight - element.clientHeight - offset;
+    const bottom = offset < STICK_THRESHOLD_PX;
     // Content growing (images loading, rows measured, virtualizer adjustments) never unsticks the
     // view; only the viewer scrolling away does.
     const byUser = dragging.current || performance.now() - userIntentAt.current < 300;
@@ -193,52 +249,84 @@ export const MessageList = memo(function MessageList({
     setAtBottom(bottom);
     if (bottom && !hasNewer) setUnseen(0);
     captureAnchor();
-    if (element.scrollTop < NEAR_EDGE_PX && hasOlder && olderState === "idle") onLoadOlder();
-    if (distance < NEAR_EDGE_PX && hasNewer && newerState === "idle") onLoadNewer();
+    if (toTop < NEAR_EDGE_PX && hasOlder && olderState === "idle") onLoadOlder();
+    if (offset < NEAR_EDGE_PX && hasNewer && newerState === "idle") onLoadNewer();
   };
 
-  // Keep the first visible message in place when rows are prepended / trimmed above it.
-  const firstKey = rows.find((row) => row.kind === "message")?.key ?? null;
-  const previousFirstKey = useRef(firstKey);
-  useLayoutEffect(() => {
-    if (previousFirstKey.current === firstKey) return;
-    previousFirstKey.current = firstKey;
+  // Rows added or trimmed at either end keep the first visible message where the viewer left it:
+  // at the newest end (live messages while scrolled up, newer pages, trimming) everything above
+  // shifts; at the oldest end (older pages) Chromium can move a growing column-reverse scroller in a
+  // later layout of the same update, which would throw the viewer into the page just loaded. The
+  // restore is held for a short window and re-checked after every layout (inner ResizeObserver, which
+  // runs before paint), so no jump is ever painted. Engines that kept the position get no write (a
+  // redundant write would cut touch momentum short).
+  const newestKey = rows.find((row) => row.kind === "message")?.key ?? null;
+  const oldestKey = rows.findLast((row) => row.kind === "message")?.key ?? null;
+  const previousEnds = useRef(`${newestKey}|${oldestKey}`);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const pendingRestore = useRef<{ key: string | number | bigint; delta: number; until: number } | null>(null);
+  const restorePending = useCallback(() => {
     const element = scrollRef.current;
-    const saved = anchor.current;
-    if (!element || !saved || stick.current) return;
-    const index = rows.findIndex((row) => row.key === saved.key);
-    if (index === -1) return;
-    const measured = virtualizer.measurementsCache[index]?.start;
-    if (measured === undefined) return;
-    element.scrollTop = measured - saved.delta;
+    const pending = pendingRestore.current;
+    if (!element || !pending) return;
+    if (performance.now() > pending.until) {
+      pendingRestore.current = null;
+      return;
+    }
+    const index = rowsRef.current.findIndex((row) => row.key === pending.key);
+    const start = index === -1 ? undefined : virtualizer.measurementsCache[index]?.start;
+    if (start === undefined) return;
+    const target = Math.max(0, start - pending.delta);
+    if (Math.abs(readOffset(element) - target) <= 1) return;
+    writeOffset(element, target);
     syncScroll(element);
-  }, [firstKey, rows, virtualizer]);
+  }, [virtualizer]);
+  useLayoutEffect(() => {
+    const ends = `${newestKey}|${oldestKey}`;
+    if (previousEnds.current === ends) return;
+    previousEnds.current = ends;
+    const saved = anchor.current;
+    if (!saved || (stick.current && !hasNewer)) return;
+    pendingRestore.current = { ...saved, until: performance.now() + 150 };
+    restorePending();
+    queueMicrotask(restorePending);
+  }, [hasNewer, newestKey, oldestKey, restorePending]);
+  useEffect(() => {
+    const inner = innerRef.current;
+    if (!inner || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => restorePending());
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, [restorePending]);
 
-  // Initial position: bottom, the unread divider, or a focused message (handled below).
+  // Initial position: bottom (the natural position), the unread divider, or a focused message.
   useLayoutEffect(() => {
     if (initialised.current || rows.length <= 1) return;
     initialised.current = true;
-    lastKeyRef.current = rows.at(-1)?.key ?? null;
+    lastKeyRef.current = newestKey;
     if (focusMessageId) return;
     const dividerIndex = rows.findIndex((row) => row.kind === "unread");
     const unreadRow = rows[dividerIndex];
     if (unreadRow?.kind === "unread" && unreadRow.count > OPEN_AT_DIVIDER_AFTER) {
       stick.current = false;
-      virtualizer.scrollToIndex(dividerIndex, { align: "start" });
+      // "end" in inverted coordinates = the divider at the top of the viewport, unread below it.
+      virtualizer.scrollToIndex(dividerIndex, { align: "end" });
       return;
     }
     scrollToBottom();
-  }, [focusMessageId, rows, scrollToBottom, virtualizer]);
+  }, [focusMessageId, newestKey, rows, scrollToBottom, virtualizer]);
 
-  // Stay glued to the bottom while content grows (new messages, images loading, measurements).
+  // Stay at the bottom while content grows there (new messages, images loading, measurements).
   const totalSize = virtualizer.getTotalSize();
   useLayoutEffect(() => {
     if (!initialised.current || !stick.current || hasNewer) return;
     scrollToBottom();
   }, [hasNewer, rows.length, scrollToBottom, totalSize]);
 
-  // …and while the viewport shrinks: the on-screen keyboard opening (phones) or the composer
-  // growing would otherwise slide the newest messages under the composer.
+  // …and while the viewport shrinks (on-screen keyboard, growing composer). The inverted layout
+  // already keeps the bottom in place; this only removes a few pixels of drift.
   useEffect(() => {
     const element = scrollRef.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
@@ -255,12 +343,11 @@ export const MessageList = memo(function MessageList({
   // Track arrivals at the live end: subtle enter motion + "new messages" pill when scrolled up.
   useEffect(() => {
     if (!initialised.current) return;
-    const lastKey = rows.at(-1)?.key ?? null;
-    if (lastKey === lastKeyRef.current) return;
+    if (newestKey === lastKeyRef.current) return;
     const previousIndex = rows.findIndex((row) => row.key === lastKeyRef.current);
-    lastKeyRef.current = lastKey;
+    lastKeyRef.current = newestKey;
     if (previousIndex === -1) return;
-    const added = rows.slice(previousIndex + 1).filter((row) => row.kind === "message");
+    const added = rows.slice(0, previousIndex).filter((row) => row.kind === "message");
     const fromOthers = added.filter(
       (row) => row.kind === "message" && row.message.author?.id !== myId
     ).length;
@@ -274,7 +361,7 @@ export const MessageList = memo(function MessageList({
       stick.current = true;
       scrollToBottom();
     }
-  }, [myId, rows, scrollToBottom]);
+  }, [myId, newestKey, rows, scrollToBottom]);
 
   // Deep link / jump: centre the target message once it is loaded.
   useEffect(() => {
@@ -297,12 +384,7 @@ export const MessageList = memo(function MessageList({
   useEffect(() => {
     const element = scrollRef.current;
     if (!element || !hasOlder || olderState !== "idle" || !initialised.current) return;
-    if (
-      element.scrollHeight <= element.clientHeight + NEAR_EDGE_PX &&
-      element.scrollTop < NEAR_EDGE_PX
-    ) {
-      onLoadOlder();
-    }
+    if (element.scrollHeight <= element.clientHeight + NEAR_EDGE_PX) onLoadOlder();
   }, [hasOlder, olderState, onLoadOlder, totalSize]);
 
   const items = virtualizer.getVirtualItems();
@@ -329,9 +411,10 @@ export const MessageList = memo(function MessageList({
           const target = event.target as HTMLElement;
           const row = target.closest<HTMLElement>("[data-chat-row]");
           if (target !== event.currentTarget && target !== row) return;
+          // Rendered newest first: reverse into reading order (top to bottom).
           const rows = Array.from(
             event.currentTarget.querySelectorAll<HTMLElement>("[data-chat-row]")
-          );
+          ).reverse();
           const index = row ? rows.indexOf(row) : -1;
           const next =
             event.key === "ArrowUp"
@@ -347,37 +430,35 @@ export const MessageList = memo(function MessageList({
         aria-label={`Tin nhắn ${conversationLabel}`}
         aria-busy={olderState === "loading"}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [overflow-anchor:none]"
+        className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [overflow-anchor:none]"
       >
-        <div className="flex min-h-full flex-col justify-end">
-          <div className="relative w-full shrink-0" style={{ height: totalSize }}>
-            {items.map((item) => {
-              const row = rows[item.index];
-              if (!row) return null;
-              return (
-                <div
-                  key={item.key}
-                  data-index={item.index}
-                  ref={measureRef}
-                  className="absolute top-0 left-0 w-full"
-                  style={{ transform: `translateY(${item.start}px)` }}
-                >
-                  <Row
-                    row={row}
-                    hasOlder={hasOlder}
-                    olderState={olderState}
-                    onLoadOlder={onLoadOlder}
-                    intro={intro}
-                    highlighted={row.kind === "message" && row.message.id === highlightId}
-                    fresh={
-                      row.kind === "message" &&
-                      new Date(row.message.createdAt).getTime() > mountedAt
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
+        <div ref={innerRef} className="relative w-full shrink-0" style={{ height: totalSize }}>
+          {items.map((item) => {
+            const row = rows[item.index];
+            if (!row) return null;
+            return (
+              <div
+                key={item.key}
+                data-index={item.index}
+                ref={measureRef}
+                className="absolute bottom-0 left-0 w-full"
+                style={{ transform: `translateY(${-item.start}px)` }}
+              >
+                <Row
+                  row={row}
+                  hasOlder={hasOlder}
+                  olderState={olderState}
+                  onLoadOlder={onLoadOlder}
+                  intro={intro}
+                  highlighted={row.kind === "message" && row.message.id === highlightId}
+                  fresh={
+                    row.kind === "message" &&
+                    new Date(row.message.createdAt).getTime() > mountedAt
+                  }
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 

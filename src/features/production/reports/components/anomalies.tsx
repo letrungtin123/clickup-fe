@@ -1,4 +1,5 @@
 import { cn } from "cn";
+import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, ChartNoAxesCombined, Eye, Undo2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -8,12 +9,16 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import type { Anomaly } from "@/contracts/production-reports";
+import { anomalyKinds, type Anomaly, type AnomalyKind } from "@/contracts/production-reports";
+import { useSessionContext } from "@/features/auth/hooks";
 import { toneClass } from "@/lib/colors";
 
+import { useProductionAccess } from "../../hooks";
 import { touchTargets } from "../../ui";
 import { formatDay, formatInteger, formatNumber } from "../../format";
+import { anomalyKindTitles, anomalyTabLabels, canUndoReview } from "../anomalies";
 import { formatDeadline } from "../dashboard";
 import { reportErrorMessage } from "../errors";
 import { formatReportValue } from "../format";
@@ -23,7 +28,9 @@ import { reportBuilderHref } from "../model";
 /**
  * Rows of the anomalies report (SPEC Phase 5 §5, PLAN §10): what happened, who / which task, and the
  * "Đã xem" action (optional note, undo). A reviewed row disappears until its key changes (a new
- * correction or failure shows it again).
+ * correction or failure shows it again). Only the person who marked a row, or an ADMIN, can take it
+ * back ("Bỏ đã xem"; API 403 ANOMALY_REVIEW_NOT_OWNER otherwise). Used by /production/anomalies and the
+ * "Bất thường" tab of the Leader dashboard (SPEC Phase 5.5).
  */
 
 const percent = (value: number) => formatReportValue(value, "percent");
@@ -32,7 +39,7 @@ const TaskLink = ({ task }: { task: NonNullable<Anomaly["task"]> }) => (
   <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm">
     <Link
       to={`/production/tasks/${task.id}`}
-      className="font-semibold tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring max-sm:inline-flex max-sm:min-h-10 max-sm:items-center"
+      className="font-semibold tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:inline-flex pointer-coarse:min-h-10 pointer-coarse:items-center"
     >
       Task #{task.number}
     </Link>
@@ -41,7 +48,7 @@ const TaskLink = ({ task }: { task: NonNullable<Anomaly["task"]> }) => (
     </span>
     <Link
       to={`/production/jobs/${task.jobId}`}
-      className="min-w-0 truncate text-foreground-muted underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring max-sm:inline-flex max-sm:min-h-10 max-sm:items-center"
+      className="min-w-0 truncate text-foreground-muted underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:inline-flex pointer-coarse:min-h-10 pointer-coarse:items-center"
     >
       {task.jobCode}
     </Link>
@@ -153,11 +160,7 @@ const Details = ({
         <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
           <Metric
             label="Xong sau khi giao"
-            value={
-              item.minutes < 1
-                ? "dưới 1 phút"
-                : `${formatNumber(item.minutes)} phút`
-            }
+            value={item.minutes < 1 ? "dưới 1 phút" : `${formatNumber(item.minutes)} phút`}
             alert
           />
           <Metric label="Giao lúc" value={formatDeadline(item.assignedAt, timeZone)} />
@@ -201,13 +204,17 @@ const ReviewButton = ({ item }: { item: Anomaly }) => {
   const [note, setNote] = useState("");
   const review = useReviewAnomaly();
   const unreview = useUnreviewAnomaly();
+  const session = useSessionContext();
+  const access = useProductionAccess();
+  const canUndo = canUndoReview(item, { userId: session.user.id, isAdmin: access.isAdmin });
 
   const undo = async () => {
     try {
       await unreview.mutateAsync({ kind: item.kind, key: item.key });
       toast.success("Đã bỏ đánh dấu đã xem");
     } catch (cause) {
-      toast.error(reportErrorMessage(cause, "Không hoàn tác được."));
+      // ANOMALY_REVIEW_NOT_OWNER: the server says who may undo it.
+      toast.error(reportErrorMessage(cause, "Không bỏ được đánh dấu đã xem."));
     }
   };
 
@@ -222,7 +229,7 @@ const ReviewButton = ({ item }: { item: Anomaly }) => {
       setOpen(false);
       setNote("");
       toast.success("Đã đánh dấu đã xem", {
-        action: { label: "Hoàn tác", onClick: () => void undo() }
+        action: { label: "Bỏ đã xem", onClick: () => void undo() }
       });
     } catch (cause) {
       toast.error(reportErrorMessage(cause, "Không đánh dấu được. Thử lại sau."));
@@ -230,6 +237,8 @@ const ReviewButton = ({ item }: { item: Anomaly }) => {
   };
 
   if (item.reviewed) {
+    // Someone else's review: only they (or an Admin) can take it back — nothing to offer here.
+    if (!canUndo) return null;
     return (
       <Button
         variant="ghost"
@@ -237,9 +246,10 @@ const ReviewButton = ({ item }: { item: Anomaly }) => {
         disabled={unreview.isPending}
         onClick={() => void undo()}
         className="text-foreground-muted"
+        title="Bỏ đánh dấu đã xem: mục hiện lại trong danh sách"
       >
         {unreview.isPending ? <Spinner /> : <Undo2 />}
-        Hoàn tác
+        Bỏ đã xem
       </Button>
     );
   }
@@ -282,6 +292,82 @@ const ReviewButton = ({ item }: { item: Anomaly }) => {
     </Popover>
   );
 };
+
+/** Tabs per anomaly kind with the unreviewed count of each. */
+export const AnomalyKindTabs = ({
+  value,
+  onChange,
+  counts,
+  loaded
+}: {
+  value: AnomalyKind;
+  onChange: (kind: AnomalyKind) => void;
+  counts: Partial<Record<AnomalyKind, number>> | undefined;
+  loaded: boolean;
+}) => (
+  <Tabs value={value} onValueChange={(next) => onChange(next as AnomalyKind)}>
+    <div className="-mx-4 overflow-x-auto px-4 pb-1 [mask-image:linear-gradient(to_right,transparent,black_1rem,black_calc(100%-1rem),transparent)] md:mx-0 md:px-0 md:[mask-image:none]">
+      <TabsList
+        className={cn("h-auto! w-max min-w-full justify-start gap-1 p-1 md:min-w-0", touchTargets)}
+      >
+        {anomalyKinds.map((kind) => {
+          const count = counts?.[kind] ?? 0;
+          return (
+            <TabsTrigger
+              key={kind}
+              value={kind}
+              className="h-9 flex-none gap-1.5 px-3 pointer-coarse:h-10"
+              title={anomalyKindTitles[kind]}
+            >
+              {anomalyTabLabels[kind]}
+              <span
+                className={cn(
+                  "min-w-5 rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+                  count > 0 ? "bg-danger-soft text-danger" : "bg-muted text-foreground-subtle"
+                )}
+                aria-label={`${count} mục chưa xem`}
+              >
+                {loaded ? count : "·"}
+              </span>
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
+    </div>
+  </Tabs>
+);
+
+/** Rows of one kind; reviewed rows leave with a short collapse. */
+export const AnomalyList = ({
+  kind,
+  items,
+  threshold,
+  timeZone
+}: {
+  kind: AnomalyKind;
+  items: readonly Anomaly[];
+  threshold: number;
+  timeZone: string;
+}) => (
+  // Keyed by kind: switching tabs replaces the list instead of animating 500 rows out.
+  <ul key={kind} className="divide-y">
+    <AnimatePresence initial={false}>
+      {items.map((item) => (
+        <motion.li
+          key={`${item.kind}:${item.key}`}
+          layout="position"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, height: 0, transition: { duration: 0.18 } }}
+          transition={{ duration: 0.18 }}
+          className="overflow-hidden"
+        >
+          <AnomalyRow item={item} threshold={threshold} timeZone={timeZone} />
+        </motion.li>
+      ))}
+    </AnimatePresence>
+  </ul>
+);
 
 export const AnomalyRow = ({
   item,

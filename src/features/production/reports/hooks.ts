@@ -1,12 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { AnomalyKind, ReportConfig } from "@/contracts/production-reports";
 import { isApiError } from "@/lib/api/errors";
 import { useRealtimeEvent } from "@/lib/realtime/hooks";
 import { scheduleInvalidate } from "@/lib/realtime/socket";
 
+import { useCustomFields, useProductionAccess } from "../hooks";
 import { reportsApi, type CreateSavedReportInput, type UpdateSavedReportInput } from "./api";
+import { fieldCatalog, reportFields } from "./dimensions";
 import { reportKeys } from "./keys";
 
 /**
@@ -21,6 +23,22 @@ const retryUnlessClientError = (failureCount: number, error: unknown) =>
 const silent = { meta: { errorMessage: false } } as const;
 
 // Reports -------------------------------------------------------------------------------------------
+
+/**
+ * Custom fields the signed-in role can use in reports (dimensions and filters): active SELECT /
+ * MULTISELECT / TEXT fields; members' fields (USER) for ADMIN only. `fields` is in palette order and
+ * `catalog` maps dimension ids ("cf_user:nang_luc") to the definitions (labels, options, type).
+ */
+export const useReportFields = (enabled = true) => {
+  const access = useProductionAccess();
+  const query = useCustomFields(enabled);
+  return useMemo(() => {
+    const fields = reportFields(query.data?.items ?? [], access.isAdmin);
+    // Labels of saved configs that use a field this role cannot pick (e.g. a now inactive one).
+    const catalog = fieldCatalog(query.data?.items ?? []);
+    return { fields, catalog, isPending: enabled && query.isPending };
+  }, [query.data, query.isPending, access.isAdmin, enabled]);
+};
 
 /** POST /production/reports/query — null = nothing to run yet. Keeps the previous result while loading. */
 /** The presentation part (chart type, Hàng/Cột split) does not change the rows: not part of the query. */

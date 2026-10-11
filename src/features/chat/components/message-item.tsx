@@ -36,6 +36,7 @@ import { EmojiPickerPopover, QUICK_REACTIONS } from "./emoji-picker";
 import { MessageActionSheet } from "./message-action-sheet";
 import { MessageAttachments } from "./message-attachments";
 import { useMessageActions } from "./message-context";
+import { ReactionPeopleSheet, ReactionTooltipBody } from "./reaction-people";
 
 /** The editor (Tiptap) loads only when a message is edited (PERF-16). */
 const InlineEditor = lazy(() => import("./message-inline-editor"));
@@ -70,6 +71,8 @@ export const MessageItem = memo(function MessageItem({
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  /** Touch: who reacted (all emojis when `emoji` is null). */
+  const [people, setPeople] = useState<{ emoji: string | null } | null>(null);
   const pinned = menuOpen || pickerOpen;
   // Touch: no hover toolbar (a tap would pop it over the text); a long press opens the action sheet.
   const touch = useTouchPrimary();
@@ -208,6 +211,8 @@ export const MessageItem = memo(function MessageItem({
               canReact={canInteract}
               showAdd={active || pinned}
               onPickerOpenChange={setPickerOpen}
+              touch={touch}
+              onShowPeople={(emoji) => setPeople({ emoji })}
             />
           ) : null}
 
@@ -323,6 +328,9 @@ export const MessageItem = memo(function MessageItem({
           message={message}
           open={sheetOpen}
           onOpenChange={setSheetOpen}
+          onShowReactions={
+            message.reactions.length > 0 && !message.isDeleted ? () => setPeople({ emoji: null }) : undefined
+          }
           abilities={{
             canReact: canInteract,
             canReply:
@@ -332,6 +340,17 @@ export const MessageItem = memo(function MessageItem({
               actions.capabilities.canRead,
             canEdit,
             canDelete
+          }}
+        />
+      ) : null}
+      {touch && message.reactions.length > 0 ? (
+        <ReactionPeopleSheet
+          message={message}
+          myId={actions.myId}
+          open={people !== null}
+          initialEmoji={people?.emoji ?? null}
+          onOpenChange={(open) => {
+            if (!open) setPeople(null);
           }}
         />
       ) : null}
@@ -369,12 +388,16 @@ const ReactionBar = ({
   message,
   canReact,
   showAdd,
-  onPickerOpenChange
+  onPickerOpenChange,
+  touch,
+  onShowPeople
 }: {
   message: ChatMessage;
   canReact: boolean;
   showAdd: boolean;
   onPickerOpenChange: (open: boolean) => void;
+  touch: boolean;
+  onShowPeople: (emoji: string) => void;
 }) => {
   const actions = useMessageActions();
   return (
@@ -382,9 +405,13 @@ const ReactionBar = ({
       {message.reactions.map((reaction) => (
         <ReactionChip
           key={reaction.emoji}
+          messageId={message.id}
+          myId={actions.myId}
           reaction={reaction}
           disabled={!canReact}
+          touch={touch}
           onToggle={() => actions.toggleReaction(message, reaction.emoji, !reaction.reactedByMe)}
+          onShowPeople={() => onShowPeople(reaction.emoji)}
         />
       ))}
       {canReact && showAdd ? (
@@ -416,32 +443,63 @@ const ReactionBar = ({
   );
 };
 
+/**
+ * One reaction: tap / click toggles mine. Who reacted: a tooltip on hover or focus (desktop), a long
+ * press opening the reactions sheet (touch).
+ */
 const ReactionChip = ({
+  messageId,
+  myId,
   reaction,
   disabled,
-  onToggle
+  touch,
+  onToggle,
+  onShowPeople
 }: {
+  messageId: string;
+  myId: string;
   reaction: ReactionSummary;
   disabled: boolean;
+  touch: boolean;
   onToggle: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onToggle}
-    disabled={disabled}
-    aria-pressed={reaction.reactedByMe}
-    aria-label={`${reaction.emoji} ${reaction.count} lượt${reaction.reactedByMe ? ", gồm bạn" : ""}`}
-    className={cn(
-      "flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
-      reaction.reactedByMe
-        ? "border-brand/40 bg-brand-soft font-semibold text-brand-text"
-        : "border-border bg-surface text-foreground-muted hover:border-border-strong enabled:hover:bg-surface-hover"
-    )}
-  >
-    <span className="text-sm leading-none">{reaction.emoji}</span>
-    {reaction.count}
-  </button>
-);
+  onShowPeople: () => void;
+}) => {
+  const longPress = useLongPress(onShowPeople, { enabled: touch });
+  const chip = (
+    <button
+      type="button"
+      // Read-only viewers on touch keep the chip enabled so the long press still shows who reacted.
+      onClick={disabled ? undefined : onToggle}
+      disabled={disabled && !touch}
+      aria-pressed={reaction.reactedByMe}
+      aria-label={`${reaction.emoji} ${reaction.count} lượt${reaction.reactedByMe ? ", gồm bạn" : ""}${touch ? ". Nhấn giữ để xem ai đã thả" : ""}`}
+      {...longPress}
+      // The row's own long press (action sheet) must not start under a chip.
+      onPointerDown={(event) => {
+        if (touch) event.stopPropagation();
+        longPress.onPointerDown?.(event);
+      }}
+      className={cn(
+        "flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums outline-none transition-colors duration-150 select-none [-webkit-touch-callout:none] pointer-coarse:h-8 pointer-coarse:px-2.5 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+        reaction.reactedByMe
+          ? "border-brand/40 bg-brand-soft font-semibold text-brand-text"
+          : "border-border bg-surface text-foreground-muted hover:border-border-strong enabled:hover:bg-surface-hover"
+      )}
+    >
+      <span className="text-sm leading-none">{reaction.emoji}</span>
+      {reaction.count}
+    </button>
+  );
+  if (touch) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={chip} />
+      <TooltipContent>
+        <ReactionTooltipBody messageId={messageId} emoji={reaction.emoji} myId={myId} />
+      </TooltipContent>
+    </Tooltip>
+  );
+};
 
 const ThreadSummary = ({ message }: { message: ChatMessage }) => {
   const actions = useMessageActions();
@@ -449,7 +507,7 @@ const ThreadSummary = ({ message }: { message: ChatMessage }) => {
     <button
       type="button"
       onClick={() => actions.openThread(message)}
-      className="group/thread mt-1 -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/thread mt-1 -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs outline-none pointer-coarse:py-2 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="font-semibold text-brand-text group-hover/thread:underline">
         {message.replyCount} câu trả lời

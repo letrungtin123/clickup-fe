@@ -4,13 +4,12 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useMemo, useRef } from "react";
 
 import {
-  reportDimensionInfo,
   reportMeasureInfo,
-  type ReportDimension,
   type ReportMeasure,
   type ReportResult
 } from "@/contracts/production-reports";
 
+import { columnLabel, type DimensionKey } from "../dimensions";
 import { formatMeasure, isAdditive } from "../format";
 import { buildPivot, cellKey, type PivotRow } from "../pivot";
 
@@ -21,15 +20,18 @@ import { buildPivot, cellKey, type PivotRow } from "../pivot";
  * long results are virtualized.
  */
 
-type SortState = { key: ReportDimension | ReportMeasure; direction: "asc" | "desc" } | undefined;
+type SortState = { key: DimensionKey | ReportMeasure; direction: "asc" | "desc" } | undefined;
 
 type Props = {
-  result: Pick<ReportResult, "rows" | "totals">;
-  rows: readonly ReportDimension[];
-  columns: readonly ReportDimension[];
+  /** `columns` (server labels) names custom-field dimensions. */
+  result: Pick<ReportResult, "rows" | "totals"> & { columns?: ReportResult["columns"] };
+  rows: readonly DimensionKey[];
+  columns: readonly DimensionKey[];
   measures: readonly ReportMeasure[];
+  /** MULTISELECT custom-field dimensions: their sub-totals are not summed. */
+  multiValue?: ReadonlySet<string> | undefined;
   sort?: SortState;
-  onSort?: ((key: ReportDimension | ReportMeasure) => void) | undefined;
+  onSort?: ((key: DimensionKey | ReportMeasure) => void) | undefined;
   className?: string;
   /** Cap the scroll area (default 70vh). */
   maxHeightClass?: string;
@@ -57,21 +59,25 @@ const SortIcon = ({
   );
 
 const notSummed = "Tỉ lệ và trung bình không cộng dồn được giữa các cột.";
+const notSummedMulti =
+  "Trường chọn nhiều: một bản ghi nằm ở nhiều lựa chọn nên không cộng dồn các lựa chọn. Xem dòng Tổng cuối bảng.";
 
 export const PivotTable = ({
   result,
   rows: rowDimensions,
   columns: columnDimensions,
   measures,
+  multiValue,
   sort,
   onSort,
   className,
   maxHeightClass = "max-h-[70vh]"
 }: Props) => {
   const pivot = useMemo(
-    () => buildPivot(result, rowDimensions, columnDimensions, measures),
-    [result, rowDimensions, columnDimensions, measures]
+    () => buildPivot(result, rowDimensions, columnDimensions, measures, multiValue),
+    [result, rowDimensions, columnDimensions, measures, multiValue]
   );
+  const headerOf = (dimension: DimensionKey) => columnLabel(dimension, result.columns);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtual = pivot.rows.length > VIRTUAL_FROM;
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns fresh functions by design
@@ -85,19 +91,15 @@ export const PivotTable = ({
 
   const hasColumns = pivot.columnDimensions.length > 0;
   const groups = hasColumns ? pivot.groups : [];
-  const rowTitle =
-    pivot.rowDimensions.map((dimension) => reportDimensionInfo[dimension].label).join(" · ") ||
-    (hasColumns ? "" : "Tổng cộng");
-  const columnTitle = pivot.columnDimensions
-    .map((dimension) => reportDimensionInfo[dimension].label)
-    .join(" · ");
+  const rowTitle = pivot.rowDimensions.map(headerOf).join(" · ") || (hasColumns ? "" : "Tổng cộng");
+  const columnTitle = pivot.columnDimensions.map(headerOf).join(" · ");
   const singleMeasure = pivot.measures.length === 1;
   const headerRows = hasColumns && !singleMeasure ? 2 : 1;
 
-  const sortable = (key: ReportDimension | ReportMeasure) =>
+  const sortable = (key: DimensionKey | ReportMeasure) =>
     Boolean(onSort) && !hasColumns && key !== undefined;
   const sortButton = (
-    key: ReportDimension | ReportMeasure,
+    key: DimensionKey | ReportMeasure,
     label: string,
     align: "left" | "right"
   ) => {
@@ -118,7 +120,7 @@ export const PivotTable = ({
       </button>
     );
   };
-  const ariaSort = (key: ReportDimension | ReportMeasure) =>
+  const ariaSort = (key: DimensionKey | ReportMeasure) =>
     sort?.key === key && !hasColumns
       ? sort.direction === "asc"
         ? "ascending"
@@ -150,8 +152,12 @@ export const PivotTable = ({
 
   const value = (measure: ReportMeasure, cell: number | null | undefined) =>
     formatMeasure(measure, cell);
-  const cellTitle = (measure: ReportMeasure, cell: number | null | undefined) =>
-    cell === null && !isAdditive(measure) ? notSummed : undefined;
+  const cellTitle = (measure: ReportMeasure, cell: number | null | undefined, unsummed = false) =>
+    cell === null && unsummed
+      ? notSummedMulti
+      : cell === null && !isAdditive(measure)
+        ? notSummed
+        : undefined;
 
   return (
     <div
@@ -295,7 +301,7 @@ export const PivotTable = ({
                       return (
                         <td
                           key={`total-${measure}`}
-                          title={cellTitle(measure, cell)}
+                          title={cellTitle(measure, cell, pivot.unsummed.rowTotals)}
                           className={cn(
                             numberCell,
                             "bg-muted/50 font-medium group-hover/row:bg-surface-hover",
@@ -345,7 +351,7 @@ export const PivotTable = ({
                         return (
                           <td
                             key={`${group.key}-${measure}`}
-                            title={cellTitle(measure, cell)}
+                            title={cellTitle(measure, cell, pivot.unsummed.groupTotals)}
                             className={cn(
                               numberCell,
                               "sticky bottom-0 z-10 border-t bg-surface-raised font-semibold",

@@ -1,12 +1,12 @@
 import {
-  reportDimensionInfo,
+  isCustomFieldDimension,
   reportMeasureInfo,
-  type ReportDimension,
   type ReportMeasure,
   type ReportValueFormat
 } from "@/contracts/production-reports";
 
 import { EMPTY_VALUE, formatCredit, formatDay, formatInteger, formatMoney } from "../format";
+import { dimensionMeta, type DimensionKey } from "./dimensions";
 
 /**
  * Value formatting for report results (production-reports contract). Rates arrive as fractions
@@ -55,11 +55,18 @@ export const formatReportValue = (value: unknown, format: ReportValueFormat): st
 export const formatMeasure = (measure: ReportMeasure, value: unknown) =>
   formatReportValue(value, reportMeasureInfo[measure].format);
 
-/** Short tick text for chart axes ("12,3 N", "45%", "1,5"). */
-export const formatAxisValue = (value: number, format: ReportValueFormat): string => {
+/**
+ * Short tick text for chart axes ("12,3 N", "45%", "1,5"). Pass `compact` from the axis maximum so
+ * every tick of one axis uses the same notation ("0 · 3,5 N · 7 N", not "0 · 3.500 · 7 N").
+ */
+export const formatAxisValue = (
+  value: number,
+  format: ReportValueFormat,
+  compact: boolean = Math.abs(value) >= 10_000
+): string => {
   if (!Number.isFinite(value)) return "";
   if (format === "percent") return percentFormatter.format(value);
-  if (Math.abs(value) >= 10_000) return compactFormatter.format(value);
+  if (compact) return compactFormatter.format(value);
   return decimalFormatter.format(value);
 };
 
@@ -108,9 +115,10 @@ export const derivedRates: Partial<Record<ReportMeasure, readonly [ReportMeasure
   };
 
 /** Label of a dimension value key when the server label is missing (time keys, empty keys). */
-export const dimensionKeyLabel = (dimension: ReportDimension, key: string | null): string => {
-  if (key === null || key === "") return "Không rõ";
-  switch (reportDimensionInfo[dimension].format) {
+export const dimensionKeyLabel = (dimension: DimensionKey, key: string | null): string => {
+  // Custom fields: records without a value group under "Chưa có" (the server's label).
+  if (key === null || key === "") return isCustomFieldDimension(dimension) ? "Chưa có" : "Không rõ";
+  switch (dimensionMeta(dimension).format) {
     case "day":
       return formatDay(key);
     case "week":

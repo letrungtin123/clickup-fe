@@ -7,7 +7,9 @@ import { useActiveChannelStore } from "@/features/chat/model/ui-state";
 import { qk } from "@/lib/query-keys";
 import { useRealtimeEvent } from "@/lib/realtime/hooks";
 import { onUntypedServerEvent, scheduleInvalidate } from "@/lib/realtime/socket";
+import { useUiStore } from "@/stores/ui-store";
 
+import { allowsPopup, shouldToastNotification } from "./bell";
 import { describeNotification, sentenceText } from "./describe";
 import { parseArchivedEvent } from "./feeds";
 import {
@@ -19,11 +21,17 @@ import {
   useOpenNotification,
   useUnreadNotificationCount
 } from "./hooks";
+import {
+  useSessionFollowsNotificationPreferences,
+  useWebNotificationsEnabled
+} from "./web-preference";
 
 /**
  * Keeps the inbox live app-wide: new notifications are prepended to cached feeds, the unread badge
  * follows the server count, read state syncs across tabs/devices, and a toast offers to open the
- * target (skipped while the inbox is on screen or the viewer is already reading that conversation).
+ * target (skipped while the inbox or a bell list is on screen, when the viewer is already reading
+ * that conversation, or when "Thông báo trên web" is off — the event's `popup` flag, else the
+ * session's preference; see bell.ts / web-preference.ts).
  */
 export const NotificationsRuntime = () => {
   const queryClient = useQueryClient();
@@ -32,14 +40,15 @@ export const NotificationsRuntime = () => {
   const { mutate: markRead } = useMarkNotificationsRead();
   // Prime the badge count once; realtime keeps it current afterwards.
   useUnreadNotificationCount();
+  const webEnabled = useWebNotificationsEnabled();
+  useSessionFollowsNotificationPreferences();
 
-  useRealtimeEvent("notification:new", ({ notification, unreadCount }) => {
+  useRealtimeEvent("notification:new", ({ notification, unreadCount, popup }) => {
     prependNotification(queryClient, notification);
     setUnreadCount(queryClient, unreadCount);
     // My Tasks never fetches tasks it does not show (PERF-07): a new assignment refreshes it.
     if (notification.type === "task.assigned") scheduleInvalidate(qk.myTasks());
 
-    if (location.pathname === "/inbox") return;
     const active = useActiveChannelStore.getState();
     if (
       notification.target.channelId &&
@@ -51,6 +60,9 @@ export const NotificationsRuntime = () => {
       markRead([notification.id]);
       return;
     }
+    const bellOpen = useUiStore.getState().bellOpen;
+    const allowed = allowsPopup(popup, webEnabled);
+    if (!shouldToastNotification({ pathname: location.pathname, bellOpen, popup: allowed })) return;
     const description = describeNotification(notification);
     toast(sentenceText(description), {
       id: `notification:${notification.id}`,

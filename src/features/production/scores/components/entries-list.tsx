@@ -47,6 +47,9 @@ const matches = (entry: ScoreEntry, filter: Filter) => {
 };
 
 const dayMonth = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+/** Khoán marker unless the shift name already says it (seed shift "Khoán" → no "Khoán Khoán"). */
+const showKhoanMark = (entry: ScoreEntry) =>
+  entry.payMode === "MONEY_IF_KPI" && !entry.shift.name.toLocaleLowerCase("vi").includes("khoán");
 const taskHref = (entry: ScoreEntry) => `/production/tasks/${entry.task.id}`;
 
 export const EntriesList = ({
@@ -284,7 +287,7 @@ const EntryRow = ({ entry }: { entry: ScoreEntry }) => {
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className="text-xs">{entry.shift.name}</span>
-        {entry.payMode === "MONEY_IF_KPI" ? (
+        {showKhoanMark(entry) ? (
           <span className="ml-1.5 rounded bg-brand-soft px-1 py-px text-[10px] font-semibold text-brand-text">
             Khoán
           </span>
@@ -330,7 +333,7 @@ const EntryCard = ({ entry }: { entry: ScoreEntry }) => {
           {adjustment ? "Điều chỉnh số lượng · " : ""}
           <span className="font-mono font-semibold text-foreground">{entry.project.code}</span> ·{" "}
           {entry.process?.name ?? "—"} · {entry.shift.name}
-          {entry.payMode === "MONEY_IF_KPI" ? " (Khoán)" : ""}
+          {showKhoanMark(entry) ? " (Khoán)" : ""}
         </span>
         <span className="text-xs text-foreground-muted tabular-nums">
           {qtyText(entry)} tấm × {formatCredit(entry.unitCredits)}
@@ -338,9 +341,11 @@ const EntryCard = ({ entry }: { entry: ScoreEntry }) => {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
         <PointsValue entry={entry} className="text-sm" />
-        <span className="text-xs">
-          <MoneyValue entry={entry} />
-        </span>
+        {entry.payMode === "MONEY_IF_KPI" && entry.money !== 0 ? (
+          <span className="text-xs">
+            <MoneyValue entry={entry} />
+          </span>
+        ) : null}
       </div>
     </li>
   );

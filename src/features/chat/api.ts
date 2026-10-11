@@ -16,6 +16,7 @@ import {
   MessageHistorySchema,
   MyMembershipSchema,
   ReactionResultSchema,
+  ReactionUsersSchema,
   ReadStateSchema,
   ThreadPageSchema,
   type ChannelAccess,
@@ -127,6 +128,8 @@ export const chatApi = {
       query: { cursor: params.cursor, limit: params.limit ?? 50 },
       signal
     }),
+  reactionUsers: (messageId: string, signal?: AbortSignal) =>
+    api.get(apiPath`/messages/${messageId}/reactions`, ReactionUsersSchema, { signal }),
   react: (messageId: string, emoji: string) =>
     api.put(apiPath`/messages/${messageId}/reactions`, ReactionResultSchema, { emoji }),
   unreact: (messageId: string, emoji: string) =>

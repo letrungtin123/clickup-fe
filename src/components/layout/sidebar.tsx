@@ -10,10 +10,11 @@ import {
   Plus,
   Search,
   Settings,
+  Trash2,
   WifiOff,
   type LucideIcon
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Link, NavLink, useMatch } from "react-router";
 
 import { ProjectIcon } from "@/components/shared/project-icon";
@@ -21,7 +22,7 @@ import { Shortcut } from "@/components/shared/shortcut";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { P } from "@/features/auth/permissions";
-import { usePermissions } from "@/features/auth/hooks";
+import { usePermissions, useSessionContext } from "@/features/auth/hooks";
 import {
   ChannelsSection,
   ChannelsSectionAction,
@@ -30,12 +31,19 @@ import {
 } from "@/features/chat/components/sidebar-sections";
 import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
 import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { useProductionNavEntries } from "@/features/production/hooks";
 import { ProjectTree } from "@/features/projects/components/project-tree";
 import { useProjects } from "@/features/projects/hooks";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useRealtimeStatus } from "@/lib/realtime/hooks";
 import { useUiStore } from "@/stores/ui-store";
 
+import {
+  productionSectionDefaultOpen,
+  useSidebarSection,
+  type SidebarSectionId
+} from "./sidebar-sections";
 import { UserMenu } from "./user-menu";
 
 type NavEntry = { to: string; label: string; icon: LucideIcon; end?: boolean };
@@ -76,11 +84,15 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
   const productionNav = useProductionNavEntries();
+  const productionDefaultOpen = useProductionSectionDefault();
+  // Phones reach the bell from the top bar; the drawer keeps "Hộp thư".
+  const showBell = useBreakpoint() !== "mobile";
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col bg-canvas">
       <div className="flex items-center gap-1 px-2 pt-2 pb-1.5">
         <UserMenu onNavigate={onNavigate} />
+        {showBell ? <NotificationBell placement="sidebar" /> : null}
         {onToggle ? (
           <IconTooltipButton label="Thu gọn thanh bên" onClick={onToggle}>
             <PanelLeftClose />
@@ -123,7 +135,7 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
 
         {/* Production (retouch) module: only for users holding a production role (PD-011). */}
         {productionNav.length > 0 ? (
-          <SidebarSection title="Sản xuất">
+          <SidebarSection id="production" title="Sản xuất" defaultOpen={productionDefaultOpen}>
             <ul className="flex flex-col gap-px px-2">
               {productionNav.map((entry) => (
                 <li key={entry.to}>
@@ -143,6 +155,7 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
         ) : null}
 
         <SidebarSection
+          id="projects"
           title="Dự án"
           action={
             can(P.ProjectCreate) ? (
@@ -153,17 +166,30 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
           <ProjectTree onNavigate={onNavigate} />
         </SidebarSection>
 
-        <SidebarSection title="Kênh" action={<ChannelsSectionAction />}>
+        <SidebarSection id="channels" title="Kênh" action={<ChannelsSectionAction />}>
           <ChannelsSection />
         </SidebarSection>
 
-        <SidebarSection title="Tin nhắn trực tiếp" action={<DirectMessagesSectionAction />}>
+        <SidebarSection
+          id="dms"
+          title="Tin nhắn trực tiếp"
+          action={<DirectMessagesSectionAction />}
+        >
           <DirectMessagesSection />
         </SidebarSection>
       </nav>
 
-      <div className="flex flex-col gap-1 border-t px-2 py-2">
+      <div className="flex flex-col gap-px border-t px-2 py-2">
         <RealtimeIndicator />
+        {/* A fixed way back to deleted tasks, next to the settings (P7). */}
+        <NavLink
+          to="/trash"
+          onClick={() => onNavigate?.()}
+          className={({ isActive }) => navItemClass(isActive)}
+        >
+          <Trash2 aria-hidden="true" />
+          Thùng rác
+        </NavLink>
         <NavLink
           to="/settings"
           onClick={() => onNavigate?.()}
@@ -177,30 +203,40 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
   );
 };
 
+/** Default for the "Sản xuất" section: open for people holding an explicit production role. */
+const useProductionSectionDefault = () =>
+  productionSectionDefaultOpen(useSessionContext().productionRoles);
+
 const SidebarSection = ({
+  id,
   title,
   action,
+  defaultOpen = true,
   children
 }: {
+  id: SidebarSectionId;
   title: string;
   action?: ReactNode;
+  defaultOpen?: boolean;
   children: ReactNode;
 }) => {
-  const [open, setOpen] = useState(true);
+  const userId = useSessionContext().user.id;
+  // Remembered per user on this device (P2).
+  const [open, setOpen] = useSidebarSection(userId, id, defaultOpen);
   return (
     <section className="mt-4" aria-label={title}>
-      <div className="group/section flex h-7 items-center gap-1 px-2">
+      <div className="group/section flex h-7 items-center gap-1 px-2 pointer-coarse:h-8">
         <button
           type="button"
           aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-          className="flex h-6 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-semibold tracking-[0.06em] text-foreground-subtle uppercase outline-none hover:text-foreground-muted focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setOpen(!open)}
+          className="flex h-6 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-semibold tracking-[0.06em] text-foreground-subtle uppercase outline-none pointer-coarse:h-8 hover:text-foreground-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
           {title}
           <ChevronRight
             aria-hidden="true"
             className={cn(
-              "size-3 opacity-0 transition-[transform,opacity] duration-150 group-hover/section:opacity-100",
+              "size-3 opacity-0 transition-[transform,opacity] duration-150 group-hover/section:opacity-100 pointer-coarse:opacity-100",
               open && "rotate-90"
             )}
           />
@@ -316,10 +352,20 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
   const projects = useProjects();
   const projectMatch = useMatch("/p/:projectId/*");
   const productionNav = useProductionNavEntries();
+  const userId = useSessionContext().user.id;
+  const [productionOpen] = useSidebarSection(userId, "production", useProductionSectionDefault());
+  // A collapsed "Sản xuất" section leaves one icon (the overview) on the rail.
+  const productionOverview = productionNav[0];
+  const railProduction = productionOpen
+    ? productionNav
+    : productionOverview
+      ? [{ ...productionOverview, label: "Sản xuất", end: false }]
+      : [];
 
   return (
     <div className="flex h-full w-full flex-col items-center gap-1 bg-canvas py-2">
       <UserMenu compact />
+      <NotificationBell placement="rail" />
       <nav
         aria-label="Điều hướng chính"
         className="flex min-h-0 w-full flex-1 flex-col items-center gap-1"
@@ -346,10 +392,10 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
         ))}
         {/* Chat lives in sidebar sections on the full sidebar; the rail links to all conversations. */}
         <RailLink entry={{ to: "/c", label: "Tin nhắn", icon: MessagesSquare }} />
-        {productionNav.length > 0 ? (
+        {railProduction.length > 0 ? (
           <>
             <Separator className="my-1 w-6" />
-            {productionNav.map((entry) => (
+            {railProduction.map((entry) => (
               <RailLink key={entry.to} entry={entry} />
             ))}
           </>
@@ -392,6 +438,7 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
             );
           })}
         </ul>
+        <RailLink entry={{ to: "/trash", label: "Thùng rác", icon: Trash2 }} />
         <RailLink entry={{ to: "/settings", label: "Cài đặt", icon: Settings }} />
         {onToggle ? (
           <IconTooltipButton label="Mở rộng thanh bên" onClick={onToggle} side="right">

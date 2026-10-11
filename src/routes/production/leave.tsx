@@ -156,7 +156,7 @@ export const ProductionLeaveRoute = () => {
               <TabsTrigger value="pending" className="max-sm:min-h-10">
                 Chờ duyệt
                 {pendingCount > 0 ? (
-                  <span className="ml-1 rounded-full bg-warning px-1.5 text-[11px] leading-4 font-semibold text-foreground tabular-nums">
+                  <span className="ml-1 rounded-full bg-warning-soft px-1.5 text-[11px] leading-4 font-semibold text-foreground tabular-nums ring-1 ring-warning/50 ring-inset">
                     {pendingCount}
                   </span>
                 ) : null}

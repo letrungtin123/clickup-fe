@@ -1,11 +1,4 @@
-import {
-  CalendarDays,
-  CalendarRange,
-  ChevronLeft,
-  Coins,
-  Sun,
-  Trophy
-} from "lucide-react";
+import { CalendarDays, CalendarRange, ChevronLeft, Coins, Sun, Trophy } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -37,11 +30,18 @@ import {
 } from "@/features/production/scores/components/kit";
 import { useMyScores, useScoreForecast } from "@/features/production/scores/hooks";
 import {
+  closeDaysOf,
+  formatPeriod,
   isPeriod,
   periodLabel,
-  periodOfDay,
-  periodRange
+  upcomingCloseDayChange
 } from "@/features/production/scores/periods";
+import {
+  closeDayOfPeriod,
+  kpiPeriodOfDay,
+  kpiPeriodRange,
+  type KpiCloseDays
+} from "@/contracts/production-scores";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 const DailyPointsChart = lazy(() =>
@@ -64,9 +64,11 @@ export const ProductionScoresRoute = () => {
   const [params, setParams] = useSearchParams();
 
   const settings = me.data?.settings;
-  const closeDay = settings?.kpiCloseDay ?? 25;
+  const closeDays = closeDaysOf(settings);
   const today = todayIn(settings?.timezone ?? "Asia/Ho_Chi_Minh");
-  const current = periodOfDay(today, closeDay);
+  const current = kpiPeriodOfDay(today, closeDays);
+  const closeDay = closeDayOfPeriod(closeDays, current);
+  const change = upcomingCloseDayChange(closeDays, current);
   const requested = params.get("period");
   const period = isPeriod(requested) && requested <= current ? requested : current;
   const tab: Tab = params.get("tab") === "settled" ? "settled" : "overview";
@@ -100,7 +102,7 @@ export const ProductionScoresRoute = () => {
         description={
           breakpoint === "mobile"
             ? undefined
-            : `Điểm, tiền Khoán tạm tính và tiến độ KPI. Kỳ KPI chốt ngày ${closeDay} hằng tháng.`
+            : `Điểm, tiền Khoán tạm tính và tiến độ KPI. Kỳ KPI chốt ngày ${closeDay} hằng tháng${change ? `; từ kỳ ${formatPeriod(change.fromPeriod)} chốt ngày ${change.closeDay}` : ""}.`
         }
         actions={
           <Button
@@ -113,7 +115,10 @@ export const ProductionScoresRoute = () => {
           </Button>
         }
       >
-        <Tabs value={tab} onValueChange={(value) => update({ tab: value === "settled" ? "settled" : null })}>
+        <Tabs
+          value={tab}
+          onValueChange={(value) => update({ tab: value === "settled" ? "settled" : null })}
+        >
           <TabsList variant="line" className="-mb-3 h-9">
             <TabsTrigger value="overview" className="max-sm:min-h-10">
               Tổng quan
@@ -132,7 +137,7 @@ export const ProductionScoresRoute = () => {
           <Overview
             period={period}
             current={current}
-            closeDay={closeDay}
+            closeDays={closeDays}
             today={today}
             onPeriodChange={(next) => update({ period: next === current ? null : next })}
           />
@@ -145,17 +150,17 @@ export const ProductionScoresRoute = () => {
 const Overview = ({
   period,
   current,
-  closeDay,
+  closeDays,
   today,
   onPeriodChange
 }: {
   period: string;
   current: string;
-  closeDay: number;
+  closeDays: KpiCloseDays;
   today: string;
   onPeriodChange: (period: string) => void;
 }) => {
-  const range = periodRange(period, closeDay);
+  const range = kpiPeriodRange(period, closeDays);
   const scores = useMyScores(range);
   const forecast = useScoreForecast(period);
   const fetching =
@@ -164,7 +169,12 @@ const Overview = ({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <PeriodPicker value={period} onChange={onPeriodChange} latest={current} closeDay={closeDay} />
+        <PeriodPicker
+          value={period}
+          onChange={onPeriodChange}
+          latest={current}
+          closeDays={closeDays}
+        />
         {fetching ? <Spinner className="size-4 text-foreground-muted" /> : null}
       </div>
 
@@ -214,8 +224,8 @@ const Overview = ({
 
 const KhoanLine = ({ totals }: { totals: ScoreTotals }) =>
   totals.pointsKhoan > 0 || totals.qtyKhoan > 0 ? (
-    <span className="truncate tabular-nums">
-      + {formatCredit(totals.pointsKhoan)} Khoán · {formatInteger(totals.qtyKhoan)} tấm
+    <span className="tabular-nums">
+      {`+\u00a0${formatCredit(totals.pointsKhoan)}\u00a0Khoán · ${formatInteger(totals.qtyKhoan)}\u00a0tấm`}
     </span>
   ) : (
     <span>Chưa có điểm Khoán</span>
@@ -239,18 +249,26 @@ const ScoresContent = ({
   const { cards, summary } = data;
   const projects = summary.byProject
     .filter((row) => row.qty !== 0 || row.pointsOfficial !== 0 || row.pointsKhoan !== 0)
-    .sort(
-    (a, b) => b.pointsOfficial + b.pointsKhoan - (a.pointsOfficial + a.pointsKhoan)
-  );
+    .sort((a, b) => b.pointsOfficial + b.pointsKhoan - (a.pointsOfficial + a.pointsKhoan));
   const projectMax = Math.max(1, ...projects.map((row) => row.pointsOfficial + row.pointsKhoan));
 
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Hôm nay" icon={Sun} value={formatCredit(cards.today.pointsOfficial)} unit="điểm">
+        <StatCard
+          label="Hôm nay"
+          icon={Sun}
+          value={formatCredit(cards.today.pointsOfficial)}
+          unit="điểm"
+        >
           <KhoanLine totals={cards.today} />
         </StatCard>
-        <StatCard label="Tuần này" icon={CalendarDays} value={formatCredit(cards.week.pointsOfficial)} unit="điểm">
+        <StatCard
+          label="Tuần này"
+          icon={CalendarDays}
+          value={formatCredit(cards.week.pointsOfficial)}
+          unit="điểm"
+        >
           <KhoanLine totals={cards.week} />
         </StatCard>
         <StatCard
@@ -260,9 +278,9 @@ const ScoresContent = ({
           unit="điểm"
           accent
         >
-          <span className="truncate tabular-nums">
-            Gồm {formatCredit(summary.qcPoints)} điểm QC
-          </span>
+          {summary.qcPoints !== 0 ? (
+            <span className="tabular-nums">Gồm {formatCredit(summary.qcPoints)} điểm QC</span>
+          ) : null}
           <KhoanLine totals={summary} />
         </StatCard>
         <StatCard
@@ -298,13 +316,23 @@ const ScoresContent = ({
                 return (
                   <li key={row.projectId} className="flex flex-col gap-1">
                     <span className="flex items-baseline justify-between gap-2 text-[13px]">
-                      <span className="truncate font-mono text-xs font-semibold">{row.projectCode}</span>
-                      <span className="shrink-0 font-medium tabular-nums">{formatCredit(total)}</span>
+                      <span className="truncate font-mono text-xs font-semibold">
+                        {row.projectCode}
+                      </span>
+                      <span className="shrink-0 font-medium tabular-nums">
+                        {formatCredit(total)}
+                      </span>
                     </span>
-                    <span className="flex h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                      <span className="h-full bg-brand" style={{ width: `${(row.pointsOfficial / projectMax) * 100}%` }} />
+                    <span
+                      className="flex h-1.5 overflow-hidden rounded-full bg-muted"
+                      aria-hidden="true"
+                    >
                       <span
-                        className="h-full bg-[color-mix(in_oklab,var(--brand)_42%,var(--surface))]"
+                        className="h-full bg-brand"
+                        style={{ width: `${(row.pointsOfficial / projectMax) * 100}%` }}
+                      />
+                      <span
+                        className="h-full bg-[color-mix(in_oklab,var(--brand)_42%,white)]"
                         style={{ width: `${(row.pointsKhoan / projectMax) * 100}%` }}
                       />
                     </span>

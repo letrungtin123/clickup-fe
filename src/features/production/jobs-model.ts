@@ -1,5 +1,6 @@
 import type {
   CreditRule,
+  CustomField,
   PayMode,
   ProductionRole,
   ProductionStatus
@@ -11,7 +12,18 @@ import type {
   TaskTransitionOption
 } from "@/contracts/production-jobs";
 
+import type { QueryValue } from "@/lib/api/client";
+
+import { formatCustomValue, type CustomValue } from "./custom-fields";
 import { formatNumber } from "./format";
+import {
+  activeListFilterCount,
+  emptyListFilters,
+  listFiltersFromSearch,
+  listFiltersToQuery,
+  listFiltersToSearch,
+  type ListFilters
+} from "./list-filters";
 
 /**
  * Pure helpers for production jobs and tasks (SPEC Phase 2, PD-014). The API decides what is allowed
@@ -198,6 +210,26 @@ export const expectedEarnings = (
   return { credit, money };
 };
 
+/**
+ * "Điểm của tôi" on a task (PLAN §7): the caller's ledger rows (adjustments included) summed. `khoan`
+ * when every row is a Khoán (MONEY_IF_KPI) row — they count as Khoán points, not official points.
+ * `detail` names each role ("Người làm 12,5 điểm · 10 tấm"). Null when nothing was recorded for the
+ * caller yet.
+ */
+export const myCreditSummary = (task: Pick<ProductionTask, "myCredits">) => {
+  if (task.myCredits.length === 0) return null;
+  const credits = Math.round(task.myCredits.reduce((sum, row) => sum + row.credits, 0) * 100) / 100;
+  const khoan = task.myCredits.every((row) => row.payMode === "MONEY_IF_KPI");
+  const roleLabel = { WORKER: "Người làm", QC: "QC" } as const;
+  const detail = task.myCredits
+    .map(
+      (row) =>
+        `${roleLabel[row.role]} ${formatNumber(row.credits, 2)} điểm${row.payMode === "MONEY_IF_KPI" ? " Khoán" : ""} · ${formatNumber(row.qty, 0)} tấm`
+    )
+    .join("; ");
+  return { credits, khoan, detail };
+};
+
 // Task lines (mirrors the API's checks for instant feedback) ----------------------------------------------
 
 export type TaskLineDraft = {
@@ -248,6 +280,13 @@ export const splitTransitions = (options: readonly TaskTransitionOption[]) => ({
   normal: options.filter((option) => !option.override),
   overrides: options.filter((option) => option.override)
 });
+
+/**
+ * SEC2-03 (BE workflow.ts maxDeclaredDoneQty): the first Done declares at most
+ * max(2 × assigned, assigned + 10) images; above that the API answers 400 QTY_DONE_TOO_HIGH.
+ */
+export const maxDeclaredDoneQty = (qtyAssigned: number) =>
+  Math.max(qtyAssigned * 2, qtyAssigned + 10);
 
 /** True when a move needs the transition dialog (note, Done quantity, OT hours or override reason). */
 /**
@@ -393,7 +432,8 @@ export type JobFilters = {
   projectId: string | null;
   statusId: string | null;
   leaderId: string | null;
-  tagId: string | null;
+  /** Tags (any of them, `tag` repeated in the URL) and JOB custom-field filters (`cf.<key>`). */
+  custom: ListFilters;
   /** Calendar days (organization timezone), inclusive. */
   from: string | null;
   to: string | null;
@@ -406,7 +446,7 @@ export const emptyJobFilters: JobFilters = {
   projectId: null,
   statusId: null,
   leaderId: null,
-  tagId: null,
+  custom: emptyListFilters,
   from: null,
   to: null,
   late: false,
@@ -430,7 +470,7 @@ export const jobFiltersFromSearch = (params: URLSearchParams): JobFilters => {
     projectId: id("project"),
     statusId: id("status"),
     leaderId: id("leader"),
-    tagId: id("tag"),
+    custom: listFiltersFromSearch(params, "tag"),
     from: day("from"),
     to: day("to"),
     late: params.get("late") === "1",
@@ -444,25 +484,19 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
   if (filters.projectId) params.set("project", filters.projectId);
   if (filters.statusId) params.set("status", filters.statusId);
   if (filters.leaderId) params.set("leader", filters.leaderId);
-  if (filters.tagId) params.set("tag", filters.tagId);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   if (filters.late) params.set("late", "1");
   if (filters.archived) params.set("archived", "1");
-  return params;
+  return listFiltersToSearch(filters.custom, params, "tag");
 };
 
 export const activeFilterCount = (filters: JobFilters) =>
-  [
-    filters.projectId,
-    filters.statusId,
-    filters.leaderId,
-    filters.tagId,
-    filters.from,
-    filters.to
-  ].filter(Boolean).length +
+  [filters.projectId, filters.statusId, filters.leaderId, filters.from, filters.to].filter(Boolean)
+    .length +
   (filters.late ? 1 : 0) +
-  (filters.archived ? 1 : 0);
+  (filters.archived ? 1 : 0) +
+  activeListFilterCount(filters.custom);
 
 const addDay = (day: string) => {
   const [year, month, date] = day.split("-").map(Number) as [number, number, number];
@@ -470,13 +504,20 @@ const addDay = (day: string) => {
   return next.toISOString().slice(0, 10);
 };
 
-/** API query for GET /production/jobs: the day range becomes [from 00:00, to + 1 day 00:00) in the org timezone. */
-export const jobQueryFromFilters = (filters: JobFilters, timeZone: string) => ({
+/**
+ * API query for GET /production/jobs (and its Excel export): the day range becomes [from 00:00,
+ * to + 1 day 00:00) in the org timezone; tags / custom fields as `tagId` and `cf.<key>` (sanitize
+ * them against the active JOB fields first, list-filters.ts).
+ */
+export const jobQueryFromFilters = (
+  filters: JobFilters,
+  timeZone: string
+): Record<string, QueryValue> => ({
+  ...listFiltersToQuery(filters.custom),
   q: filters.q.trim() || undefined,
   projectId: filters.projectId ?? undefined,
   statusId: filters.statusId ?? undefined,
   leaderId: filters.leaderId ?? undefined,
-  tagId: filters.tagId ?? undefined,
   deadlineFrom: filters.from
     ? (zonedToIso(filters.from, "00:00", timeZone) ?? undefined)
     : undefined,
@@ -496,6 +537,140 @@ type Names = {
   process: (id: string) => string | undefined;
   shift: (id: string) => string | undefined;
   timeZone: string;
+  /** Tag names for tag changes (FIELD / JOB rows). */
+  tag?: ((id: string) => string | undefined) | undefined;
+  /** Custom-field definitions of the job / task entity, for "Mã đơn hàng A → B". */
+  field?: ((entity: "JOB" | "TASK", key: string) => CustomField | undefined) | undefined;
+};
+
+/** "12/10 17:00" (year added when not the current one) — compact for "from → to" sentences. */
+export const formatShortDateTime = (iso: string, timeZone: string, now: Date = new Date()) => {
+  const { day, time } = isoToZoned(iso, timeZone);
+  const [year, month, date] = day.split("-");
+  const thisYear = isoToZoned(now.toISOString(), timeZone).day.slice(0, 4);
+  return `${date}/${month}${year === thisYear ? "" : `/${year}`} ${time}`;
+};
+
+const quoted = (value: unknown) => (str(value) ? `“${str(value)}”` : "—");
+
+/** "Mã đơn hàng ĐH1 → ĐH2" for each custom value that changed (keys sorted by the field order). */
+const customValueChanges = (
+  entity: "JOB" | "TASK",
+  before: unknown,
+  after: unknown,
+  names: Names
+) => {
+  const from = (before && typeof before === "object" ? before : {}) as Record<string, unknown>;
+  const to = (after && typeof after === "object" ? after : {}) as Record<string, unknown>;
+  const keys = [...new Set([...Object.keys(from), ...Object.keys(to)])].filter(
+    (key) => JSON.stringify(from[key] ?? null) !== JSON.stringify(to[key] ?? null)
+  );
+  return keys.map((key) => {
+    const field = names.field?.(entity, key);
+    const show = (value: unknown) => {
+      if (value === null || value === undefined || value === "") return "—";
+      if (!field) {
+        if (Array.isArray(value))
+          return value
+            .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+            .join(", ");
+        return typeof value === "string" || typeof value === "number"
+          ? String(value)
+          : JSON.stringify(value);
+      }
+      return formatCustomValue(field, value as CustomValue) || "—";
+    };
+    return `${field?.label ?? key} ${show(from[key])} → ${show(to[key])}`;
+  });
+};
+
+/** "thêm tag Gấp; bỏ tag VIP". */
+const tagChanges = (before: unknown, after: unknown, names: Names) => {
+  const from = Array.isArray(before) ? (before as string[]) : [];
+  const to = Array.isArray(after) ? (after as string[]) : [];
+  const name = (id: string) => names.tag?.(id) ?? "tag đã xóa";
+  const added = to.filter((id) => !from.includes(id)).map(name);
+  const removed = from.filter((id) => !to.includes(id)).map(name);
+  return [
+    ...(added.length > 0 ? [`thêm tag ${added.join(", ")}`] : []),
+    ...(removed.length > 0 ? [`bỏ tag ${removed.join(", ")}`] : [])
+  ];
+};
+
+/**
+ * A job-level history row (action JOB): "đã sửa job" + one line per changed field ("deadline
+ * 12/10 17:00 → 13/10 12:00", "Leader A → B", "Mã đơn hàng X → Y"…); archiving / restoring alone
+ * reads "đã lưu trữ job" / "đã khôi phục job". The timeline shows the changes as a short list.
+ */
+export const describeJobEdit = (
+  log: Pick<TaskLog, "fromValue" | "toValue">,
+  names: Names
+): { verb: string; changes: string[] } => {
+  const from = log.fromValue ?? {};
+  const to = log.toValue ?? {};
+  const archived =
+    to.archived === true ? "lưu trữ job" : to.archived === false ? "khôi phục job" : null;
+  const changes = jobChanges(from, to, names);
+  if (changes.length === 0) return { verb: archived ? `đã ${archived}` : "đã sửa job", changes };
+  return { verb: archived ? `đã sửa và ${archived}` : "đã sửa job", changes };
+};
+
+/** One job edit (action JOB, PLAN §8): only the fields that changed. */
+const jobChanges = (from: Record<string, unknown>, to: Record<string, unknown>, names: Names) => {
+  const parts: string[] = [];
+  for (const key of Object.keys(to)) {
+    switch (key) {
+      case "code":
+        parts.push(`mã job ${str(from.code) ?? "—"} → ${str(to.code) ?? "—"}`);
+        break;
+      case "name":
+        parts.push(`tên job ${quoted(from.name)} → ${quoted(to.name)}`);
+        break;
+      case "projectId":
+        parts.push(`dự án ${str(from.projectCode) ?? "khác"} → ${str(to.projectCode) ?? "khác"}`);
+        break;
+      case "deadline":
+        parts.push(
+          `deadline ${str(from.deadline) ? formatShortDateTime(str(from.deadline)!, names.timeZone) : "—"} → ${
+            str(to.deadline) ? formatShortDateTime(str(to.deadline)!, names.timeZone) : "—"
+          }`
+        );
+        break;
+      case "leaderId": {
+        const who = (name: unknown, id: unknown) =>
+          str(name) ?? (str(id) ? (names.user(str(id)!) ?? "người khác") : "—");
+        parts.push(
+          `Leader ${who(from.leaderName, from.leaderId)} → ${who(to.leaderName, to.leaderId)}`
+        );
+        break;
+      }
+      case "totalImages":
+        parts.push(
+          `tổng tấm ${num(from.totalImages) !== null ? formatNumber(num(from.totalImages)) : "—"} → ${
+            num(to.totalImages) !== null ? formatNumber(num(to.totalImages)) : "—"
+          }`
+        );
+        break;
+      case "driveLink":
+        parts.push(
+          !str(from.driveLink)
+            ? "thêm link ảnh"
+            : !str(to.driveLink)
+              ? "xóa link ảnh"
+              : "đổi link ảnh"
+        );
+        break;
+      case "customValues":
+        parts.push(...customValueChanges("JOB", from.customValues, to.customValues, names));
+        break;
+      case "tagIds":
+        parts.push(...tagChanges(from.tagIds, to.tagIds, names));
+        break;
+      default:
+        break;
+    }
+  }
+  return parts;
 };
 
 const str = (value: unknown) => (typeof value === "string" && value ? value : null);
@@ -536,8 +711,14 @@ export const describeTaskLog = (
 ): Segment[] => {
   const from = log.fromValue ?? {};
   const to = log.toValue ?? {};
-  const task: Segment = { text: `#${log.taskNumber}`, strong: true };
+  const task: Segment = { text: `#${log.taskNumber ?? "?"}`, strong: true };
   switch (log.action) {
+    case "JOB": {
+      const edit = describeJobEdit(log, names);
+      return edit.changes.length > 0
+        ? [{ text: `${edit.verb}: ` }, { text: edit.changes.join("; "), strong: true }]
+        : [{ text: edit.verb }];
+    }
     case "CREATE": {
       const kind = str(to.kind);
       const segments: Segment[] = [
@@ -608,11 +789,16 @@ export const describeTaskLog = (
         : [{ text: "xóa ghi chú của " }, task];
     case "FIELD": {
       const keys = Object.keys(to);
-      const parts = keys.map((key) => {
+      const parts = keys.flatMap((key) => {
+        if (key === "tagIds") return tagChanges(from.tagIds, to.tagIds, names);
+        if (key === "customValues" && names.field) {
+          const changes = customValueChanges("TASK", from.customValues, to.customValues, names);
+          return changes.length > 0 ? changes : [fieldLabels.customValues ?? key];
+        }
         const label = fieldLabels[key] ?? key;
         const before = fieldValue(key, from[key], names);
         const after = fieldValue(key, to[key], names);
-        return before !== null && after !== null ? `${label} ${before} → ${after}` : label;
+        return [before !== null && after !== null ? `${label} ${before} → ${after}` : label];
       });
       return [{ text: "sửa " }, task, { text: `: ${parts.join("; ")}` }];
     }

@@ -20,7 +20,7 @@ import type { JobDetail } from "@/contracts/production-jobs";
 
 import { productionErrorMessage } from "../../errors";
 import { useCreateFeedback } from "../../jobs-hooks";
-import { sheetOnPhone } from "../../ui";
+import { touchTargets } from "../../ui";
 import { FormAlert } from "../settings-kit";
 import { OptionSelect } from "./pickers";
 
@@ -66,8 +66,9 @@ export const FeedbackDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !create.isPending && onClose()}>
-      <DialogContent className={cn("sm:max-w-lg", sheetOnPhone)}>
-        <DialogHeader>
+      {/* Already a bottom sheet on phones (DialogContent); see transition-dialog.tsx. */}
+      <DialogContent className={cn("sm:max-w-lg", touchTargets)}>
+        <DialogHeader className="pr-8">
           <DialogTitle>Ghi feedback của khách · {job.code}</DialogTitle>
           <DialogDescription>
             Các task đang giao khách chuyển sang Feedback cho tới khi phần làm lại được QC xong.
@@ -125,7 +126,7 @@ export const FeedbackDialog = ({
           {noteError ? <FieldError>{noteError}</FieldError> : null}
         </Field>
         <FormAlert>{error}</FormAlert>
-        <DialogFooter>
+        <DialogFooter className="max-sm:-bottom-4">
           <Button variant="ghost" onClick={onClose} disabled={create.isPending}>
             Hủy
           </Button>

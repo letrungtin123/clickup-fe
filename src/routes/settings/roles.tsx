@@ -153,8 +153,8 @@ export const RolesSettingsRoute = () => {
                         aria-label="Vai trò hệ thống"
                       />
                     ) : (
-                      <span className="text-[11px] text-foreground-muted">
-                        {role.permissions.length}
+                      <span className="shrink-0 text-[11px] text-foreground-muted tabular-nums">
+                        {role.permissions.length} quyền
                       </span>
                     )}
                   </button>
@@ -284,7 +284,6 @@ const RolePermissions = ({
                       "flex items-center gap-2.5 rounded-md px-1.5 py-1 text-[13px]",
                       editable ? "cursor-pointer hover:bg-surface-hover" : "cursor-default"
                     )}
-                    title={permission.description}
                   >
                     <Checkbox
                       checked={draft.has(permission.key)}
@@ -412,7 +411,7 @@ const CreateRoleDialog = ({
         >
           <DialogHeader>
             <DialogTitle>Vai trò mới</DialogTitle>
-            <DialogDescription>Tạo xong, chọn quyền cho vai trò ở bảng bên phải.</DialogDescription>
+            <DialogDescription>Tạo xong, chọn quyền cho vai trò trong bảng quyền.</DialogDescription>
           </DialogHeader>
           <Field data-invalid={Boolean(formState.errors.name)}>
             <FieldLabel htmlFor={`${ids}-name`}>Tên vai trò</FieldLabel>

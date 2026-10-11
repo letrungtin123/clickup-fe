@@ -19,6 +19,8 @@ export const chatKeys = {
     ["chat", "channel", channelId, "members", q.trim().toLocaleLowerCase()] as const,
   membersAll: (channelId: string) => ["chat", "channel", channelId, "members"] as const,
   thread: (rootId: string) => ["chat", "thread", rootId] as const,
+  /** Who reacted to a message (tooltip / reactions sheet). */
+  reactions: (messageId: string) => ["chat", "reactions", messageId] as const,
   threads: () => ["chat", "thread"] as const,
   browse: (q = "") => ["chat", "browse", q.trim().toLocaleLowerCase()] as const,
   attachmentUrl: (attachmentId: string) => ["chat", "attachment-url", attachmentId] as const,

@@ -9,6 +9,8 @@ type UiState = {
   navOverlayOpen: boolean;
   commandOpen: boolean;
   newProjectOpen: boolean;
+  /** A notification bell list is open (new notifications then skip the toast). Not persisted. */
+  bellOpen: boolean;
   /** Project ids whose list tree is collapsed in the sidebar. */
   collapsedProjects: Record<string, true>;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -16,6 +18,7 @@ type UiState = {
   setNavOverlayOpen: (open: boolean) => void;
   setCommandOpen: (open: boolean) => void;
   setNewProjectOpen: (open: boolean) => void;
+  setBellOpen: (open: boolean) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
 };
 
@@ -26,12 +29,14 @@ export const useUiStore = create<UiState>()(
       navOverlayOpen: false,
       commandOpen: false,
       newProjectOpen: false,
+      bellOpen: false,
       collapsedProjects: {},
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       toggleSidebarCollapsed: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setNavOverlayOpen: (navOverlayOpen) => set({ navOverlayOpen }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
       setNewProjectOpen: (newProjectOpen) => set({ newProjectOpen }),
+      setBellOpen: (bellOpen) => set({ bellOpen }),
       setProjectExpanded: (projectId, expanded) =>
         set((state) => {
           const collapsedProjects = { ...state.collapsedProjects };

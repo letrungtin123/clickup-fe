@@ -13,26 +13,36 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
-import { useProductionProjects, useTags, useWorkflow } from "../../hooks";
+import type { CustomField } from "@/contracts/production-catalog";
+
+import { useProductionProjects, useWorkflow } from "../../hooks";
 import { activeFilterCount, emptyJobFilters, type JobFilters } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
+import type { Tag } from "../../types";
 import { touchTargets } from "../../ui";
 import { DateField } from "../date-field";
+import { ListFilterBar, ListFilterSections } from "../list-filters";
 import { SearchField } from "../settings-kit";
 import { OptionSelect } from "./pickers";
 
 /**
- * Job list filters (URL state): search, project, status, leader, deadline range, tag, "có task trễ"
- * and archived. Inline on tablet/desktop; a bottom sheet on phones.
+ * Job list filters (URL state): search, project, status, leader, deadline range, "có task trễ",
+ * archived, tags (any of them) and JOB custom fields. Inline on tablet/desktop (tags and custom
+ * fields as chips + "Trường & tag"); a bottom sheet on phones.
  */
 export const JobFiltersBar = ({
   filters,
   onChange,
-  today
+  today,
+  fields,
+  tags
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
+  /** Active JOB custom fields (filters offered for each). */
+  fields: readonly CustomField[];
+  tags: readonly Tag[];
 }) => {
   const breakpoint = useBreakpoint();
   const [sheet, setSheet] = useState(false);
@@ -52,7 +62,7 @@ export const JobFiltersBar = ({
       onChange={setTerm}
       placeholder="Tìm mã hoặc tên job"
       label="Tìm job"
-      className="sm:max-w-64"
+      className="sm:min-w-56 sm:max-w-64"
     />
   );
 
@@ -78,6 +88,13 @@ export const JobFiltersBar = ({
             </SheetHeader>
             <div className="flex flex-col gap-4 px-4 py-4">
               <FilterControls filters={filters} onChange={onChange} today={today} stacked />
+              <ListFilterSections
+                fields={fields}
+                tags={tags}
+                filters={filters.custom}
+                onChange={(custom) => onChange({ ...filters, custom })}
+                today={today}
+              />
             </div>
             <div className="sticky bottom-0 flex gap-2 border-t bg-popover px-4 py-3">
               <Button
@@ -103,6 +120,13 @@ export const JobFiltersBar = ({
     <div className="flex flex-wrap items-center gap-2">
       {search}
       <FilterControls filters={filters} onChange={onChange} today={today} />
+      <ListFilterBar
+        fields={fields}
+        tags={tags}
+        filters={filters.custom}
+        onChange={(custom) => onChange({ ...filters, custom })}
+        today={today}
+      />
       {count > 0 ? (
         <Button
           variant="ghost"
@@ -148,7 +172,6 @@ const FilterControls = ({
 }) => {
   const projects = useProductionProjects();
   const workflow = useWorkflow();
-  const tags = useTags();
   const people = useProductionPeople();
   const set = (patch: Partial<JobFilters>) => onChange({ ...filters, ...patch });
   const width = stacked ? "w-full" : "w-40";
@@ -159,7 +182,8 @@ const FilterControls = ({
           options={(projects.data?.items ?? []).map((project) => ({
             id: project.id,
             label: project.code,
-            hint: project.active ? null : "lưu trữ"
+            // The client helps Account find "my client's job" among project codes.
+            hint: project.active ? project.clientName : "lưu trữ"
           }))}
           value={filters.projectId}
           onChange={(projectId) => set({ projectId })}
@@ -193,19 +217,6 @@ const FilterControls = ({
           noneLabel="Mọi Leader"
           aria-label="Lọc theo Leader"
           className={width}
-        />
-      </Labeled>
-      <Labeled label="Tag" stacked={stacked}>
-        <OptionSelect
-          options={(tags.data?.items ?? [])
-            .filter((tag) => tag.active)
-            .map((tag) => ({ id: tag.id, label: tag.name }))}
-          value={filters.tagId}
-          onChange={(tagId) => set({ tagId })}
-          placeholder="Tag"
-          noneLabel="Mọi tag"
-          aria-label="Lọc theo tag"
-          className={stacked ? "w-full" : "w-32"}
         />
       </Labeled>
       <Labeled label="Deadline từ – đến" stacked={stacked}>

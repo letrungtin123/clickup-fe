@@ -1,54 +1,58 @@
 import { describe, expect, it } from "vitest";
 
+import { kpiPeriodOfDay, kpiPeriodRange } from "@/contracts/production-scores";
+
 import {
+  closeDaysOf,
   formatDayRange,
   formatPeriod,
   isPeriod,
   monthShortLabel,
   periodLabel,
-  periodOfDay,
-  periodRange,
   periodsBetween,
   quarterOfPeriod,
   rollupLabel,
-  shiftPeriod
+  shiftPeriod,
+  upcomingCloseDayChange
 } from "./periods";
 
-describe("periodOfDay", () => {
-  it("puts days after the close day into the next period", () => {
-    expect(periodOfDay("2026-05-25", 25)).toBe("2026-05");
-    expect(periodOfDay("2026-05-26", 25)).toBe("2026-06");
-    expect(periodOfDay("2026-05-31", 25)).toBe("2026-06");
-    expect(periodOfDay("2026-09-26", 25)).toBe("2026-10");
-    expect(periodOfDay("2026-09-25", 25)).toBe("2026-09");
+// The close day moved from 25 to 20 on 11/10/2026: it applies from period 11/2026 (G15).
+const changed = [
+  { fromPeriod: null, closeDay: 25 },
+  { fromPeriod: "2026-11", closeDay: 20 }
+] as const;
+
+describe("closeDaysOf", () => {
+  it("prefers the close-day versions of /production/me", () => {
+    expect(closeDaysOf({ kpiCloseDay: 25, kpiCloseDays: [...changed] })).toEqual(changed);
+    expect(closeDaysOf({ kpiCloseDay: 20, kpiCloseDays: [] })).toBe(20);
+    expect(closeDaysOf(undefined)).toBe(25);
   });
 
-  it("rolls over the year end", () => {
-    expect(periodOfDay("2026-12-26", 25)).toBe("2027-01");
-    expect(periodOfDay("2026-12-31", 20)).toBe("2027-01");
-  });
-
-  it("follows a changed close day", () => {
-    expect(periodOfDay("2026-05-21", 20)).toBe("2026-06");
-    expect(periodOfDay("2026-05-20", 20)).toBe("2026-05");
+  it("feeds the contract period maths (one day or versions)", () => {
+    const days = closeDaysOf({ kpiCloseDay: 25, kpiCloseDays: [...changed] });
+    expect(kpiPeriodOfDay("2026-10-11", days)).toBe("2026-10");
+    expect(kpiPeriodOfDay("2026-10-26", days)).toBe("2026-11");
+    expect(kpiPeriodOfDay("2026-11-21", days)).toBe("2026-12");
+    expect(kpiPeriodRange("2026-10", days)).toEqual({ from: "2026-09-26", to: "2026-10-25" });
+    expect(kpiPeriodRange("2026-11", days)).toEqual({ from: "2026-10-26", to: "2026-11-20" });
+    expect(kpiPeriodRange("2026-12", days)).toEqual({ from: "2026-11-21", to: "2026-12-20" });
+    expect(kpiPeriodRange("2027-01", closeDaysOf({ kpiCloseDay: 25 }))).toEqual({
+      from: "2026-12-26",
+      to: "2027-01-25"
+    });
   });
 });
 
-describe("periodRange", () => {
-  it("runs from the day after the previous close day to this close day", () => {
-    expect(periodRange("2026-06", 25)).toEqual({ from: "2026-05-26", to: "2026-06-25" });
-    expect(periodRange("2026-10", 25)).toEqual({ from: "2026-09-26", to: "2026-10-25" });
-  });
-
-  it("crosses the year boundary for January", () => {
-    expect(periodRange("2027-01", 25)).toEqual({ from: "2026-12-26", to: "2027-01-25" });
-  });
-
-  it("clamps the close day to 1–28", () => {
-    // 28 Feb 2026 is the last day of February: the period starts on 1 March.
-    expect(periodRange("2026-03", 31)).toEqual({ from: "2026-03-01", to: "2026-03-28" });
-    expect(periodRange("2024-03", 28)).toEqual({ from: "2024-02-29", to: "2024-03-28" });
-    expect(periodRange("2026-03", 0)).toEqual({ from: "2026-02-02", to: "2026-03-01" });
+describe("upcomingCloseDayChange", () => {
+  it("names the first period of a scheduled change", () => {
+    expect(upcomingCloseDayChange(changed, "2026-10")).toEqual({
+      fromPeriod: "2026-11",
+      closeDay: 20
+    });
+    expect(upcomingCloseDayChange(changed, "2026-11")).toBeNull();
+    expect(upcomingCloseDayChange(25, "2026-10")).toBeNull();
+    expect(upcomingCloseDayChange([{ fromPeriod: null, closeDay: 25 }], "2026-10")).toBeNull();
   });
 });
 
@@ -61,7 +65,12 @@ describe("shiftPeriod / periodsBetween", () => {
   });
 
   it("lists every period inclusively", () => {
-    expect(periodsBetween("2026-11", "2027-02")).toEqual(["2026-11", "2026-12", "2027-01", "2027-02"]);
+    expect(periodsBetween("2026-11", "2027-02")).toEqual([
+      "2026-11",
+      "2026-12",
+      "2027-01",
+      "2027-02"
+    ]);
     expect(periodsBetween("2026-05", "2026-05")).toEqual(["2026-05"]);
     expect(periodsBetween("2026-06", "2026-05")).toEqual([]);
   });

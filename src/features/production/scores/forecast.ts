@@ -47,7 +47,7 @@ type ForecastInput = Pick<
 >;
 
 /**
- * The forecast line: "Còn {remaining} điểm, còn {daysLeft} ngày, cần {avgPerDayNeeded}/ngày",
+ * The forecast line: "Còn thiếu {remaining} điểm, còn {daysLeft} ngày, cần {avgPerDayNeeded} điểm/ngày",
  * with the closed-period, met and no-target variants.
  */
 export const forecastSentence = (forecast: ForecastInput): string => {
@@ -62,6 +62,8 @@ export const forecastSentence = (forecast: ForecastInput): string => {
     return `Kỳ đã chốt, còn thiếu ${remaining} điểm (đạt ${formatPercent(forecast.percent)}).`;
   }
   const perDay =
-    forecast.avgPerDayNeeded === null ? "" : `, cần ${formatCredit(forecast.avgPerDayNeeded)}/ngày`;
-  return `Còn ${remaining} điểm, còn ${forecast.daysLeft} ngày${perDay}.`;
+    forecast.avgPerDayNeeded === null
+      ? ""
+      : `, cần ${formatCredit(forecast.avgPerDayNeeded)} điểm/ngày`;
+  return `Còn thiếu ${remaining} điểm, còn ${forecast.daysLeft} ngày${perDay}.`;
 };

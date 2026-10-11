@@ -18,6 +18,7 @@ import type { TaskDetail } from "@/contracts/work";
 import { useSessionContext } from "@/features/auth/hooks";
 import { useRealtimeEvent, useRealtimeRoom } from "@/lib/realtime/hooks";
 import { scheduleInvalidate } from "@/lib/realtime/socket";
+import { isApiError } from "@/lib/api/errors";
 import { qk } from "@/lib/query-keys";
 
 import { useDeleteTask, useTask } from "../hooks";
@@ -51,11 +52,16 @@ export const TaskDetailPanel = ({ taskId, mode, onClose }: TaskDetailPanelProps)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PanelHeader task={task.data} mode={mode} onClose={onClose} />
+      <PanelHeader task={task.data} failed={task.isError} mode={mode} onClose={onClose} />
       <div className="relative min-h-0 flex-1">
         {task.isError ? (
           <div className="h-full overflow-y-auto">
-            <ErrorState error={task.error} onRetry={() => void task.refetch()} retrying={task.isFetching} />
+            <ErrorState
+              error={task.error}
+              title={isApiError(task.error) && task.error.status === 404 ? "Không tìm thấy công việc" : undefined}
+              onRetry={() => void task.refetch()}
+              retrying={task.isFetching}
+            />
           </div>
         ) : task.data ? (
           <Suspense fallback={<DetailBodySkeleton />}>
@@ -71,10 +77,13 @@ export const TaskDetailPanel = ({ taskId, mode, onClose }: TaskDetailPanelProps)
 
 const PanelHeader = ({
   task,
+  failed,
   mode,
   onClose
 }: {
   task: TaskDetail | undefined;
+  /** Load failed: no breadcrumb placeholder that never resolves. */
+  failed: boolean;
   mode: DetailPanelMode;
   onClose: () => void;
 }) => {
@@ -136,7 +145,7 @@ const PanelHeader = ({
               <TooltipContent>Sao chép mã</TooltipContent>
             </Tooltip>
           </>
-        ) : (
+        ) : failed ? null : (
           <Skeleton className="h-3 w-48" />
         )}
       </nav>

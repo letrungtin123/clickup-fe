@@ -98,12 +98,23 @@ type AvatarGroupProps = {
   className?: string;
 };
 
+/**
+ * How far neighbours tuck under each other. Small initials need most of the circle to stay legible
+ * ("ĐA NB", not "Đ‹NB"), so the smaller sizes barely overlap (P6).
+ */
+const overlapClasses: Record<Size, string> = {
+  xs: "-space-x-0.5",
+  sm: "-space-x-1",
+  md: "-space-x-1.5",
+  lg: "-space-x-1.5"
+};
+
 /** Overlapping avatars with a "+N" overflow chip listing the hidden names. */
 export const AvatarGroup = ({ users, max = 3, size = "sm", className }: AvatarGroupProps) => {
   const visible = users.slice(0, max);
   const hidden = users.slice(max);
   return (
-    <div className={cn("flex items-center -space-x-1.5", className)}>
+    <div className={cn("flex items-center", overlapClasses[size], className)}>
       {visible.map((user) => (
         <UserAvatar
           key={user.id}

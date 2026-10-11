@@ -40,6 +40,9 @@ describe("axis and labels", () => {
     expect(spaces(formatAxisValue(12345, "money"))).toBe("12,3 N");
     expect(formatAxisValue(0.5, "percent")).toBe("50%");
     expect(formatAxisValue(7.25, "points")).toBe("7,25");
+    // one notation per axis: compact when the axis maximum is ≥ 10.000
+    expect(spaces(formatAxisValue(3500, "points", true))).toBe("3,5 N");
+    expect(formatAxisValue(3500, "points", false)).toBe("3.500");
   });
 
   it("labels dimension keys when the server label is missing", () => {

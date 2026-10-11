@@ -8,9 +8,11 @@ import { RequireProductionRole } from "@/features/production/components/producti
 import { JobFiltersBar } from "@/features/production/components/jobs/job-filters";
 import { JobFormDialog } from "@/features/production/components/jobs/job-form-dialog";
 import { JobsEmpty, JobsList } from "@/features/production/components/jobs/jobs-list";
+import { fieldsFor } from "@/features/production/custom-fields";
 import { todayIn } from "@/features/production/format";
-import { useProductionMe } from "@/features/production/hooks";
+import { useCustomFields, useProductionMe, useTags } from "@/features/production/hooks";
 import { useJobs } from "@/features/production/jobs-hooks";
+import { queryPath, sanitizeListFilters } from "@/features/production/list-filters";
 import { ExcelExportButton } from "@/features/production/reports/components/export-button";
 import {
   activeFilterCount,
@@ -34,10 +36,31 @@ const JobsPage = () => {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
+  const customFields = useCustomFields();
+  const tags = useTags();
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
-  const filters = useMemo(() => jobFiltersFromSearch(params), [params]);
+  const jobFields = useMemo(
+    () => fieldsFor(customFields.data?.items ?? [], "JOB"),
+    [customFields.data]
+  );
+  const filters = useMemo(() => {
+    const parsed = jobFiltersFromSearch(params);
+    // A shared link may name a field / option / tag that no longer exists: drop it (no 400).
+    return customFields.data
+      ? {
+          ...parsed,
+          custom: sanitizeListFilters(
+            parsed.custom,
+            jobFields,
+            tags.data ? new Set(tags.data.items.map((tag) => tag.id)) : undefined
+          )
+        }
+      : parsed;
+  }, [params, customFields.data, jobFields, tags.data]);
   const query = useMemo(() => jobQueryFromFilters(filters, timeZone), [filters, timeZone]);
-  const jobs = useJobs(query);
+  // Custom-field filters from a link wait for the field catalog (a stale one would answer 400).
+  const ready = Object.keys(filters.custom.fields).length === 0 || !customFields.isPending;
+  const jobs = useJobs(query, ready);
   const items = useMemo(() => jobs.data?.pages.flatMap((page) => page.items) ?? [], [jobs.data]);
   const filtering = activeFilterCount(filters) > 0 || filters.q.trim() !== "";
 
@@ -55,7 +78,8 @@ const JobsPage = () => {
         actions={
           <>
             <ExcelExportButton
-              request={{ method: "GET", path: "/production/jobs/export", query }}
+              // Tags / custom-field values repeat their parameter (queryPath), like the list.
+              request={{ method: "GET", path: queryPath("/production/jobs/export", query) }}
               fallbackName="Danh sách job.xlsx"
               disabled={!jobs.data}
             />
@@ -66,7 +90,13 @@ const JobsPage = () => {
           </>
         }
       >
-        <JobFiltersBar filters={filters} onChange={setFilters} today={todayIn(timeZone)} />
+        <JobFiltersBar
+          filters={filters}
+          onChange={setFilters}
+          today={todayIn(timeZone)}
+          fields={jobFields}
+          tags={tags.data?.items ?? []}
+        />
       </PageHeader>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4 md:overflow-hidden md:px-6">
         <p className="text-xs text-foreground-muted tabular-nums" aria-live="polite">
@@ -82,6 +112,7 @@ const JobsPage = () => {
           isFetchingNextPage={jobs.isFetchingNextPage}
           fetchNextPage={() => void jobs.fetchNextPage()}
           timeZone={timeZone}
+          fields={jobFields}
           filtering={filtering}
           empty={
             <JobsEmpty

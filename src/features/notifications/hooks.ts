@@ -17,8 +17,8 @@ import { qk } from "@/lib/query-keys";
 import { notificationsApi } from "./api";
 import { notificationTarget } from "./describe";
 import {
+  applyReadToFeed,
   feedNames,
-  mapFeed,
   mentionTypeList,
   prependToFeed,
   removeFromFeed,
@@ -57,15 +57,6 @@ export const useUnreadNotificationCount = () =>
 
 // Cache helpers ------------------------------------------------------------------------------------
 
-const mapFeeds = (
-  queryClient: QueryClient,
-  update: (item: Notification) => Notification | null
-) => {
-  for (const name of feedNames) {
-    queryClient.setQueryData<Feed>(qk.notifications.feed(name), (feed) => mapFeed(feed, update));
-  }
-};
-
 export const setUnreadCount = (queryClient: QueryClient, unreadCount: number) =>
   queryClient.setQueryData(qk.notifications.unreadCount(), unreadCount);
 
@@ -82,10 +73,11 @@ export const applyRead = (
   ids: readonly string[] | "all",
   readAt: string
 ) => {
-  const idSet = ids === "all" ? null : new Set(ids);
-  mapFeeds(queryClient, (item) =>
-    item.readAt || (idSet && !idSet.has(item.id)) ? item : { ...item, readAt }
-  );
+  for (const name of feedNames) {
+    queryClient.setQueryData<Feed>(qk.notifications.feed(name), (feed) =>
+      applyReadToFeed(feed, ids, readAt)
+    );
+  }
 };
 
 export const applyArchive = (queryClient: QueryClient, ids: readonly string[]) => {

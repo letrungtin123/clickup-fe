@@ -12,6 +12,7 @@ import { formatCredit, formatInteger, formatMoney, todayIn } from "@/features/pr
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
 import { BoardTable, Podium } from "@/features/production/scores/components/board";
 import { ExportButton } from "@/features/production/scores/components/export-button";
+import { PeopleFilterButton } from "@/features/production/scores/components/people-filter";
 import {
   PageBody,
   Panel,
@@ -20,7 +21,16 @@ import {
 } from "@/features/production/scores/components/kit";
 import { isScoresPrivate } from "@/features/production/scores/errors";
 import { useScoreBoard } from "@/features/production/scores/hooks";
-import { isPeriod, periodLabel, periodOfDay } from "@/features/production/scores/periods";
+import {
+  emptyPeopleFilter,
+  isPeopleFilterEmpty,
+  peopleFilterFromParams,
+  peopleFilterPairs,
+  withPeopleFilterParams,
+  type PeopleFilter
+} from "@/features/production/scores/people-filter";
+import { closeDaysOf, isPeriod, periodLabel } from "@/features/production/scores/periods";
+import { kpiPeriodOfDay } from "@/contracts/production-scores";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,6 +39,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * /production/scores/board — ranking by official points for a period and team (SPEC Phase 3 §5).
  * Private board (settings.scoresPublic off, not ADMIN) → the API answers 403 and the page shows the
  * private state; money appears only where the API sent it. Excel via GET …/board/export (link).
+ * ADMIN also filters people by members' custom fields (e.g. Năng lực) and tags: ?cf.<key>=…&tag=….
  */
 export const ProductionScoreBoardRoute = () => {
   const me = useProductionMe();
@@ -38,14 +49,16 @@ export const ProductionScoreBoardRoute = () => {
   const [params, setParams] = useSearchParams();
 
   const settings = me.data?.settings;
-  const closeDay = settings?.kpiCloseDay ?? 25;
+  const closeDays = closeDaysOf(settings);
   const today = todayIn(settings?.timezone ?? "Asia/Ho_Chi_Minh");
-  const current = periodOfDay(today, closeDay);
+  const current = kpiPeriodOfDay(today, closeDays);
   const requested = params.get("period");
   const period = isPeriod(requested) && requested <= current ? requested : current;
   const teamParam = params.get("team");
   const teamId = teamParam && uuidPattern.test(teamParam) ? teamParam : null;
-  const board = useScoreBoard(period, teamId);
+  // Members' tags / custom values are Admin data (others get 403): the filter is ADMIN only.
+  const people: PeopleFilter = access.isAdmin ? peopleFilterFromParams(params) : emptyPeopleFilter;
+  const board = useScoreBoard(period, teamId, people);
   const isPrivate = board.isError && isScoresPrivate(board.error);
 
   const update = (patch: Record<string, string | null>) =>
@@ -99,6 +112,7 @@ export const ProductionScoreBoardRoute = () => {
               <ExportButton
                 path="/production/scores/board/export"
                 query={{ period, teamId }}
+                extra={peopleFilterPairs(people)}
                 fallbackName={`bang-diem-${period}.xlsx`}
               />
             ) : null}
@@ -127,10 +141,25 @@ export const ProductionScoreBoardRoute = () => {
                 value={period}
                 onChange={(next) => update({ period: next === current ? null : next })}
                 latest={current}
-                closeDay={closeDay}
+                closeDays={closeDays}
               />
-              <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
-                <TeamSelect value={teamId} onChange={(next) => update({ team: next })} />
+              <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+                <TeamSelect
+                  value={teamId}
+                  onChange={(next) => update({ team: next })}
+                  className="max-sm:flex-1"
+                />
+                {access.isAdmin ? (
+                  <PeopleFilterButton
+                    value={people}
+                    onChange={(next) =>
+                      setParams((previous) => withPeopleFilterParams(previous, next), {
+                        replace: true
+                      })
+                    }
+                    className="max-sm:flex-1"
+                  />
+                ) : null}
                 {board.isFetching && !board.isPending ? (
                   <Spinner className="size-4 shrink-0 text-foreground-muted" />
                 ) : null}
@@ -141,14 +170,24 @@ export const ProductionScoreBoardRoute = () => {
               <BoardSkeleton />
             ) : board.isError ? (
               <Panel>
-                <ErrorState error={board.error} onRetry={() => void board.refetch()} retrying={board.isFetching} />
+                <ErrorState
+                  error={board.error}
+                  onRetry={() => void board.refetch()}
+                  retrying={board.isFetching}
+                />
               </Panel>
             ) : rows.length === 0 ? (
               <Panel>
                 <EmptyState
                   icon={UsersRound}
                   title="Không có ai trong bảng"
-                  description={teamId ? "Team này chưa có thành viên làm việc. Thử chọn team khác." : "Chưa có nhân viên sản xuất nào."}
+                  description={
+                    !isPeopleFilterEmpty(people)
+                      ? "Không có ai khớp bộ lọc nhân viên. Bỏ bớt điều kiện ở “Lọc nhân viên”."
+                      : teamId
+                        ? "Team này chưa có thành viên làm việc. Thử chọn team khác."
+                        : "Chưa có nhân viên sản xuất nào."
+                  }
                 />
               </Panel>
             ) : (
@@ -170,12 +209,15 @@ export const ProductionScoreBoardRoute = () => {
                     </span>
                     <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted tabular-nums sm:ml-auto">
                       <span>
-                        Khoán {formatCredit(own.pointsKhoan)} điểm · {formatInteger(own.qtyKhoan)} tấm
+                        Khoán {formatCredit(own.pointsKhoan)} điểm · {formatInteger(own.qtyKhoan)}{" "}
+                        tấm
                       </span>
                       {own.money !== null ? (
                         <span>
                           Tiền Khoán tạm tính{" "}
-                          <span className="font-medium text-foreground">{formatMoney(own.money)}</span>
+                          <span className="font-medium text-foreground">
+                            {formatMoney(own.money)}
+                          </span>
                         </span>
                       ) : null}
                     </span>
@@ -188,7 +230,7 @@ export const ProductionScoreBoardRoute = () => {
                       {periodLabel(period)}
                     </span>
                   }
-                  description={`${rows.length} người${access.isAdmin && !(me.data?.settings.scoresPublic ?? true) ? " · Bảng đang riêng tư, chỉ Quản trị xem được" : ""}`}
+                  description={`${rows.length} người${isPeopleFilterEmpty(people) ? "" : " · đang lọc nhân viên, hạng tính trong nhóm đã lọc"}${access.isAdmin && !(me.data?.settings.scoresPublic ?? true) ? " · Bảng đang riêng tư, chỉ Quản trị xem được" : ""}`}
                 >
                   <BoardTable rows={rows} meId={session.user.id} showMoney={showMoney} />
                 </Panel>

@@ -58,17 +58,18 @@ export const ConversationsPage = () => {
         description="Kênh, nhóm và tin nhắn trực tiếp của bạn."
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => openDialog("browse-channels")}>
+            {/* Phones show the icons only: the labels stay available to screen readers. */}
+            <Button variant="outline" size="sm" aria-label="Duyệt kênh" onClick={() => openDialog("browse-channels")}>
               <Compass />
               <span className="hidden sm:inline">Duyệt kênh</span>
             </Button>
             {can(P.ChannelCreate) ? (
-              <Button variant="outline" size="sm" onClick={() => openDialog("create-channel")}>
+              <Button variant="outline" size="sm" aria-label="Tạo kênh" onClick={() => openDialog("create-channel")}>
                 <Plus />
                 <span className="hidden sm:inline">Tạo kênh</span>
               </Button>
             ) : null}
-            <Button size="sm" onClick={() => openDialog("new-message")}>
+            <Button size="sm" aria-label="Tin nhắn mới" onClick={() => openDialog("new-message")}>
               <MessageSquarePlus />
               <span className="hidden sm:inline">Tin nhắn mới</span>
             </Button>

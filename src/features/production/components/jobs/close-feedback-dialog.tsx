@@ -18,7 +18,7 @@ import type { Feedback } from "@/contracts/production-jobs";
 
 import { productionErrorMessage } from "../../errors";
 import { useCloseFeedback } from "../../jobs-hooks";
-import { sheetOnPhone } from "../../ui";
+import { touchTargets } from "../../ui";
 import { FormAlert } from "../settings-kit";
 
 /**
@@ -63,7 +63,8 @@ export const CloseFeedbackDialog = ({
       open={feedback !== null}
       onOpenChange={(open) => !open && !close.isPending && onClose()}
     >
-      <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
+      {/* Already a bottom sheet on phones (DialogContent); see transition-dialog.tsx. */}
+      <DialogContent className={cn("sm:max-w-md", touchTargets)}>
         <form
           noValidate
           className="flex flex-col gap-4"
@@ -72,7 +73,7 @@ export const CloseFeedbackDialog = ({
             submit();
           }}
         >
-          <DialogHeader>
+          <DialogHeader className="pr-8">
             <DialogTitle>Đóng feedback, không cần làm lại?</DialogTitle>
             <DialogDescription>
               {feedback?.type === "WRONG" ? "Feedback sai" : "Yêu cầu thêm"}: “
@@ -105,7 +106,7 @@ export const CloseFeedbackDialog = ({
             )}
           </Field>
           <FormAlert>{error}</FormAlert>
-          <DialogFooter>
+          <DialogFooter className="max-sm:-bottom-4">
             <Button type="button" variant="ghost" onClick={onClose} disabled={close.isPending}>
               Hủy
             </Button>

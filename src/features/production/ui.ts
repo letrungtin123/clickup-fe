@@ -12,9 +12,20 @@ export const touchTargets = cn(
   "max-sm:**:data-[slot=button]:min-w-10 max-sm:**:data-[slot=input]:h-10 max-sm:**:data-[slot=select-trigger]:h-10"
 );
 
-/** Dialogs become bottom sheets on phones: full width, anchored to the bottom, scroll inside. */
-export const sheetOnPhone = cn(
-  "max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0",
-  "max-sm:max-h-[92dvh] max-sm:overflow-y-auto max-sm:rounded-b-none max-sm:pb-[env(safe-area-inset-bottom)] max-sm:data-open:slide-in-from-bottom-8",
-  touchTargets
-);
+/**
+ * Production dialogs on phones. DialogContent is already a bottom sheet below `sm` (full width,
+ * rises above the iOS keyboard via --keyboard-inset, home-indicator inset, scrolls inside), so this
+ * adds the touch targets and pins the sticky footer flush with the sheet's bottom edge (`bottom-0`
+ * stops at the sheet's 16px padding and leaves a band under the actions). It used to re-anchor the
+ * sheet to `bottom-0` (hidden behind the iOS keyboard) and zero its bottom padding (the footer's
+ * -mb-4 then overflowed by 16px and focusing a field scrolled the title away).
+ */
+export const sheetOnPhone = cn(touchTargets, "max-sm:**:data-[slot=dialog-footer]:-bottom-4");
+
+/**
+ * Max height for the inner flex column of tall dialogs (DialogContent `p-0 overflow-hidden` with a
+ * scrolling body): the phone sheet's own max height minus its home-indicator border, so the header
+ * and the actions stay on screen, above the keyboard too.
+ */
+export const phoneSheetColumn =
+  "max-sm:max-h-[calc(100dvh-var(--keyboard-inset)-env(safe-area-inset-top)-0.5rem-var(--safe-bottom))]";

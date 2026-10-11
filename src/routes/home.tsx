@@ -50,7 +50,7 @@ export const HomeRoute = () => {
           ) : null}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Widget title="Việc của tôi" icon={ListTodo} href="/my-tasks">
             <MyTasksWidget />
           </Widget>
@@ -82,7 +82,7 @@ const Widget = ({
       <h2 className="text-sm font-semibold">{title}</h2>
       <Link
         to={href}
-        className="ml-auto inline-flex items-center gap-1 rounded text-xs text-foreground-muted outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="ml-auto inline-flex items-center gap-1 rounded text-xs text-foreground-muted outline-none pointer-coarse:-my-2.5 pointer-coarse:py-2.5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         Xem tất cả <ArrowUpRight className="size-3" aria-hidden="true" />
       </Link>
@@ -102,7 +102,7 @@ const RecentProjects = () => {
         Dự án của bạn
       </h2>
       {projects.isPending ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
           {[0, 1, 2].map((index) => (
             <div key={index} className="flex items-center gap-3 rounded-xl border bg-surface p-4">
               <Skeleton className="size-10 rounded-lg" />
@@ -134,7 +134,7 @@ const RecentProjects = () => {
         </div>
       ) : (
         <motion.ul
-          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.18 }}

@@ -20,23 +20,15 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CustomField, CustomValues } from "@/contracts/production-catalog";
 
 import { hasDuplicateName, matchesQuery, visibleRows } from "../catalog";
-import {
-  fieldsFor,
-  formatCustomValue,
-  toCustomValuesPayload,
-  validateCustomValues
-} from "../custom-fields";
+import { formatCustomValue, toCustomValuesPayload, validateCustomValues } from "../custom-fields";
 import { productionErrorMessage, toastProductionError } from "../errors";
 import { todayIn } from "../format";
-import {
-  useClientMutations,
-  useClients,
-  useCustomFields,
-  useProductionMe,
-  useTags
-} from "../hooks";
+import { useClientMutations, useClients, useProductionMe } from "../hooks";
+import { emptyListFilters } from "../list-filters";
+import { useUrlListFilters } from "../list-filters-hooks";
 import type { Client, Tag } from "../types";
 import { CustomFieldsForm, CustomFieldValue } from "./custom-field-input";
+import { CustomFieldChips, ListFiltersControl } from "./list-filters";
 import {
   ActiveState,
   ArchivedToggle,
@@ -48,7 +40,7 @@ import {
   SettingsSection
 } from "./settings-kit";
 import { TagChips, TagPicker } from "./tag-picker";
-import { sheetOnPhone } from "../ui";
+import { phoneSheetColumn, sheetOnPhone } from "../ui";
 
 const conflict = "Đã có khách hàng cùng tên (không phân biệt hoa thường).";
 
@@ -57,17 +49,22 @@ const conflict = "Đã có khách hàng cùng tên (không phân biệt hoa thư
  * and tags. Shown both in the Account menu and in the admin configuration area.
  */
 export const ClientsPanel = () => {
-  const clients = useClients();
-  const fields = useCustomFields();
-  const tags = useTags();
+  const me = useProductionMe();
+  // CLIENT tags / custom fields, kept in the URL (?tag=…&cf.<key>=…) and filtered by the API.
+  const listFilters = useUrlListFilters("CLIENT");
+  const filtering = listFilters.count > 0;
+  const clients = useClients(listFilters.ready, listFilters.query);
+  // Duplicate-name check in the dialog needs every client, not just the filtered ones (same query
+  // as `clients` when nothing is filtered).
+  const allClients = useClients(true);
   const mutations = useClientMutations();
   const [term, setTerm] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [dialog, setDialog] = useState<{ client: Client | null } | null>(null);
 
-  const clientFields = useMemo(() => fieldsFor(fields.data?.items ?? [], "CLIENT"), [fields.data]);
+  const clientFields = listFilters.fields;
   const columns = clientFields.filter((field) => field.showInTable);
-  const tagList = useMemo(() => tags.data?.items ?? [], [tags.data]);
+  const tagList = listFilters.tags;
   const items = useMemo(() => clients.data?.items ?? [], [clients.data]);
   const rows = useMemo(
     () =>
@@ -113,6 +110,15 @@ export const ClientsPanel = () => {
             onChange={setTerm}
             placeholder="Tìm theo tên, ghi chú, tag"
             label="Tìm khách hàng"
+            className="basis-full sm:basis-auto"
+          />
+          <ListFiltersControl
+            fields={clientFields}
+            tags={tagList}
+            filters={listFilters.filters}
+            onChange={listFilters.setFilters}
+            today={me.data ? todayIn(me.data.settings.timezone) : undefined}
+            title="Lọc khách hàng theo trường và tag"
           />
           <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
             <ArchivedToggle
@@ -123,13 +129,15 @@ export const ClientsPanel = () => {
             {clients.data ? (
               <CountLabel shown={rows.length} total={items.length} noun="khách hàng" />
             ) : null}
-            <Button onClick={() => setDialog({ client: null })}>
+            {/* Phones: "Thêm" keeps the filter button, the count and the action on one row. */}
+            <Button className="relative" onClick={() => setDialog({ client: null })}>
               <Plus />
-              Thêm khách hàng
+              Thêm<span className="max-sm:sr-only"> khách hàng</span>
             </Button>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        {/* relative: keeps the absolutely positioned sr-only header inside this scroller. */}
+        <div className="relative overflow-x-auto">
           <div
             className={cn("md:min-w-max", columns.length > 2 && "md:min-w-[56rem]")}
             style={{ "--client-cols": template } as CSSProperties}
@@ -139,7 +147,7 @@ export const ClientsPanel = () => {
               <span className="text-right">Dự án</span>
               <span>Tag</span>
               {columns.map((field) => (
-                <span key={field.id} className="truncate">
+                <span key={field.id} className="truncate" title={field.label}>
                   {field.label}
                 </span>
               ))}
@@ -154,14 +162,28 @@ export const ClientsPanel = () => {
               <EmptyState
                 size="sm"
                 icon={Building2}
-                title={items.length === 0 ? "Chưa có khách hàng" : "Không có khách hàng phù hợp"}
+                title={
+                  items.length === 0 && !filtering
+                    ? "Chưa có khách hàng"
+                    : "Không có khách hàng phù hợp"
+                }
                 description={
-                  items.length === 0
+                  items.length === 0 && !filtering
                     ? "Thêm khách hàng để gắn với dự án và job."
-                    : "Thử từ khóa khác hoặc hiện mục đã lưu trữ."
+                    : filtering
+                      ? "Thử bỏ bớt tag hoặc trường đang lọc."
+                      : "Thử từ khóa khác hoặc hiện mục đã lưu trữ."
                 }
                 action={
-                  items.length === 0 ? (
+                  filtering ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => listFilters.setFilters(emptyListFilters)}
+                    >
+                      Xóa bộ lọc
+                    </Button>
+                  ) : items.length === 0 ? (
                     <Button size="sm" onClick={() => setDialog({ client: null })}>
                       <Plus />
                       Thêm khách hàng
@@ -209,8 +231,14 @@ export const ClientsPanel = () => {
                     <span className="hidden text-right text-[13px] tabular-nums md:block">
                       {client.projectCount}
                     </span>
-                    <span className="col-span-2 min-w-0 md:col-span-1">
+                    <span className="col-span-2 flex min-w-0 flex-col gap-1 md:col-span-1">
                       <TagChips tags={tagList} tagIds={client.tagIds} />
+                      {/* Phones: the custom-field columns as "Label: value" chips. */}
+                      <CustomFieldChips
+                        fields={clientFields}
+                        values={client.customValues}
+                        className="md:hidden"
+                      />
                     </span>
                     {columns.map((field) => (
                       <span key={field.id} className="hidden min-w-0 text-[13px] md:block">
@@ -230,7 +258,7 @@ export const ClientsPanel = () => {
         key={dialog?.client?.id ?? "new"}
         open={dialog !== null}
         client={dialog?.client ?? null}
-        clients={items}
+        clients={allClients.data?.items ?? items}
         fields={clientFields}
         tags={tagList}
         onClose={() => setDialog(null)}
@@ -305,7 +333,7 @@ const ClientDialog = ({
       >
         <form
           noValidate
-          className="flex max-h-[calc(100dvh-2rem)] flex-col"
+          className={cn("flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col", phoneSheetColumn)}
           onSubmit={(event) => {
             event.preventDefault();
             submit();

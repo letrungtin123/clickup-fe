@@ -53,7 +53,8 @@ export const DateTimeField = ({
         aria-invalid={invalid}
         aria-label={label ? `${label} — giờ` : "Giờ"}
         onChange={(event) => emit(parts.day, event.target.value)}
-        className="w-28 shrink-0 tabular-nums"
+        // Wide enough for a 12-hour browser locale ("05:00 CH") as well as 24-hour "17:00".
+        className="w-32 shrink-0 tabular-nums"
       />
     </div>
   );

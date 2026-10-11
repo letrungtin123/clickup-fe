@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
@@ -36,6 +36,19 @@ export const KpiGrid = ({
   const breakpoint = useBreakpoint();
   const compact = breakpoint === "mobile";
   const [focus, setFocus] = useState({ row: 0, col: 0 });
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Open on the current period: on phones (and most desktops) T1… fill the view and the column that
+  // matters sits off-screen to the right. Horizontal only; the page itself never scrolls.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || currentColumn === null) return;
+    const head = container.querySelector<HTMLElement>(`th[data-kpi-head="${currentColumn}"]`);
+    const pinned = container.querySelector<HTMLElement>("th[data-kpi-pinned]");
+    if (!head) return;
+    const left = head.offsetLeft - (pinned?.offsetWidth ?? 0) - 2 * head.offsetWidth;
+    container.scrollLeft = Math.max(0, left);
+  }, [currentColumn, compact]);
 
   const move = (row: number, col: number, container: HTMLElement) => {
     const target = rows[row];
@@ -70,6 +83,7 @@ export const KpiGrid = ({
 
   return (
     <div
+      ref={scrollRef}
       className="max-h-[min(68dvh,calc(100dvh-15rem))] min-h-40 overflow-auto overscroll-contain rounded-b-xl"
       onKeyDown={onKeyDown}
     >
@@ -82,6 +96,7 @@ export const KpiGrid = ({
           <tr>
             <th
               scope="col"
+              data-kpi-pinned=""
               className={cn(
                 "sticky top-0 left-0 z-30 border-r border-b bg-surface px-3 py-2.5 text-left text-xs font-medium text-foreground-muted",
                 compact ? "w-36 min-w-36" : "w-60 min-w-60"
@@ -93,6 +108,7 @@ export const KpiGrid = ({
               <th
                 key={column.key}
                 scope="col"
+                data-kpi-head={column.key}
                 title={column.title}
                 className={cn(
                   "sticky top-0 z-20 min-w-[4.75rem] border-b bg-surface/95 px-2 py-2.5 text-right text-xs font-medium text-foreground-muted backdrop-blur-sm",

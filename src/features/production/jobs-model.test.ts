@@ -19,7 +19,9 @@ import {
   jobProgress,
   jobQueryFromFilters,
   mentionAt,
+  maxDeclaredDoneQty,
   mentionedIds,
+  myCreditSummary,
   needsInput,
   transitionAsks,
   qcActions,
@@ -266,6 +268,27 @@ describe("job filters", () => {
     expect(activeFilterCount(filters)).toBe(3);
   });
 
+  it("carries several tags and custom-field filters (old single-tag links still work)", () => {
+    const old = jobFiltersFromSearch(new URLSearchParams(`tag=${id(60)}`));
+    expect(old.custom.tagIds).toEqual([id(60)]);
+    const filters = {
+      ...emptyJobFilters,
+      custom: {
+        tagIds: [id(60), id(61)],
+        fields: { uu_tien: { values: ["gap", "__empty__"], from: null, to: null } }
+      }
+    };
+    const params = jobFiltersToSearch(filters);
+    expect(params.getAll("tag")).toEqual([id(60), id(61)]);
+    expect(params.getAll("cf.uu_tien")).toEqual(["gap", "__empty__"]);
+    expect(jobFiltersFromSearch(params)).toEqual(filters);
+    expect(activeFilterCount(filters)).toBe(2);
+    expect(jobQueryFromFilters(filters, VN)).toMatchObject({
+      tagId: [id(60), id(61)],
+      "cf.uu_tien": ["gap", "__empty__"]
+    });
+  });
+
   it("turns the day range into [from, to+1) instants in the organization timezone", () => {
     const query = jobQueryFromFilters(
       { ...emptyJobFilters, from: "2026-10-01", to: "2026-10-31", archived: true },
@@ -360,6 +383,139 @@ describe("timeline sentences", () => {
         )
       )
     ).toBe("sửa #7: số tấm giao 5 tấm → 6 tấm; quy trình quy trình khác → Retouch");
+  });
+
+  const orderField = {
+    id: id(70),
+    entity: "JOB" as const,
+    key: "ma_don_hang",
+    label: "Mã đơn hàng",
+    type: "TEXT" as const,
+    options: [],
+    required: false,
+    showInTable: true,
+    sortOrder: 0,
+    active: true
+  };
+  const levelField = {
+    ...orderField,
+    id: id(71),
+    entity: "TASK" as const,
+    key: "do_kho",
+    label: "Độ khó",
+    type: "SELECT" as const,
+    options: [
+      { value: "de", label: "Dễ" },
+      { value: "kho", label: "Khó" }
+    ]
+  };
+  const richNames = {
+    ...names,
+    tag: (value: string) => ({ [id(60)]: "Gấp", [id(61)]: "VIP" })[value],
+    field: (entity: "JOB" | "TASK", key: string) =>
+      [orderField, levelField].find((field) => field.entity === entity && field.key === key)
+  };
+
+  it("describes job edits (JOB rows) field by field", () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const segments = describeTaskLog(
+      {
+        action: "JOB",
+        taskNumber: null,
+        fromValue: {
+          deadline: `${year}-10-12T10:00:00.000Z`,
+          leaderId: id(1),
+          leaderName: "Leader A",
+          customValues: { ma_don_hang: "ĐH1", uu_tien: "gap" },
+          tagIds: [id(61)],
+          totalImages: 100
+        },
+        toValue: {
+          deadline: `${year}-10-13T05:00:00.000Z`,
+          leaderId: id(2),
+          leaderName: "Leader B",
+          customValues: { ma_don_hang: "ĐH2", uu_tien: "gap" },
+          tagIds: [id(60)],
+          totalImages: 1200
+        }
+      },
+      richNames
+    );
+    expect(text(segments)).toBe(
+      "đã sửa job: deadline 12/10 17:00 → 13/10 12:00; Leader Leader A → Leader B; " +
+        "Mã đơn hàng ĐH1 → ĐH2; thêm tag Gấp; bỏ tag VIP; tổng tấm 100 → 1.200"
+    );
+    expect(
+      text(
+        describeTaskLog(
+          {
+            action: "JOB",
+            taskNumber: null,
+            fromValue: { archived: false },
+            toValue: { archived: true }
+          },
+          richNames
+        )
+      )
+    ).toBe("đã lưu trữ job");
+    expect(
+      text(
+        describeTaskLog(
+          {
+            action: "JOB",
+            taskNumber: null,
+            fromValue: { driveLink: null, name: null },
+            toValue: { driveLink: "https://x", name: "Lô 2" }
+          },
+          richNames
+        )
+      )
+    ).toBe("đã sửa job: thêm link ảnh; tên job — → “Lô 2”");
+  });
+
+  it("describes task tag and custom-field edits", () => {
+    expect(
+      text(
+        describeTaskLog(
+          log(
+            "FIELD",
+            { tagIds: [], customValues: { do_kho: "de" } },
+            { tagIds: [id(60)], customValues: { do_kho: "kho" } }
+          ),
+          richNames
+        )
+      )
+    ).toBe("sửa #7: thêm tag Gấp; Độ khó Dễ → Khó");
+  });
+});
+
+describe("maxDeclaredDoneQty", () => {
+  it("mirrors the API cap: max(2 × assigned, assigned + 10)", () => {
+    expect(maxDeclaredDoneQty(10)).toBe(20);
+    expect(maxDeclaredDoneQty(1)).toBe(11);
+    expect(maxDeclaredDoneQty(100)).toBe(200);
+  });
+});
+
+describe("myCreditSummary", () => {
+  it("sums the caller's rows and marks Khoán-only tasks", () => {
+    expect(myCreditSummary({ myCredits: [] })).toBeNull();
+    expect(
+      myCreditSummary({
+        myCredits: [
+          { role: "WORKER", credits: 12.5, qty: 10, payMode: "POINTS" },
+          { role: "WORKER", credits: -1.25, qty: -1, payMode: "POINTS" }
+        ]
+      })
+    ).toEqual({
+      credits: 11.25,
+      khoan: false,
+      detail: "Người làm 12,5 điểm · 10 tấm; Người làm -1,25 điểm · -1 tấm"
+    });
+    expect(
+      myCreditSummary({ myCredits: [{ role: "QC", credits: 3, qty: 30, payMode: "MONEY_IF_KPI" }] })
+    ).toMatchObject({ credits: 3, khoan: true, detail: "QC 3 điểm Khoán · 30 tấm" });
   });
 });
 

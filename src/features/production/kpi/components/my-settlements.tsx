@@ -9,16 +9,22 @@ import type { KpiSettlement } from "@/contracts/production-scores";
 
 import { formatCredit, formatMoney, formatNumber } from "../../format";
 import { formatPercent } from "../../scores/forecast";
+import { ExportButton } from "../../scores/components/export-button";
 import { Panel } from "../../scores/components/kit";
 import { formatDayRange, periodLabel, rollupLabel, shiftPeriod } from "../../scores/periods";
 import { useKpiReport, useKpiSettlements } from "../hooks";
+import { statusOfRollup } from "../report";
 import { KpiFiguresTable, type KpiFiguresRow } from "./kpi-figures-table";
 
 type View = "MONTH" | "QUARTER" | "YEAR";
 
+// "10:05 06/10/2026": full dates like the rest of the module (dateStyle short gives "6/10/26").
 const dateTime = new Intl.DateTimeFormat("vi-VN", {
-  dateStyle: "short",
-  timeStyle: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
   timeZone: "Asia/Ho_Chi_Minh"
 });
 
@@ -49,7 +55,8 @@ export const MySettlements = ({
         .map((row) => ({
           key: row.period,
           label: periodLabel(row.period),
-          sublabel: row.leaveDays > 0 ? `${formatNumber(row.leaveDays)} ngày nghỉ được duyệt` : undefined,
+          sublabel:
+            row.leaveDays > 0 ? `${formatNumber(row.leaveDays)} ngày nghỉ được duyệt` : undefined,
           target: row.target,
           pointsOfficial: row.pointsOfficial,
           khoanPointsConverted: row.khoanPointsConverted,
@@ -75,7 +82,8 @@ export const MySettlements = ({
         totalPoints: rollup.totalPoints,
         percent: rollup.percent,
         difference: rollup.difference,
-        khoanMoney: rollup.khoanMoney
+        khoanMoney: rollup.khoanMoney,
+        rollupStatus: statusOfRollup(rollup)
       }));
   })();
   const showMoney = rows.some((row) => row.khoanMoney !== null);
@@ -103,19 +111,27 @@ export const MySettlements = ({
 
       <Panel
         title="KPI 12 kỳ gần nhất"
-        description="Tổng = điểm chính thức + điểm Khoán quy đổi khi không đạt KPI. Kỳ chưa chốt là số tạm tính."
+        description="Tổng = điểm chính thức + điểm Khoán quy đổi khi không đạt KPI. Kỳ chưa chốt là số tạm tính; quý và năm tính đủ cả kỳ."
         actions={
-          <SegmentedControl<View>
-            aria-label="Gộp theo"
-            size="sm"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "MONTH", label: "Tháng" },
-              { value: "QUARTER", label: "Quý" },
-              { value: "YEAR", label: "Năm" }
-            ]}
-          />
+          <>
+            <SegmentedControl<View>
+              aria-label="Gộp theo"
+              size="sm"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "MONTH", label: "Tháng" },
+                { value: "QUARTER", label: "Quý" },
+                { value: "YEAR", label: "Năm" }
+              ]}
+            />
+            <ExportButton
+              path="/production/kpi/export"
+              query={{ from: range.from, to: range.to }}
+              fallbackName={`kpi-cua-toi-${range.from}-${range.to}.xlsx`}
+              size="sm"
+            />
+          </>
         }
       >
         {report.isPending ? (
@@ -148,7 +164,9 @@ const LatestSettlement = ({ settlement }: { settlement: KpiSettlement }) => {
       aria-label={`Kết quả chốt ${periodLabel(settlement.period)}`}
       className={cn(
         "flex flex-col gap-4 rounded-xl border p-4 shadow-xs",
-        settlement.met ? "border-success/30 bg-success-soft/50" : "border-danger/25 bg-danger-soft/45"
+        settlement.met
+          ? "border-success/30 bg-success-soft/50"
+          : "border-danger/25 bg-danger-soft/45"
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -170,8 +188,10 @@ const LatestSettlement = ({ settlement }: { settlement: KpiSettlement }) => {
               {periodLabel(settlement.period)} · {formatDayRange(settlement.from, settlement.to)}
             </p>
             <p className="text-[15px] font-semibold">
-              {settlement.met ? "Đạt KPI" : "Không đạt KPI"} ·{" "}
-              {formatPercent(settlement.percent)}
+              {settlement.met ? "Đạt KPI" : "Không đạt KPI"} · {formatPercent(settlement.percent)}
+              {!settlement.met && converted ? (
+                <span className="font-normal text-foreground-muted"> (gồm Khoán quy điểm)</span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -201,7 +221,9 @@ const LatestSettlement = ({ settlement }: { settlement: KpiSettlement }) => {
           : converted
             ? `Thiếu KPI nên ${formatCredit(settlement.khoanPointsConverted)} điểm Khoán được quy về điểm KPI (tổng ${formatCredit(settlement.totalPoints)}); tiền Khoán = 0.`
             : "Thiếu KPI; kỳ này không có điểm Khoán để quy đổi."}
-        {settlement.leaveDays > 0 ? ` Nghỉ được duyệt: ${formatNumber(settlement.leaveDays)} ngày.` : ""}
+        {settlement.leaveDays > 0
+          ? ` Nghỉ được duyệt: ${formatNumber(settlement.leaveDays)} ngày.`
+          : ""}
         {settlement.note ? ` Ghi chú: ${settlement.note}` : ""}
       </p>
     </section>

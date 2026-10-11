@@ -12,26 +12,16 @@ import {
   SelectValue
 } from "@/components/ui/select";
 
+import { kpiPeriodRange, type KpiCloseDays } from "@/contracts/production-scores";
+
 import { useTeams } from "../../hooks";
 import { touchTargets } from "../../ui";
-import {
-  formatDayRange,
-  periodLabel,
-  periodRange,
-  periodsBetween,
-  shiftPeriod
-} from "../periods";
+import { formatDayRange, periodLabel, periodsBetween, shiftPeriod } from "../periods";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
 /** Scrollable page body with the module's fade-in; phones get ≥ 40px touch targets. */
-export const PageBody = ({
-  children,
-  className
-}: {
-  children: ReactNode;
-  className?: string;
-}) => (
+export const PageBody = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div className="min-h-0 flex-1 overflow-y-auto">
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -72,7 +62,7 @@ export const Panel = ({
   >
     {title || actions ? (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 basis-60 flex-col gap-0.5">
           {title ? (
             <h2 id={labelledBy} className="text-sm font-semibold">
               {title}
@@ -112,9 +102,9 @@ export const StatCard = ({
       className
     )}
   >
-    <p className="flex items-center gap-1.5 text-xs font-medium text-foreground-muted">
-      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="truncate">{label}</span>
+    <p className="flex items-start gap-1.5 text-xs leading-4 font-medium text-foreground-muted">
+      <Icon className="size-3.5 shrink-0 translate-y-px" aria-hidden="true" />
+      <span className="min-w-0 break-words">{label}</span>
     </p>
     <p className="flex min-w-0 items-baseline gap-1">
       <span className="truncate text-xl font-semibold tracking-[-0.02em] sm:text-2xl">{value}</span>
@@ -134,21 +124,22 @@ export const PeriodPicker = ({
   value,
   onChange,
   latest,
-  closeDay,
+  closeDays,
   count = 24,
   className
 }: {
   value: string;
   onChange: (period: string) => void;
   latest: string;
-  closeDay: number;
+  /** settings.kpiCloseDays (closeDaysOf): a period's dates follow the close day in force for it. */
+  closeDays: KpiCloseDays;
   count?: number;
   className?: string;
 }) => {
   const recent = periodsBetween(shiftPeriod(latest, -(count - 1)), latest).reverse();
   const periods = recent.includes(value) ? recent : [value, ...recent];
   const items = periods.map((period) => ({ value: period, label: periodLabel(period) }));
-  const range = periodRange(value, closeDay);
+  const range = kpiPeriodRange(value, closeDays);
   return (
     <div className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1", className)}>
       <div className="flex min-w-0 items-center gap-1">

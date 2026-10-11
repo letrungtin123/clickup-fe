@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, type MouseEvent, type PointerEvent, type TouchEvent } from "react";
 
 type LongPressOptions = {
   /** Off → no handlers (e.g. mouse devices keep their hover toolbars). */
@@ -12,7 +12,8 @@ const MOVE_TOLERANCE = 10;
 /**
  * Touch long-press → `onLongPress` (the tap alternative to hover-only toolbars). Only touch pointers
  * count; moving the finger (scrolling) cancels; the click and the native context menu that follow a
- * fired press are swallowed so the row does not also "tap".
+ * fired press are swallowed so the row does not also "tap" — and neither does whatever the press
+ * opened under the finger (an action sheet item), see onTouchEnd.
  */
 export const useLongPress = (
   onLongPress: () => void,
@@ -21,6 +22,8 @@ export const useLongPress = (
   const timer = useRef<number | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
   const fired = useRef(false);
+  /** The current touch already fired: its release must not become a click. */
+  const firedThisTouch = useRef(false);
   const callback = useRef(onLongPress);
 
   useEffect(() => {
@@ -52,11 +55,13 @@ export const useLongPress = (
       if (event.pointerType !== "touch" || !event.isPrimary || !ownTarget(event)) return;
       cancel();
       fired.current = false;
+      firedThisTouch.current = false;
       origin.current = { x: event.clientX, y: event.clientY };
       timer.current = window.setTimeout(() => {
         timer.current = null;
         origin.current = null;
         fired.current = true;
+        firedThisTouch.current = true;
         // Browsers usually send no click after a long press; never let the flag outlive the gesture.
         window.setTimeout(() => {
           fired.current = false;
@@ -72,6 +77,14 @@ export const useLongPress = (
     },
     onPointerUp: cancel,
     onPointerCancel: cancel,
+    // Touch events stay with the row even when a sheet now covers the finger: cancelling the release
+    // stops the browser from "clicking" the sheet item that appeared under it (holding a message near
+    // the composer used to open its thread straight away).
+    onTouchEnd: (event: TouchEvent<HTMLElement>) => {
+      if (!firedThisTouch.current) return;
+      firedThisTouch.current = false;
+      if (event.cancelable) event.preventDefault();
+    },
     onContextMenu: (event: MouseEvent<HTMLElement>) => {
       if (ownTarget(event) && (fired.current || timer.current !== null)) event.preventDefault();
     },

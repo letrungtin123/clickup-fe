@@ -58,6 +58,8 @@ export const ProductionCreditRulesRoute = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** Last opened cell: focus goes back to it after the editor closes (cell is null by then). */
+  const lastCell = useRef<CellRef | null>(null);
   const matrix = useCreditMatrix(at);
   const canEdit = access.isAdmin;
 
@@ -107,7 +109,9 @@ export const ProductionCreditRulesRoute = () => {
             <>
               <Button variant="outline" onClick={() => setVersionOpen(true)}>
                 <CalendarPlus />
-                <span className="max-sm:sr-only">Tạo phiên bản mới từ ngày…</span>
+                {/* A bare calendar icon is cryptic on phones: keep a short label there. */}
+                <span className="max-sm:hidden">Tạo phiên bản mới từ ngày…</span>
+                <span className="sm:hidden">Phiên bản mới</span>
               </Button>
               <Button variant="outline" onClick={exportCsv} disabled={coverage.filled === 0}>
                 <Download />
@@ -228,7 +232,10 @@ export const ProductionCreditRulesRoute = () => {
             canEdit={canEdit}
             activeCell={cell}
             scrollRef={scrollRef}
-            onOpenCell={(next) => setCell(next)}
+            onOpenCell={(next) => {
+              lastCell.current = next;
+              setCell(next);
+            }}
           />
         )}
         {matrix.data && view.projects.length > 0 ? (
@@ -269,7 +276,13 @@ export const ProductionCreditRulesRoute = () => {
             >
               <PopoverPrimitive.Popup
                 aria-label="Đơn giá"
-                finalFocus={() => cellElement()}
+                finalFocus={() =>
+                  lastCell.current
+                    ? (scrollRef.current?.querySelector<HTMLElement>(
+                        cellSelector(lastCell.current)
+                      ) ?? null)
+                    : null
+                }
                 className={cn(
                   "z-50 w-[22rem] max-w-[calc(100vw-1.5rem)] origin-(--transform-origin) rounded-xl bg-popover p-3.5 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/10 outline-hidden duration-150",
                   "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",

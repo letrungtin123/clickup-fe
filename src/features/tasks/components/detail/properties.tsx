@@ -103,7 +103,7 @@ export const DetailProperties = ({ task }: { task: TaskDetail }) => {
                 type="button"
                 aria-label={`Gỡ ${user.displayName}`}
                 onClick={() => actions.toggleAssignee(task, user)}
-                className="inline-flex size-4 items-center justify-center rounded-full text-foreground-subtle outline-none pointer-coarse:size-6 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="relative inline-flex size-4 items-center justify-center rounded-full text-foreground-subtle outline-none pointer-coarse:size-6 pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="size-3" />
               </button>

@@ -1,25 +1,47 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import { Archive, Briefcase } from "lucide-react";
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import type { CustomField } from "@/contracts/production-catalog";
 import type { JobSummary } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
+import { formatInteger } from "../../format";
 import { useTags } from "../../hooks";
 import { formatDateTime, jobProgress } from "../../jobs-model";
 import type { Tag } from "../../types";
+import { CustomFieldValue } from "../custom-field-input";
+import { CustomFieldChips } from "../list-filters";
 import { TagChips } from "../tag-picker";
 import { FeedbackBadge, LateBadge, MiniBar, Person, StatusChip } from "./job-bits";
 
 const ROW_HEIGHT = 60;
-const template =
-  "minmax(15rem,2fr) minmax(9rem,1fr) 8.5rem 9rem 4.5rem 5.75rem 5.75rem 5.75rem 3.5rem minmax(7rem,1fr)";
+/**
+ * The table is as wide as its container but never narrower than the sum of the minimums (69.75rem
+ * plus 7.5rem per custom-field column): a 1440px screen with the sidebar open shows every built-in
+ * column, Tag included; custom fields marked "hiện trong bảng" follow Tag, and narrower screens
+ * scroll sideways with the job column pinned.
+ */
+const baseColumns = [
+  "minmax(13.5rem,2fr)",
+  "minmax(8.5rem,1fr)",
+  "8rem",
+  "8.5rem",
+  "5rem",
+  "5.25rem",
+  "5.25rem",
+  "5.25rem",
+  "3.5rem",
+  "minmax(7rem,1fr)"
+];
+const BASE_MIN_REM = 69.75;
+const FIELD_MIN_REM = 7.5;
 
 type JobsListProps = {
   jobs: JobSummary[];
@@ -30,6 +52,8 @@ type JobsListProps = {
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
   timeZone: string;
+  /** Active JOB custom fields; the `showInTable` ones become columns (chips on phone cards). */
+  fields?: readonly CustomField[] | undefined;
   filtering: boolean;
   empty: React.ReactNode;
 };
@@ -79,7 +103,7 @@ const Qty = ({
   tone: "brand" | "success" | "muted" | "warning";
 }) => (
   <span className="flex flex-col gap-1">
-    <span className="text-[13px] tabular-nums">{value}</span>
+    <span className="text-[13px] tabular-nums">{formatInteger(value)}</span>
     <MiniBar value={total > 0 ? (value / total) * 100 : 0} tone={tone} />
   </span>
 );
@@ -90,9 +114,15 @@ const JobTable = ({
   isFetchingNextPage,
   fetchNextPage,
   timeZone,
-  tags
+  tags,
+  fields = []
 }: JobsListProps & { tags: Tag[] }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const columns = fields.filter((field) => field.showInTable);
+  const template = [...baseColumns, ...columns.map(() => `minmax(${FIELD_MIN_REM}rem,1fr)`)].join(
+    " "
+  );
+  const minWidth = `${BASE_MIN_REM + columns.length * FIELD_MIN_REM}rem`;
   // eslint-disable-next-line react-hooks/incompatible-library -- the virtualizer instance is read during render on purpose
   const virtualizer = useVirtualizer({
     count: jobs.length,
@@ -107,137 +137,182 @@ const JobTable = ({
     if (hasNextPage && !isFetchingNextPage && last >= jobs.length - 8) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, last, jobs.length, fetchNextPage]);
 
+  // More columns to the right (custom fields often are): a fade on the edge says "scroll".
+  const [moreRight, setMoreRight] = useState(false);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return undefined;
+    const update = () =>
+      setMoreRight(element.scrollLeft + element.clientWidth < element.scrollWidth - 4);
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [columns.length]);
+
   return (
-    <div
-      ref={scrollRef}
-      className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-xl border bg-surface shadow-xs"
-      style={{ "--job-cols": template } as CSSProperties}
-    >
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <div
-        role="table"
-        aria-label="Danh sách job"
-        aria-rowcount={jobs.length + 1}
-        className="min-w-max"
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-xl border bg-surface shadow-xs"
+        style={{ "--job-cols": template } as CSSProperties}
       >
         <div
-          role="row"
-          className="sticky top-0 z-20 grid h-10 grid-cols-(--job-cols) items-center border-b bg-surface/95 text-xs font-medium text-foreground-muted backdrop-blur-sm"
+          role="table"
+          aria-label="Danh sách job"
+          aria-rowcount={jobs.length + 1}
+          style={{ minWidth }}
         >
-          <span
-            role="columnheader"
-            className="sticky left-0 z-10 flex h-full items-center bg-surface px-4 shadow-[1px_0_0_var(--border)]"
+          <div
+            role="row"
+            className="sticky top-0 z-20 grid h-10 grid-cols-(--job-cols) items-center border-b bg-surface/95 text-xs font-medium text-foreground-muted backdrop-blur-sm"
           >
-            Job
-          </span>
-          <span role="columnheader" className="px-3">
-            Leader
-          </span>
-          <span role="columnheader" className="px-3">
-            Deadline
-          </span>
-          <span role="columnheader" className="px-3">
-            Trạng thái
-          </span>
-          <span role="columnheader" className="px-3 text-right">
-            Tổng tấm
-          </span>
-          <span role="columnheader" className="px-3">
-            Đã giao
-          </span>
-          <span role="columnheader" className="px-3">
-            Đã xong
-          </span>
-          <span role="columnheader" className="px-3">
-            Đã kiểm
-          </span>
-          <span role="columnheader" className="px-3" title="Feedback đang mở">
-            FB
-          </span>
-          <span role="columnheader" className="px-3">
-            Tag
-          </span>
-        </div>
-        <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
-          {items.map((virtualRow) => {
-            const job = jobs[virtualRow.index];
-            if (!job) return null;
-            const late = job.lateTaskCount > 0;
-            return (
-              <Link
-                key={virtualRow.key}
-                role="row"
-                to={`/production/jobs/${job.id}`}
-                aria-rowindex={virtualRow.index + 2}
-                className={cn(
-                  "group/row absolute inset-x-0 top-0 grid grid-cols-(--job-cols) items-center border-b border-border/70 text-[13px] outline-none hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  job.archived && "opacity-60"
-                )}
-                style={{ height: ROW_HEIGHT, transform: `translateY(${virtualRow.start}px)` }}
+            <span
+              role="columnheader"
+              className="sticky left-0 z-10 flex h-full items-center bg-surface px-4 shadow-[1px_0_0_var(--border)]"
+            >
+              Job
+            </span>
+            <span role="columnheader" className="px-3">
+              Leader
+            </span>
+            <span role="columnheader" className="px-3">
+              Deadline
+            </span>
+            <span role="columnheader" className="px-3">
+              Trạng thái
+            </span>
+            <span role="columnheader" className="px-3 text-right whitespace-nowrap">
+              Tổng tấm
+            </span>
+            <span role="columnheader" className="px-3">
+              Đã giao
+            </span>
+            <span role="columnheader" className="px-3">
+              Đã xong
+            </span>
+            <span role="columnheader" className="px-3">
+              Đã kiểm
+            </span>
+            <span role="columnheader" className="px-3" title="Feedback đang mở">
+              FB
+            </span>
+            <span role="columnheader" className="px-3">
+              Tag
+            </span>
+            {columns.map((field) => (
+              <span
+                key={field.id}
+                role="columnheader"
+                className="truncate px-3 whitespace-nowrap"
+                title={field.label}
               >
-                <span
-                  role="cell"
-                  className="sticky left-0 z-[1] flex h-full min-w-0 flex-col justify-center gap-0.5 bg-surface px-4 shadow-[1px_0_0_var(--border)] group-hover/row:bg-[color-mix(in_oklch,var(--surface),var(--foreground)_3%)]"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    {job.archived ? (
-                      <Archive
-                        className="size-3.5 shrink-0 text-foreground-subtle"
-                        aria-label="Đã lưu trữ"
-                      />
-                    ) : null}
-                    <span className="truncate font-medium">{job.code}</span>
-                  </span>
-                  <span className="truncate text-xs text-foreground-muted">
-                    <span className="font-mono">{job.project.code}</span>
-                    {job.name ? ` · ${job.name}` : ""}
-                  </span>
-                </span>
-                <span role="cell" className="min-w-0 px-3">
-                  <Person user={job.leader} size="xs" />
-                </span>
-                <span role="cell" className="flex flex-col gap-0.5 px-3">
-                  <span className={cn("tabular-nums", late && "font-medium text-danger")}>
-                    {formatDateTime(job.deadline, timeZone)}
-                  </span>
-                  {late ? (
-                    <LateBadge label={`${job.lateTaskCount} trễ`} className="self-start" />
-                  ) : null}
-                </span>
-                <span role="cell" className="min-w-0 px-3">
-                  <StatusChip status={job.status} size="sm" />
-                </span>
-                <span role="cell" className="px-3 text-right tabular-nums">
-                  {job.totalImages}
-                </span>
-                <span role="cell" className="px-3">
-                  <Qty
-                    value={job.qtyAssigned}
-                    total={job.totalImages}
-                    tone={jobProgress(job).overAllocated ? "warning" : "muted"}
-                  />
-                </span>
-                <span role="cell" className="px-3">
-                  <Qty value={job.qtyDone} total={job.totalImages} tone="brand" />
-                </span>
-                <span role="cell" className="px-3">
-                  <Qty value={job.qtyChecked} total={job.totalImages} tone="success" />
-                </span>
-                <span role="cell" className="px-3">
-                  <FeedbackBadge count={job.openFeedbackCount} />
-                </span>
-                <span role="cell" className="min-w-0 px-3">
-                  <TagChips tags={tags} tagIds={job.tagIds} max={2} />
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-        {isFetchingNextPage ? (
-          <div className="sticky left-0 flex w-full justify-center py-3">
-            <Spinner className="text-foreground-muted" />
+                {field.label}
+              </span>
+            ))}
           </div>
-        ) : null}
+          <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+            {items.map((virtualRow) => {
+              const job = jobs[virtualRow.index];
+              if (!job) return null;
+              const late = job.lateTaskCount > 0;
+              return (
+                <Link
+                  key={virtualRow.key}
+                  role="row"
+                  to={`/production/jobs/${job.id}`}
+                  aria-rowindex={virtualRow.index + 2}
+                  className={cn(
+                    "group/row absolute inset-x-0 top-0 grid grid-cols-(--job-cols) items-center border-b border-border/70 text-[13px] outline-none hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                    job.archived && "opacity-60"
+                  )}
+                  style={{ height: ROW_HEIGHT, transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  <span
+                    role="cell"
+                    className="sticky left-0 z-[1] flex h-full min-w-0 flex-col justify-center gap-0.5 bg-surface px-4 shadow-[1px_0_0_var(--border)] group-hover/row:bg-[color-mix(in_oklch,var(--surface),var(--foreground)_3%)]"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {job.archived ? (
+                        <Archive
+                          className="size-3.5 shrink-0 text-foreground-subtle"
+                          aria-label="Đã lưu trữ"
+                        />
+                      ) : null}
+                      <span className="truncate font-medium">{job.code}</span>
+                    </span>
+                    <span className="truncate text-xs text-foreground-muted">
+                      <span className="font-mono">{job.project.code}</span>
+                      {job.name ? ` · ${job.name}` : ""}
+                    </span>
+                  </span>
+                  <span role="cell" className="min-w-0 px-3">
+                    <Person user={job.leader} size="xs" />
+                  </span>
+                  <span role="cell" className="flex flex-col gap-0.5 px-3">
+                    <span className={cn("tabular-nums", late && "font-medium text-danger")}>
+                      {formatDateTime(job.deadline, timeZone)}
+                    </span>
+                    {late ? (
+                      <LateBadge label={`${job.lateTaskCount} trễ`} className="self-start" />
+                    ) : null}
+                  </span>
+                  <span role="cell" className="min-w-0 px-3">
+                    <StatusChip status={job.status} size="sm" />
+                  </span>
+                  <span role="cell" className="px-3 text-right tabular-nums">
+                    {formatInteger(job.totalImages)}
+                  </span>
+                  <span role="cell" className="px-3">
+                    <Qty
+                      value={job.qtyAssigned}
+                      total={job.totalImages}
+                      tone={jobProgress(job).overAllocated ? "warning" : "muted"}
+                    />
+                  </span>
+                  <span role="cell" className="px-3">
+                    <Qty value={job.qtyDone} total={job.totalImages} tone="brand" />
+                  </span>
+                  <span role="cell" className="px-3">
+                    <Qty value={job.qtyChecked} total={job.totalImages} tone="success" />
+                  </span>
+                  <span role="cell" className="px-3">
+                    <FeedbackBadge count={job.openFeedbackCount} />
+                  </span>
+                  <span role="cell" className="min-w-0 px-3">
+                    <TagChips tags={tags} tagIds={job.tagIds} max={2} />
+                  </span>
+                  {columns.map((field) => (
+                    <span key={field.id} role="cell" className="flex min-w-0 px-3">
+                      <CustomFieldValue
+                        field={field}
+                        value={job.customValues[field.key]}
+                        className="min-w-0"
+                      />
+                    </span>
+                  ))}
+                </Link>
+              );
+            })}
+          </div>
+          {isFetchingNextPage ? (
+            <div className="sticky left-0 flex w-full justify-center py-3">
+              <Spinner className="text-foreground-muted" />
+            </div>
+          ) : null}
+        </div>
       </div>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute inset-y-px right-px w-12 rounded-r-xl bg-linear-to-l from-surface to-transparent transition-opacity duration-200",
+          moreRight ? "opacity-100" : "opacity-0"
+        )}
+      />
     </div>
   );
 };
@@ -248,7 +323,8 @@ const JobCards = ({
   isFetchingNextPage,
   fetchNextPage,
   timeZone,
-  tags
+  tags,
+  fields = []
 }: JobsListProps & { tags: Tag[] }) => (
   <div className="flex flex-col gap-2.5">
     <ul className="flex flex-col gap-2.5">
@@ -286,8 +362,10 @@ const JobCards = ({
                 <span className="flex flex-col gap-1">
                   <span className="text-foreground-muted">
                     Giao{" "}
-                    <b className="font-semibold text-foreground tabular-nums">{job.qtyAssigned}</b>/
-                    {job.totalImages}
+                    <b className="font-semibold text-foreground tabular-nums">
+                      {formatInteger(job.qtyAssigned)}
+                    </b>
+                    /{formatInteger(job.totalImages)}
                   </span>
                   <MiniBar
                     value={progress.assigned}
@@ -296,18 +374,24 @@ const JobCards = ({
                 </span>
                 <span className="flex flex-col gap-1">
                   <span className="text-foreground-muted">
-                    Xong <b className="font-semibold text-foreground tabular-nums">{job.qtyDone}</b>
+                    Xong{" "}
+                    <b className="font-semibold text-foreground tabular-nums">
+                      {formatInteger(job.qtyDone)}
+                    </b>
                   </span>
                   <MiniBar value={progress.done} />
                 </span>
                 <span className="flex flex-col gap-1">
                   <span className="text-foreground-muted">
                     Đã kiểm{" "}
-                    <b className="font-semibold text-foreground tabular-nums">{job.qtyChecked}</b>
+                    <b className="font-semibold text-foreground tabular-nums">
+                      {formatInteger(job.qtyChecked)}
+                    </b>
                   </span>
                   <MiniBar value={progress.checked} tone="success" />
                 </span>
               </span>
+              <CustomFieldChips fields={fields} values={job.customValues} />
               {job.tagIds.length > 0 ? <TagChips tags={tags} tagIds={job.tagIds} max={4} /> : null}
             </Link>
           </li>

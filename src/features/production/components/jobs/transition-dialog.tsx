@@ -16,11 +16,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProductionStatus } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
+import { isApiError } from "@/lib/api/errors";
 
 import { productionErrorMessage } from "../../errors";
-import { formatNumber } from "../../format";
-import { transitionAsks } from "../../jobs-model";
-import { sheetOnPhone } from "../../ui";
+import { formatInteger, formatNumber } from "../../format";
+import { maxDeclaredDoneQty, transitionAsks } from "../../jobs-model";
+import { touchTargets } from "../../ui";
 import { FormAlert } from "../settings-kit";
 
 export type PendingMove = { task: ProductionTask; option: TaskTransitionOption };
@@ -59,6 +60,16 @@ export const TransitionDialog = ({
   const goingBack = Boolean(
     option?.requiresNote && !option.override && task?.status.code === "WAITING_QC"
   );
+  // SEC2-03: the first Done may declare at most max(2 × assigned, assigned + 10) images (the API
+  // answers QTY_DONE_TOO_HIGH above that); more than assigned is allowed but flagged as an anomaly.
+  const maxDone = task ? maxDeclaredDoneQty(task.qtyAssigned) : null;
+  const qtyValue = /^\d+$/.test(qty.trim()) ? Number(qty) : null;
+  const overAssigned =
+    task &&
+    qtyValue !== null &&
+    qtyValue > task.qtyAssigned &&
+    maxDone !== null &&
+    qtyValue <= maxDone;
 
   const submit = async () => {
     if (!option || !task) return;
@@ -67,6 +78,8 @@ export const TransitionDialog = ({
     if (asks?.qty) {
       const value = Number(qty);
       if (!/^\d+$/.test(qty.trim()) || value > 1_000_000) problems.qty = "Nhập số tấm nguyên ≥ 0.";
+      else if (maxDone !== null && value > maxDone)
+        problems.qty = `Tối đa ${formatInteger(maxDone)} tấm cho ${formatInteger(task.qtyAssigned)} tấm được giao. Nếu thực tế làm nhiều hơn, hãy báo Leader của job sửa số lượng sau khi Done.`;
       else extras.qtyDone = value;
     }
     if (asks?.otHours) {
@@ -82,7 +95,11 @@ export const TransitionDialog = ({
     }
     if (option.requiresNote) {
       if (!note.trim())
-        problems.note = option.override ? "Nhập lý do chuyển ngoài luồng." : "Nhập ghi chú.";
+        problems.note = option.override
+          ? "Nhập lý do chuyển ngoài luồng."
+          : goingBack
+            ? "Nhập lý do không đạt để người làm biết cần sửa gì."
+            : "Nhập ghi chú.";
       else extras.note = note.trim();
     } else if (note.trim()) {
       extras.note = note.trim();
@@ -93,7 +110,13 @@ export const TransitionDialog = ({
     try {
       await onSubmit(extras);
     } catch (error) {
-      setFormError(productionErrorMessage(error));
+      const message = productionErrorMessage(error);
+      // The server's cap message belongs under the quantity it is about.
+      if (isApiError(error) && error.code === "QTY_DONE_TOO_HIGH" && asks?.qty) {
+        setErrors((current) => ({ ...current, qty: message }));
+      } else {
+        setFormError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -107,7 +130,10 @@ export const TransitionDialog = ({
 
   return (
     <Dialog open={pending !== null} onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
+      {/* DialogContent is already a keyboard- and safe-area-aware bottom sheet on phones;
+          `sheetOnPhone` zeroed its bottom padding, so the footer overflowed and the autofocused
+          field scrolled the title out of view. */}
+      <DialogContent className={cn("sm:max-w-md", touchTargets)}>
         <form
           noValidate
           className="flex flex-col gap-4"
@@ -116,7 +142,7 @@ export const TransitionDialog = ({
             void submit();
           }}
         >
-          <DialogHeader>
+          <DialogHeader className="pr-8">
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>
               {task
@@ -136,15 +162,25 @@ export const TransitionDialog = ({
                 autoFocus
                 inputMode="numeric"
                 value={qty}
-                onChange={(event) => setQty(event.target.value)}
+                onChange={(event) => {
+                  setQty(event.target.value);
+                  if (errors.qty) setErrors((current) => ({ ...current, qty: undefined }));
+                }}
                 aria-invalid={Boolean(errors.qty)}
+                aria-describedby={`${ids}-qty-hint`}
                 className="tabular-nums"
               />
               {errors.qty ? (
-                <FieldError>{errors.qty}</FieldError>
+                <FieldError id={`${ids}-qty-hint`}>{errors.qty}</FieldError>
+              ) : overAssigned ? (
+                <FieldDescription id={`${ids}-qty-hint`} className="text-xs text-warning">
+                  Nhiều hơn {formatInteger(task.qtyAssigned)} tấm được giao — vẫn lưu được nhưng sẽ
+                  hiện trong báo cáo bất thường. Tối đa {formatInteger(maxDone)} tấm.
+                </FieldDescription>
               ) : (
-                <FieldDescription className="text-xs">
-                  Mặc định bằng số tấm được giao; sửa nếu thực tế khác. Điểm tính theo số này.
+                <FieldDescription id={`${ids}-qty-hint`} className="text-xs">
+                  Mặc định bằng số tấm được giao; sửa nếu thực tế khác. Điểm tính theo số này
+                  {maxDone !== null ? ` (tối đa ${formatInteger(maxDone)} tấm)` : ""}.
                 </FieldDescription>
               )}
             </Field>
@@ -184,7 +220,7 @@ export const TransitionDialog = ({
             {errors.note ? <FieldError>{errors.note}</FieldError> : null}
           </Field>
           <FormAlert>{formError}</FormAlert>
-          <DialogFooter>
+          <DialogFooter className="max-sm:-bottom-4">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               Hủy
             </Button>

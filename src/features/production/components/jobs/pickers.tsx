@@ -144,7 +144,8 @@ export const OptionSelect = ({
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-72">
+      {/* Narrow filter triggers (w-32/w-40): the list may grow to show the label and its hint. */}
+      <SelectContent className="max-h-72 w-auto max-w-[min(20rem,var(--available-width))] min-w-(--anchor-width)">
         {noneLabel ? (
           <SelectItem value={NONE}>
             <span className="text-foreground-muted">{noneLabel}</span>

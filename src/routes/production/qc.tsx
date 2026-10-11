@@ -12,9 +12,13 @@ import { TaskCard } from "@/features/production/components/jobs/task-card";
 import { TransitionButtons } from "@/features/production/components/jobs/transition-controls";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
 import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
+import { ListFiltersControl } from "@/features/production/components/list-filters";
+import { todayIn } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
 import { useQcQueue } from "@/features/production/jobs-hooks";
 import { formatDateTime, qcActions } from "@/features/production/jobs-model";
+import { emptyListFilters } from "@/features/production/list-filters";
+import { useUrlListFilters } from "@/features/production/list-filters-hooks";
 import { useOpenTask } from "@/features/production/task-link";
 import { touchTargets } from "@/features/production/ui";
 
@@ -34,11 +38,24 @@ export const ProductionQcRoute = () => (
 
 const QcQueue = () => {
   const me = useProductionMe();
-  const queue = useQcQueue();
+  // TASK tags / custom fields, kept in the URL (?tag=…&cf.<key>=…).
+  const listFilters = useUrlListFilters("TASK");
+  const filtering = listFilters.count > 0;
+  const queue = useQcQueue(listFilters.ready, listFilters.query);
   const mover = useTaskMover();
   const openTask = useOpenTask();
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const items = queue.data?.items ?? [];
+  const filterControl = (
+    <ListFiltersControl
+      fields={listFilters.fields}
+      tags={listFilters.tags}
+      filters={listFilters.filters}
+      onChange={listFilters.setFilters}
+      today={todayIn(timeZone)}
+      title="Lọc hàng chờ theo trường và tag"
+    />
+  );
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col", touchTargets)}>
@@ -48,10 +65,14 @@ const QcQueue = () => {
         description="Task đã xong đang chờ bạn kiểm tra, cũ nhất trước."
         actions={
           queue.data ? (
-            <span className="text-sm text-foreground-muted tabular-nums">{items.length} task</span>
+            <span className="text-sm text-foreground-muted tabular-nums" aria-live="polite">
+              {items.length} task{filtering ? " phù hợp" : ""}
+            </span>
           ) : null
         }
-      />
+      >
+        {filterControl}
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
         {queue.isPending || mover.lookup.isPending ? (
           <div
@@ -68,6 +89,21 @@ const QcQueue = () => {
             error={queue.error}
             onRetry={() => void queue.refetch()}
             retrying={queue.isFetching}
+          />
+        ) : items.length === 0 && filtering ? (
+          <EmptyState
+            icon={ShieldCheck}
+            title="Không có task phù hợp bộ lọc"
+            description="Thử bỏ bớt tag hoặc trường đang lọc."
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => listFilters.setFilters(emptyListFilters)}
+              >
+                Xóa bộ lọc
+              </Button>
+            }
           />
         ) : items.length === 0 ? (
           <EmptyState
@@ -101,6 +137,7 @@ const QcQueue = () => {
                     <TaskCard
                       task={task}
                       timeZone={timeZone}
+                      fields={listFilters.fields}
                       onOpen={openTask}
                       meta={
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-muted">

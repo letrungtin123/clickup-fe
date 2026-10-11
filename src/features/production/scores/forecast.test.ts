@@ -49,11 +49,11 @@ describe("forecastLabel", () => {
 
 describe("forecastSentence", () => {
   it("states remaining points, days and the daily pace", () => {
-    expect(forecastSentence(base)).toBe("Còn 128,28 điểm, còn 12 ngày, cần 10,69/ngày.");
+    expect(forecastSentence(base)).toBe("Còn thiếu 128,28 điểm, còn 12 ngày, cần 10,69 điểm/ngày.");
   });
 
   it("omits the pace when the API has none", () => {
-    expect(forecastSentence({ ...base, avgPerDayNeeded: null })).toBe("Còn 128,28 điểm, còn 12 ngày.");
+    expect(forecastSentence({ ...base, avgPerDayNeeded: null })).toBe("Còn thiếu 128,28 điểm, còn 12 ngày.");
   });
 
   it("congratulates when the KPI is met", () => {

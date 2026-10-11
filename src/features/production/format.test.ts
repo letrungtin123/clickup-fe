@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   addDays,
+  closeDayChange,
   dateToDay,
   dayInRange,
   dayToDate,
   formatCredit,
   formatDay,
+  formatKpiPeriod,
   formatMoney,
   formatVersionRange,
   isDay,
@@ -131,11 +133,13 @@ describe("kpiPeriod", () => {
   it("runs from the day after the previous close day through this month's close day", () => {
     // daysLeft counts today, like the API forecast (BUG-PR-24): 1 on the close day.
     expect(kpiPeriod("2026-10-09", 25)).toEqual({
+      period: "2026-10",
       start: "2026-09-26",
       end: "2026-10-25",
       daysLeft: 17
     });
     expect(kpiPeriod("2026-10-25", 25)).toEqual({
+      period: "2026-10",
       start: "2026-09-26",
       end: "2026-10-25",
       daysLeft: 1
@@ -144,11 +148,13 @@ describe("kpiPeriod", () => {
 
   it("rolls into the next period after the close day, across years", () => {
     expect(kpiPeriod("2026-10-26", 25)).toEqual({
+      period: "2026-11",
       start: "2026-10-26",
       end: "2026-11-25",
       daysLeft: 31
     });
     expect(kpiPeriod("2026-12-30", 20)).toEqual({
+      period: "2027-01",
       start: "2026-12-21",
       end: "2027-01-20",
       daysLeft: 22
@@ -158,11 +164,65 @@ describe("kpiPeriod", () => {
   it("clamps the close day to 1–28", () => {
     expect(kpiPeriod("2026-03-01", 31)?.end).toBe("2026-03-28");
     expect(kpiPeriod("2026-03-01", 0)).toEqual({
+      period: "2026-03",
       start: "2026-02-02",
       end: "2026-03-01",
       daysLeft: 1
     });
     expect(kpiPeriod("bad", 25)).toBeNull();
+  });
+
+  it("follows the close-day versions (a change applies from the next period)", () => {
+    const versions = [
+      { fromPeriod: null, closeDay: 25 },
+      { fromPeriod: "2026-11", closeDay: 20 }
+    ];
+    expect(kpiPeriod("2026-10-11", versions)).toMatchObject({
+      period: "2026-10",
+      start: "2026-09-26",
+      end: "2026-10-25"
+    });
+    expect(kpiPeriod("2026-10-30", versions)).toMatchObject({
+      period: "2026-11",
+      start: "2026-10-26",
+      end: "2026-11-20"
+    });
+    expect(kpiPeriod("2026-11-25", versions)).toMatchObject({
+      period: "2026-12",
+      start: "2026-11-21",
+      end: "2026-12-20"
+    });
+  });
+});
+
+describe("closeDayChange", () => {
+  const base = [{ fromPeriod: null, closeDay: 25 }];
+
+  it("applies a new close day from the next period only", () => {
+    const plan = closeDayChange("2026-10-11", base, 20);
+    expect(plan).toMatchObject({
+      inForce: 25,
+      next: "2026-11",
+      scheduled: 25,
+      changes: true,
+      nextRange: { from: "2026-10-26", to: "2026-11-20" }
+    });
+    expect(plan?.current).toMatchObject({ start: "2026-09-26", end: "2026-10-25" });
+    expect(closeDayChange("2026-10-11", base, 25)?.changes).toBe(false);
+    expect(formatKpiPeriod("2026-11")).toBe("11/2026");
+  });
+
+  it("knows a scheduled change and that saving the day in force cancels it", () => {
+    const scheduled = [...base, { fromPeriod: "2026-11", closeDay: 20 }];
+    expect(closeDayChange("2026-10-11", scheduled, 20)).toMatchObject({
+      scheduled: 20,
+      changes: false
+    });
+    expect(closeDayChange("2026-10-11", scheduled, 25)).toMatchObject({
+      scheduled: 20,
+      changes: true,
+      nextRange: { from: "2026-10-26", to: "2026-11-25" }
+    });
   });
 });
 

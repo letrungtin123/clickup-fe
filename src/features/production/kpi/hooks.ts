@@ -2,7 +2,13 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 
 import { retryUnlessClientError } from "../scores/hooks";
 import { kpiKeys, scoreKeys } from "../scores/keys";
-import { kpiApi, type KpiImportInput, type PutKpiTargetsInput, type RunSettlementInput } from "./api";
+import { emptyPeopleFilter, peopleFilterKey, type PeopleFilter } from "../scores/people-filter";
+import {
+  kpiApi,
+  type KpiImportInput,
+  type PutKpiTargetsInput,
+  type RunSettlementInput
+} from "./api";
 
 /**
  * KPI data hooks. Targets feed the forecast and the report, so every target or settlement write
@@ -96,13 +102,15 @@ export const useRunKpiSettlement = () => {
 
 export const useKpiReport = (
   range: { from: string; to: string; teamId: string | null },
+  people: PeopleFilter = emptyPeopleFilter,
   enabled = true
 ) =>
   useQuery({
-    queryKey: kpiKeys.report(range.from, range.to, range.teamId),
+    queryKey: kpiKeys.report(range.from, range.to, range.teamId, peopleFilterKey(people)),
     queryFn: ({ signal }) =>
       kpiApi.report(
         { from: range.from, to: range.to, teamId: range.teamId ?? undefined },
+        people,
         signal
       ),
     placeholderData: keepPreviousData,

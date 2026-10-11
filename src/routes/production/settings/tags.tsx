@@ -54,7 +54,7 @@ const ColorButton = ({
       title={colorTokenLabels[color]}
       className={cn(
         toneClass(color),
-        "flex size-8 shrink-0 items-center justify-center rounded-lg border outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+        "flex size-8 shrink-0 items-center justify-center rounded-lg border outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-sm:size-10"
       )}
     >
       <span aria-hidden="true" className="size-3.5 rounded-full bg-(--tone)" />

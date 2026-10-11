@@ -21,7 +21,7 @@ import {
   SettingsSection
 } from "@/features/production/components/settings-kit";
 import { productionErrorMessage } from "@/features/production/errors";
-import { formatDay, kpiPeriod, todayIn } from "@/features/production/format";
+import { closeDayChange, formatDay, formatKpiPeriod, todayIn } from "@/features/production/format";
 import { useProductionSettings, useUpdateSettings } from "@/features/production/hooks";
 
 const intIn = (min: number, max: number, message: string) =>
@@ -31,20 +31,25 @@ const intIn = (min: number, max: number, message: string) =>
     .regex(/^\d+$/, message)
     .refine((value) => Number(value) >= min && Number(value) <= max, message);
 
+// Points have at most two decimals: "2.610" is a Vietnamese thousands group, not 2,61 — reject it
+// instead of silently saving a KPI a thousand times too small.
 const decimalIn = (min: number, max: number, message: string) =>
   z
     .string()
     .trim()
-    .regex(/^\d+([.,]\d+)?$/, message)
+    .regex(/^\d+([.,]\d{1,2})?$/, message)
     .refine((value) => {
       const number = Number(value.replace(",", "."));
       return number >= min && number <= max;
     }, message);
 
+const kpiMessage =
+  "Nhập số điểm từ 0 đến 1.000.000, không dấu chấm ngăn cách (vd 2610 hoặc 2610,5).";
+
 const formSchema = z.object({
   kpiCloseDay: intIn(1, 28, "Chọn ngày từ 1 đến 28."),
-  kpiDefaultMember: decimalIn(0, 1_000_000, "Nhập số điểm từ 0 đến 1.000.000."),
-  kpiDefaultLeader: decimalIn(0, 1_000_000, "Nhập số điểm từ 0 đến 1.000.000."),
+  kpiDefaultMember: decimalIn(0, 1_000_000, kpiMessage),
+  kpiDefaultLeader: decimalIn(0, 1_000_000, kpiMessage),
   kpiProrateLeave: z.boolean(),
   scoresPublic: z.boolean(),
   moneyPublic: z.boolean(),
@@ -98,8 +103,11 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
     resetOptions: { keepDirtyValues: false }
   });
   const closeDay = Number(useWatch({ control, name: "kpiCloseDay" })) || settings.kpiCloseDay;
-  const period =
-    closeDay >= 1 && closeDay <= 28 ? kpiPeriod(todayIn(settings.timezone), closeDay) : null;
+  // G15: a new close day applies from the next period; the current period keeps its dates.
+  const plan =
+    closeDay >= 1 && closeDay <= 28
+      ? closeDayChange(todayIn(settings.timezone), settings.kpiCloseDays, closeDay)
+      : null;
   const dirty = formState.isDirty;
 
   const onSubmit = handleSubmit((values) =>
@@ -118,7 +126,14 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
       {
         onSuccess: (saved) => {
           reset(toForm(saved));
-          toast.success("Đã lưu cài đặt sản xuất");
+          toast.success(
+            "Đã lưu cài đặt sản xuất",
+            plan?.changes && Number(values.kpiCloseDay) !== plan.inForce
+              ? {
+                  description: `Ngày chốt ${values.kpiCloseDay} áp dụng từ kỳ ${formatKpiPeriod(plan.next)}.`
+                }
+              : undefined
+          );
         },
         onError: (error) => setError("root", { message: productionErrorMessage(error) })
       }
@@ -152,7 +167,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
               className="w-28 text-right tabular-nums"
               {...register(name)}
             />
-            <span className="w-10 text-xs text-foreground-muted">{suffix}</span>
+            <span className="w-16 text-xs whitespace-nowrap text-foreground-muted">{suffix}</span>
           </div>
         }
       />
@@ -173,13 +188,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
           {numberField(
             "kpiCloseDay",
             "Ngày chốt KPI",
-            <>
-              Kỳ tính từ ngày sau ngày chốt tháng trước đến hết ngày chốt tháng này
-              {period
-                ? ` (kỳ hiện tại: ${formatDay(period.start)} – ${formatDay(period.end)})`
-                : ""}
-              .
-            </>,
+            <CloseDayHint plan={plan} closeDay={closeDay} />,
             "hằng tháng"
           )}
           {numberField(
@@ -266,9 +275,16 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
             transition={{ duration: 0.18 }}
             className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border bg-surface-raised px-4 py-3 shadow-lg"
           >
-            <Info className="size-4 text-brand-text" aria-hidden="true" />
-            <span className="flex-1 text-[13px]">Bạn có thay đổi chưa lưu.</span>
-            <Button type="button" variant="ghost" onClick={() => reset(toForm(settings))}>
+            <span className="flex min-w-0 flex-1 items-center gap-3 text-[13px] max-sm:basis-full">
+              <Info className="size-4 shrink-0 text-brand-text" aria-hidden="true" />
+              Bạn có thay đổi chưa lưu.
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              className="max-sm:ml-auto"
+              onClick={() => reset(toForm(settings))}
+            >
               <Undo2 />
               Hoàn tác
             </Button>
@@ -280,6 +296,50 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
         ) : null}
       </AnimatePresence>
     </form>
+  );
+};
+
+/**
+ * Close-day hint (G15): the current period with its dates, then what saving does — a new day
+ * "áp dụng từ kỳ MM/YYYY" (the next period, with its new dates), or that a change is already
+ * scheduled.
+ */
+const CloseDayHint = ({
+  plan,
+  closeDay
+}: {
+  plan: ReturnType<typeof closeDayChange>;
+  closeDay: number;
+}) => {
+  if (!plan) {
+    return <>Kỳ tính từ ngày sau ngày chốt tháng trước đến hết ngày chốt tháng này.</>;
+  }
+  const current = `Kỳ hiện tại ${formatKpiPeriod(plan.current.period)}: ${formatDay(plan.current.start)} – ${formatDay(plan.current.end)} (chốt ngày ${plan.inForce}).`;
+  if (plan.changes) {
+    return (
+      <>
+        {current}{" "}
+        <span className="font-medium text-brand-text">
+          {closeDay === plan.inForce
+            ? `Lưu sẽ bỏ lịch đổi sang ngày ${plan.scheduled}; kỳ ${formatKpiPeriod(plan.next)} vẫn chốt ngày ${plan.inForce}.`
+            : `Áp dụng từ kỳ ${formatKpiPeriod(plan.next)} (${formatDay(plan.nextRange.from)} – ${formatDay(plan.nextRange.to)}); kỳ hiện tại giữ nguyên.`}
+        </span>
+      </>
+    );
+  }
+  if (plan.scheduled !== plan.inForce) {
+    return (
+      <>
+        {current} Đã hẹn chốt ngày {plan.scheduled} từ kỳ {formatKpiPeriod(plan.next)} (
+        {formatDay(plan.nextRange.from)} – {formatDay(plan.nextRange.to)}).
+      </>
+    );
+  }
+  return (
+    <>
+      {current} Đổi ngày chốt sẽ áp dụng từ kỳ sau; kỳ đang chạy giữ nguyên ngày bắt đầu và kết
+      thúc.
+    </>
   );
 };
 

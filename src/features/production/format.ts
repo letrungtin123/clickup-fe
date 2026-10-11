@@ -4,6 +4,14 @@
  * Pure functions — unit tested in format.test.ts.
  */
 
+import type { KpiCloseDayVersion } from "@/contracts/production-catalog";
+import {
+  closeDayOfPeriod,
+  kpiPeriodOfDay,
+  kpiPeriodRange,
+  type KpiCloseDays
+} from "@/contracts/production-scores";
+
 const creditFormatter = new Intl.NumberFormat("vi-VN", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
@@ -175,27 +183,62 @@ export const formatVersionRange = (effectiveFrom: string, effectiveTo: string | 
     ? `Từ ${formatDay(effectiveFrom)}`
     : `${formatDay(effectiveFrom)} – ${formatDay(addDays(effectiveTo, -1))}`;
 
+const dayIndex = (day: string) =>
+  Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) /
+  86_400_000;
+
+/** "2026-10" → "2026-11" (or back with a negative step). */
+export const shiftKpiPeriod = (period: string, months: number) => {
+  const index = Number(period.slice(0, 4)) * 12 + Number(period.slice(5, 7)) - 1 + months;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+};
+
+/** "2026-11" → "11/2026". */
+export const formatKpiPeriod = (period: string) => `${period.slice(5, 7)}/${period.slice(0, 4)}`;
+
 /**
- * KPI period containing `today` (PLAN §6): from the day after the close day of the previous month
- * through the close day of this month (close day 1–28, so it exists in every month). `daysLeft`
- * counts today, like the API forecast (BUG-PR-24): 1 on the close day itself.
+ * KPI period containing `today` (PLAN §6): from the day after the close day of the previous period
+ * through this period's close day. `closeDays` is settings.kpiCloseDays (a changed close day applies
+ * from the next period, G15) or one day for every period (clamped to 1–28). Uses the shared contract
+ * helpers (production-scores kpiPeriodOfDay / kpiPeriodRange). `daysLeft` counts today, like the API
+ * forecast (BUG-PR-24): 1 on the close day itself.
  */
-export const kpiPeriod = (today: string, closeDay: number) => {
-  const date = dayToDate(today);
-  if (!date) return null;
-  const day = Math.min(Math.max(1, Math.trunc(closeDay)), 28);
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const endMonth = date.getDate() <= day ? month : month + 1;
-  const end = new Date(year, endMonth, day);
-  const start = new Date(end.getFullYear(), end.getMonth() - 1, day + 1);
-  const daysLeft =
-    Math.round(
-      (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) -
-        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())) /
-        86_400_000
-    ) + 1;
-  return { start: dateToDay(start), end: dateToDay(end), daysLeft };
+export const kpiPeriod = (today: string, closeDays: KpiCloseDays) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || !dayToDate(today)) return null;
+  const days =
+    typeof closeDays === "number" ? Math.min(Math.max(1, Math.trunc(closeDays)), 28) : closeDays;
+  const period = kpiPeriodOfDay(today, days);
+  const { from, to } = kpiPeriodRange(period, days);
+  return { period, start: from, end: to, daysLeft: dayIndex(to) - dayIndex(today) + 1 };
+};
+
+/**
+ * What saving close day `day` in Cài đặt chung does (G15, BE PATCH settings): the new day applies
+ * from the NEXT period (the current one keeps its dates); saving the day in force cancels a
+ * scheduled change. `nextRange` = the next period's dates once saved.
+ */
+export const closeDayChange = (
+  today: string,
+  closeDays: readonly KpiCloseDayVersion[],
+  day: number
+) => {
+  const current = kpiPeriod(today, closeDays);
+  if (!current) return null;
+  const next = shiftKpiPeriod(current.period, 1);
+  const inForce = closeDayOfPeriod(closeDays, current.period);
+  const scheduled = closeDayOfPeriod(closeDays, next);
+  const kept = closeDays.filter((version) => (version.fromPeriod ?? "") <= current.period);
+  const saved = day === inForce ? kept : [...kept, { fromPeriod: next, closeDay: day }];
+  return {
+    current,
+    inForce,
+    next,
+    /** Close day the next period has before saving (≠ inForce: a change is already scheduled). */
+    scheduled,
+    nextRange: kpiPeriodRange(next, saved),
+    /** Saving changes what the next period uses. */
+    changes: day !== scheduled
+  };
 };
 
 /** True when `day` falls inside [from, to). Days compare lexicographically as YYYY-MM-DD. */

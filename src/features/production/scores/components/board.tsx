@@ -51,7 +51,9 @@ export const Podium = ({ rows, meId }: { rows: readonly Row[]; meId: string }) =
               <Medal className={cn("size-3.5", medalTone[row.rank - 1])} aria-hidden="true" />
             </span>
           </span>
-          <span className="w-full truncate text-[13px] font-medium">{row.user.displayName}</span>
+          <span className="line-clamp-2 w-full text-[13px] leading-tight font-medium break-words" title={row.user.displayName}>
+            {row.user.displayName}
+          </span>
           <span className="text-base font-semibold tracking-[-0.01em] tabular-nums sm:text-lg">
             {formatCredit(row.pointsOfficial)}
           </span>
@@ -86,18 +88,19 @@ export const BoardTable = ({
               <RankBadge rank={row.rank} />
               <UserAvatar user={row.user} size="md" />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium">
-                  <span className="truncate">{row.user.displayName}</span>
+                <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-snug font-medium">
+                  <span className="min-w-0 break-words">{row.user.displayName}</span>
                   {own ? <YouTag /> : null}
                 </span>
-                <span className="truncate text-xs text-foreground-muted tabular-nums">
-                  {row.qtyKhoan > 0 || row.pointsKhoan > 0
-                    ? `Khoán ${formatCredit(row.pointsKhoan)} điểm · ${formatInteger(row.qtyKhoan)} tấm`
-                    : (row.teamName ?? "Chưa có team")}
-                  {row.money !== null && (showMoney || own) && row.money > 0
-                    ? ` · ${formatMoney(row.money)}`
-                    : ""}
-                </span>
+                <span className="truncate text-xs text-foreground-muted">{row.teamName ?? "Chưa có team"}</span>
+                {row.qtyKhoan > 0 || row.pointsKhoan > 0 ? (
+                  <span className="text-xs text-foreground-muted tabular-nums">
+                    {`Khoán ${formatCredit(row.pointsKhoan)}\u00a0điểm · ${formatInteger(row.qtyKhoan)}\u00a0tấm`}
+                    {row.money !== null && (showMoney || own) && row.money > 0
+                      ? ` · ${formatMoney(row.money)}`
+                      : ""}
+                  </span>
+                ) : null}
               </div>
               <span className="shrink-0 text-sm font-semibold tabular-nums">
                 {formatCredit(row.pointsOfficial)}
@@ -111,10 +114,10 @@ export const BoardTable = ({
 
   return (
     <div className="overflow-x-auto overscroll-x-contain">
-      <table className="w-full min-w-[44rem] text-[13px]">
+      <table className="w-full min-w-[40rem] text-[13px]">
         <caption className="sr-only">Bảng xếp hạng theo điểm chính thức</caption>
         <thead>
-          <tr className="border-b text-xs text-foreground-muted">
+          <tr className="border-b text-xs whitespace-nowrap text-foreground-muted">
             <th scope="col" className="w-14 py-2.5 pl-4 text-left font-medium">
               Hạng
             </th>
@@ -124,7 +127,7 @@ export const BoardTable = ({
             <th scope="col" className="px-3 py-2.5 text-left font-medium">
               Team
             </th>
-            <th scope="col" className="w-[30%] px-3 py-2.5 text-right font-medium">
+            <th scope="col" className="px-3 py-2.5 text-right font-medium lg:w-[30%]">
               Điểm chính thức
             </th>
             <th scope="col" className="px-3 py-2.5 text-right font-medium">
@@ -151,11 +154,11 @@ export const BoardTable = ({
                 <td className="px-3 py-2">
                   <span className="flex min-w-0 items-center gap-2">
                     <UserAvatar user={row.user} size="sm" />
-                    <span className="truncate font-medium">{row.user.displayName}</span>
+                    <span className="min-w-0 font-medium break-words">{row.user.displayName}</span>
                     {own ? <YouTag /> : null}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-foreground-muted">{row.teamName ?? "—"}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-foreground-muted">{row.teamName ?? "—"}</td>
                 <td className="px-3 py-2">
                   <span className="flex items-center justify-end gap-2.5">
                     <span className="hidden h-1.5 w-full max-w-32 overflow-hidden rounded-full bg-muted lg:block" aria-hidden="true">

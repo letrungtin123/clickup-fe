@@ -24,7 +24,12 @@ import {
   type MatrixRow
 } from "../matrix";
 
-const dateFormat = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short" });
+const dateFormat = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "Asia/Ho_Chi_Minh"
+});
 
 const targetText = (value: number | null | undefined) =>
   value === null || value === undefined
@@ -124,7 +129,7 @@ export const KpiCellEditor = ({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-start gap-2.5">
         <UserAvatar user={row.user} size="md" />
         <div className="flex min-w-0 flex-col">

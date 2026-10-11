@@ -11,7 +11,8 @@ import {
   SlidersHorizontal,
   Target,
   TriangleAlert,
-  UserRoundPlus
+  UserRoundPlus,
+  UserRoundX
 } from "lucide-react";
 
 import type { Notification } from "@/contracts/notifications";
@@ -226,6 +227,35 @@ export const describeProductionNotification = (
         tone: notification.payload.met === false ? "warning" : "success"
       };
     }
+    case "production.leader_removed": {
+      // To production Admins: { userId, userName, reason: role_removed | deactivated, jobCount, jobs[{ id, code }] }.
+      const name = str(notification.payload.userName) ?? notification.title;
+      const count = num(notification.payload.jobCount);
+      const codes = Array.isArray(notification.payload.jobs)
+        ? notification.payload.jobs
+            .map((job: unknown) => (job && typeof job === "object" ? str((job as { code?: unknown }).code) : null))
+            .filter((code): code is string => code !== null)
+        : [];
+      const shown = codes.slice(0, 5);
+      const more = (count ?? codes.length) - shown.length;
+      return {
+        segments: [
+          { text: name, strong: true },
+          {
+            text:
+              str(notification.payload.reason) === "deactivated"
+                ? " đã bị vô hiệu hóa — còn "
+                : " không còn là Leader — còn "
+          },
+          { text: count !== null ? `${count} job` : "job", strong: true },
+          { text: " cần giao Leader khác" }
+        ],
+        subject: shown.length > 0 ? `${shown.join(", ")}${more > 0 ? ` và ${more} job khác` : ""}` : null,
+        excerpt: null,
+        icon: UserRoundX,
+        tone: "warning"
+      };
+    }
     default:
       return null;
   }
@@ -237,7 +267,14 @@ export const productionPath = (notification: Notification) => {
   if (taskId) return `/production/tasks/${taskId}`;
   const jobId = notification.target.jobId ?? str(notification.payload.jobId);
   if (jobId) return `/production/jobs/${jobId}`;
-  if (notification.type.startsWith("production.leave_")) return "/production/leave";
+  // Lịch nghỉ tabs: a new request waits in "Chờ duyệt"; a decision is about one of "Đơn của tôi".
+  if (notification.type === "production.leave_requested") return "/production/leave?tab=pending";
+  if (notification.type.startsWith("production.leave_")) return "/production/leave?tab=mine";
   if (notification.type === "production.kpi_settled") return "/production/scores";
+  if (notification.type === "production.leader_removed") {
+    // The jobs list filtered to the jobs this person still leads.
+    const userId = str(notification.payload.userId);
+    return userId ? `/production/jobs?leader=${encodeURIComponent(userId)}` : "/production/jobs";
+  }
   return null;
 };

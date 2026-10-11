@@ -17,7 +17,12 @@ const messages: Record<string, string> = {
     "Bảng điểm đang để riêng tư nên không xem được điểm theo từng người, từng job hay tag.",
   REPORT_NOT_FOUND: "Không tìm thấy báo cáo đã lưu. Có thể báo cáo đã bị xoá.",
   REPORT_CONFIG_OUTDATED: "Cấu hình báo cáo đã cũ, không còn chạy được. Hãy tạo lại.",
-  ANOMALY_NOT_FOUND: "Không tìm thấy mục bất thường này. Hãy tải lại."
+  ANOMALY_NOT_FOUND: "Không tìm thấy mục bất thường này. Hãy tải lại.",
+  ANOMALY_REVIEW_NOT_OWNER: 'Chỉ người đã đánh dấu "Đã xem" (hoặc Quản trị) được bỏ đánh dấu.',
+  CUSTOM_FIELDS_FORBIDDEN:
+    "Trường tùy chỉnh và tag của nhân viên (vd Năng lực) chỉ Quản trị được dùng để lọc hoặc chia báo cáo.",
+  CUSTOM_FIELD_FILTER_INVALID:
+    "Bộ lọc trường tùy chỉnh không còn hợp lệ (trường hoặc lựa chọn đã đổi). Hãy chọn lại."
 };
 
 /** Codes whose server message is already user-facing Vietnamese. */
@@ -26,7 +31,11 @@ const serverWorded = new Set([
   "INVALID_RANGE",
   "REPORT_TIMEOUT",
   "SCORES_PRIVATE",
-  "MONEY_FORBIDDEN"
+  "MONEY_FORBIDDEN",
+  "REPORT_INVALID",
+  "ANOMALY_REVIEW_NOT_OWNER",
+  "CUSTOM_FIELDS_FORBIDDEN",
+  "CUSTOM_FIELD_FILTER_INVALID"
 ]);
 
 export const reportErrorMessage = (error: unknown, fallback?: string) => {

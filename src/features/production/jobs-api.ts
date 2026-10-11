@@ -24,6 +24,8 @@ import { TaskScoresSchema } from "@/contracts/production-scores";
 import { api, apiPath, type QueryValue } from "@/lib/api/client";
 import { OkResponseSchema } from "@/lib/api/schemas";
 
+import { queryPath } from "./list-filters";
+
 /**
  * Production jobs, tasks, feedback and comments (BE modules/production/jobs.routes.ts, SPEC Phase 2).
  * Responses are parsed with the shared contract; what a caller may do comes back as `capabilities`.
@@ -44,8 +46,11 @@ export type MyTasksRole = "assignee" | "qc" | "all";
 export type JobListQuery = Record<string, QueryValue>;
 
 export const jobsApi = {
+  /** Arrays (tag ids, custom-field values) repeat their parameter: queryPath. */
   list: (query: JobListQuery, cursor: string | undefined, signal?: AbortSignal) =>
-    api.get("/production/jobs", JobPageSchema, { query: { ...query, cursor, limit: 50 }, signal }),
+    api.get(queryPath("/production/jobs", { ...query, cursor, limit: 50 }), JobPageSchema, {
+      signal
+    }),
   get: (jobId: string, signal?: AbortSignal) =>
     api.get(apiPath`/production/jobs/${jobId}`, JobDetailSchema, { signal }),
   create: (input: CreateJobInput) => api.post("/production/jobs", JobDetailSchema, input),
@@ -66,18 +71,29 @@ export const jobsApi = {
     api.post(apiPath`/production/feedbacks/${feedbackId}/reassign`, CreateTasksResultSchema, input),
   chat: (jobId: string) => api.post(apiPath`/production/jobs/${jobId}/chat`, JobChatResultSchema),
 
+  /** `filters`: TASK tag / custom-field query (list-filters.ts). */
   myTasks: (
     role: MyTasksRole,
     includeFinished: boolean,
     cursor: string | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    filters: Record<string, QueryValue> = {}
   ) =>
-    api.get("/production/tasks/mine", ProductionTaskPageSchema, {
-      query: { role, includeFinished: includeFinished ? "true" : undefined, cursor, limit: 200 },
+    api.get(
+      queryPath("/production/tasks/mine", {
+        ...filters,
+        role,
+        includeFinished: includeFinished ? "true" : undefined,
+        cursor,
+        limit: 200
+      }),
+      ProductionTaskPageSchema,
+      { signal }
+    ),
+  qcQueue: (signal?: AbortSignal, filters: Record<string, QueryValue> = {}) =>
+    api.get(queryPath("/production/tasks/qc-queue", filters), ProductionTaskPageSchema, {
       signal
     }),
-  qcQueue: (signal?: AbortSignal) =>
-    api.get("/production/tasks/qc-queue", ProductionTaskPageSchema, { signal }),
   task: (taskId: string, signal?: AbortSignal) =>
     api.get(apiPath`/production/tasks/${taskId}`, ProductionTaskSchema, { signal }),
   /** Score ledger rows of one task (points public; money null unless visible to the caller). */

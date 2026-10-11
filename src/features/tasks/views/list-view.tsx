@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { List, Project, TaskStatus, TaskSummary } from "@/contracts/work";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { toneClass } from "@/lib/colors";
 import { canAutoLoadNextPage, pagedErrorKind } from "@/lib/paging";
 import { qk, type TaskQueryParams } from "@/lib/query-keys";
@@ -63,6 +64,11 @@ import type { TaskViewProps } from "./registry";
 import { ViewSkeleton } from "./view-skeletons";
 
 const ROW_HEIGHT = 36;
+/**
+ * Phones (P1): two-tier rows — title (up to 2 lines) above a line of chips (people, due date,
+ * priority, counters). Rows are measured; this is the first guess for a one-line title.
+ */
+const MOBILE_ROW_ESTIMATE = 64;
 const INDENT = 20;
 const MAX_DEPTH = 6;
 
@@ -403,15 +409,22 @@ const StatusGroup = memo(function StatusGroup({
     return () => observer.disconnect();
   }, [scrollRef, collapsed, emptyHidden, hidden, pages.isPending]);
 
+  // Phones get taller two-tier task rows whose height follows the title (measured); elsewhere every
+  // row is exactly ROW_HEIGHT.
+  const twoTier = useBreakpoint() === "mobile";
   // eslint-disable-next-line react-hooks/incompatible-library -- virtual rows are read during render on purpose
   const virtualizer = useVirtualizer({
     count: collapsed ? 0 : rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: (index) => (twoTier && rows[index]?.kind === "task" ? MOBILE_ROW_ESTIMATE : ROW_HEIGHT),
     overscan: 12,
     scrollMargin: margin,
     getItemKey: (index) => rows[index]?.key ?? index
   });
+  // Crossing the phone breakpoint changes every row height: drop the measurements taken before.
+  useLayoutEffect(() => {
+    virtualizer.measure();
+  }, [twoTier, virtualizer]);
   const virtualItems = virtualizer.getVirtualItems();
   const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = pages;
@@ -486,7 +499,7 @@ const StatusGroup = memo(function StatusGroup({
           onClick={() => onToggleCollapsed(status)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? `Mở nhóm ${status.name}` : `Thu gọn nhóm ${status.name}`}
-          className="inline-flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="relative inline-flex size-6 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:after:absolute pointer-coarse:after:-inset-2 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight
             className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", !collapsed && "rotate-90")}
@@ -549,11 +562,17 @@ const StatusGroup = memo(function StatusGroup({
             {virtualItems.map((virtualRow) => {
               const row = rows[virtualRow.index];
               if (!row) return null;
+              const measured = twoTier && row.kind === "task";
               return (
                 <div
                   key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={measured ? virtualizer.measureElement : undefined}
                   className="absolute inset-x-0 top-0"
-                  style={{ height: ROW_HEIGHT, transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)` }}
+                  style={{
+                    height: measured ? undefined : ROW_HEIGHT,
+                    transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`
+                  }}
                 >
                   {row.kind === "task" ? (
                     <ListRow
@@ -691,6 +710,8 @@ const ListRow = memo(function ListRow({
   const noneFocused = useRowFocusStore((state) => state.focusedId === null);
   const focusRow = useRowFocusStore((state) => state.focus);
   const openEditor = useInlineEditor();
+  // Phones: counters and extra avatars give way so the title stays readable.
+  const compact = useBreakpoint() === "mobile";
   const [renaming, setRenaming] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
 
@@ -704,6 +725,57 @@ const ListRow = memo(function ListRow({
     setDropRef(node);
   };
   const expandable = !flat && task.subtaskCount > 0 && depth < MAX_DEPTH;
+
+  const expandButton = expandable ? (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      aria-label={expanded ? "Ẩn việc con" : `Hiện ${task.subtaskCount} việc con`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggleExpanded(task.id);
+      }}
+      className="relative inline-flex size-5 items-center justify-center rounded text-foreground-subtle outline-none pointer-coarse:after:absolute pointer-coarse:after:-inset-2 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <ChevronRight className={cn("size-3.5 transition-transform duration-150 motion-reduce:transition-none", expanded && "rotate-90")} />
+    </button>
+  ) : null;
+  const titleClass = cn(task.status.category !== "active" && "text-foreground-muted line-through decoration-foreground-subtle/60");
+  const onTitleDoubleClick = (event: React.MouseEvent) => {
+    if (!abilities.canEdit) return;
+    event.stopPropagation();
+    setRenaming(true);
+  };
+  const renameInput = (
+    <RenameInput
+      initial={task.title}
+      onDone={(title) => {
+        setRenaming(false);
+        if (title !== null) onRename(task, title);
+      }}
+    />
+  );
+  const menuButton = (
+    <button
+      type="button"
+      aria-label={`Thao tác cho ${task.key}`}
+      aria-haspopup="menu"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        openEditor?.({
+          kind: "menu",
+          task,
+          anchor: event.currentTarget,
+          actions: menuActions(task, { onRename: () => setRenaming(true) })
+        });
+      }}
+      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100"
+    >
+      <MoreHorizontal className="size-4" />
+    </button>
+  );
 
   return (
     <div
@@ -724,7 +796,8 @@ const ListRow = memo(function ListRow({
         if (!focused) focusRow(task.id);
       }}
       className={cn(
-        "group/row relative flex h-9 cursor-default items-center gap-1.5 rounded-md pr-1 outline-none transition-colors duration-100 select-none",
+        "group/row relative flex cursor-default gap-1.5 rounded-md pr-1 outline-none transition-colors duration-100 select-none",
+        compact ? "min-h-14 items-start py-1" : "h-9 items-center",
         "hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         selected && "bg-brand-soft hover:bg-brand-soft",
         isDragging && "opacity-40"
@@ -743,94 +816,77 @@ const ListRow = memo(function ListRow({
       {depth > 0 ? (
         <span aria-hidden="true" className="absolute top-0 bottom-0 w-px bg-border" style={{ left: 4 + depth * INDENT - 11 }} />
       ) : null}
-      <span className="flex w-5 shrink-0 justify-center">
-        {expandable ? (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-label={expanded ? "Ẩn việc con" : `Hiện ${task.subtaskCount} việc con`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleExpanded(task.id);
-            }}
-            className="inline-flex size-5 items-center justify-center rounded text-foreground-subtle outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronRight className={cn("size-3.5 transition-transform duration-150 motion-reduce:transition-none", expanded && "rotate-90")} />
-          </button>
-        ) : null}
-      </span>
-      <StatusCell task={task} editable={abilities.canEdit} />
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="hidden shrink-0 font-mono text-[11px] text-foreground-subtle sm:inline">{task.key}</span>
-        {renaming ? (
-          <RenameInput
-            initial={task.title}
-            onDone={(title) => {
-              setRenaming(false);
-              if (title !== null) onRename(task, title);
-            }}
-          />
-        ) : (
-          <span
-            className={cn("truncate text-[13px]", task.status.category !== "active" && "text-foreground-muted line-through decoration-foreground-subtle/60")}
-            onDoubleClick={(event) => {
-              if (!abilities.canEdit) return;
-              event.stopPropagation();
-              setRenaming(true);
-            }}
-          >
-            {task.title}
-          </span>
-        )}
-        {!renaming ? (
-          <>
-            {expandable && !expanded ? (
-              <span className="shrink-0 text-[11px] text-foreground-subtle tabular-nums">
-                {task.subtaskCount - task.openSubtaskCount}/{task.subtaskCount}
+      {compact ? (
+        <>
+          {/* Phones (P1): title up to two lines, then a line of chips; the row grows to fit. */}
+          <span className="flex h-8 w-5 shrink-0 items-center justify-center">{expandButton}</span>
+          <StatusCell task={task} editable={abilities.canEdit} />
+          <div className="flex min-w-0 flex-1 flex-col pt-1.5">
+            {renaming ? (
+              <div className="-mt-1.5 flex">{renameInput}</div>
+            ) : (
+              <span className={cn("line-clamp-2 text-[13px] leading-[1.125rem] break-words", titleClass)}>{task.title}</span>
+            )}
+            <div className="-ml-1 flex h-8 min-w-0 items-center gap-0.5 overflow-hidden">
+              <AssigneesCell task={task} editable={abilities.canAssign} max={2} />
+              <DueCell task={task} editable={abilities.canEdit} />
+              {task.priority !== "normal" ? <PriorityCell task={task} editable={abilities.canEdit} /> : null}
+              {expandable && !expanded ? (
+                <span className="ml-1 shrink-0 text-[11px] text-foreground-subtle tabular-nums" title={`${task.subtaskCount - task.openSubtaskCount}/${task.subtaskCount} việc con đã xong`}>
+                  {task.subtaskCount - task.openSubtaskCount}/{task.subtaskCount}
+                </span>
+              ) : null}
+              <TaskCounts task={task} showSubtasks={flat} className="ml-1 shrink" />
+            </div>
+          </div>
+          {menuButton}
+        </>
+      ) : (
+        <>
+          <span className="flex w-5 shrink-0 justify-center">{expandButton}</span>
+          <StatusCell task={task} editable={abilities.canEdit} />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="hidden shrink-0 font-mono text-[11px] text-foreground-subtle sm:inline">{task.key}</span>
+            {renaming ? (
+              renameInput
+            ) : (
+              <span className={cn("truncate text-[13px]", titleClass)} onDoubleClick={onTitleDoubleClick}>
+                {task.title}
               </span>
+            )}
+            {!renaming ? (
+              <>
+                {expandable && !expanded ? (
+                  <span className="shrink-0 text-[11px] text-foreground-subtle tabular-nums max-sm:hidden">
+                    {task.subtaskCount - task.openSubtaskCount}/{task.subtaskCount}
+                  </span>
+                ) : null}
+                <TaskCounts task={task} showSubtasks={flat} className="max-sm:hidden" />
+                {abilities.canEdit ? (
+                  <button
+                    type="button"
+                    aria-label="Đổi tên"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setRenaming(true);
+                    }}
+                    className="inline-flex size-6 shrink-0 items-center justify-center rounded text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:hidden"
+                  >
+                    <PencilLine className="size-3.5" />
+                  </button>
+                ) : null}
+              </>
             ) : null}
-            <TaskCounts task={task} showSubtasks={flat} />
-            {abilities.canEdit ? (
-              <button
-                type="button"
-                aria-label="Đổi tên"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setRenaming(true);
-                }}
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:hidden"
-              >
-                <PencilLine className="size-3.5" />
-              </button>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <AssigneesCell task={task} editable={abilities.canAssign} className="sm:w-20" max={3} />
-        <DueCell task={task} editable={abilities.canEdit} className="justify-center sm:w-24" />
-        <PriorityCell task={task} editable={abilities.canEdit} className="hidden w-12 sm:inline-flex" />
-        <button
-          type="button"
-          aria-label={`Thao tác cho ${task.key}`}
-          aria-haspopup="menu"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            openEditor?.({
-              kind: "menu",
-              task,
-              anchor: event.currentTarget,
-              actions: menuActions(task, { onRename: () => setRenaming(true) })
-            });
-          }}
-          className="inline-flex size-7 items-center justify-center rounded-md text-foreground-subtle opacity-0 outline-none group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring aria-expanded:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100"
-        >
-          <MoreHorizontal className="size-4" />
-        </button>
-      </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <AssigneesCell task={task} editable={abilities.canAssign} className="sm:w-20" />
+            <DueCell task={task} editable={abilities.canEdit} className="justify-center sm:w-24" />
+            <PriorityCell task={task} editable={abilities.canEdit} className="hidden w-12 sm:inline-flex" />
+            {menuButton}
+          </div>
+        </>
+      )}
     </div>
   );
 });
@@ -861,7 +917,7 @@ const RenameInput = ({ initial, onDone }: { initial: string; onDone: (title: str
 const RowPreview = ({ task }: { task: TaskSummary }) => (
   <div className="flex h-9 w-[min(32rem,80vw)] cursor-grabbing items-center gap-2 rounded-md border bg-surface-raised px-3 shadow-lg ring-1 ring-brand/30 motion-safe:rotate-[0.6deg]">
     <StatusIcon status={task.status} />
-    <span className="font-mono text-[11px] text-foreground-subtle">{task.key}</span>
+    <span className="shrink-0 font-mono text-[11px] text-foreground-subtle">{task.key}</span>
     <span className="truncate text-[13px] font-medium">{task.title}</span>
   </div>
 );

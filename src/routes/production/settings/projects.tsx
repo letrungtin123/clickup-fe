@@ -49,7 +49,9 @@ import { sheetOnPhone } from "@/features/production/ui";
 const conflict = "Mã dự án đã tồn tại (không phân biệt hoa thường). Hãy chọn mã khác.";
 const ALL = "__all__";
 const NONE = "__none__";
-const grid = "md:grid-cols-[7rem_minmax(0,1.6fr)_minmax(0,1fr)_7rem_6.5rem_2.25rem]";
+// Tablet: narrower fixed columns so the client name is not cut to a few letters.
+const grid =
+  "md:grid-cols-[6rem_minmax(0,1fr)_minmax(0,1fr)_5rem_6rem_2.25rem] md:gap-3 lg:grid-cols-[7rem_minmax(0,1.6fr)_minmax(0,1fr)_7rem_6.5rem_2.25rem] lg:gap-4";
 
 /** Projects (credit lookup is per project × process). Codes are unique case-insensitively. */
 export const ProductionProjectsRoute = () => {
@@ -144,7 +146,7 @@ export const ProductionProjectsRoute = () => {
         </div>
         <div
           className={cn(
-            "hidden gap-4 border-b px-4 py-2.5 text-xs font-medium text-foreground-muted md:grid",
+            "hidden border-b px-4 py-2.5 text-xs font-medium text-foreground-muted md:grid",
             grid
           )}
         >
@@ -184,7 +186,7 @@ export const ProductionProjectsRoute = () => {
               <li
                 key={project.id}
                 className={cn(
-                  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-2.5 md:gap-4",
+                  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-2.5",
                   grid,
                   !project.active && "bg-muted/30"
                 )}

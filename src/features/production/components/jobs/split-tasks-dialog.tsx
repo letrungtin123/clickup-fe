@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { Coins, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { ChevronDown, Coins, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,18 +15,29 @@ import {
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import type { CustomField, CustomValues } from "@/contracts/production-catalog";
 import type { Feedback, JobDetail, ProductionTask } from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { indexRules, lookupRule } from "../../credit-matrix";
+import {
+  fieldsFor,
+  formatCustomValue,
+  isEmptyValue,
+  toCustomValuesPayload,
+  validateCustomValues
+} from "../../custom-fields";
 import { productionErrorMessage } from "../../errors";
-import { formatCredit, formatMoney, todayIn } from "../../format";
+import { formatCredit, formatInteger, formatMoney, todayIn } from "../../format";
 import {
   useCreditMatrix,
+  useCustomFields,
   useProcesses,
   useProductionMe,
   useProductionProjects,
-  useShifts
+  useShifts,
+  useTags
 } from "../../hooks";
 import { useCreateTasks, useReassignFeedback } from "../../jobs-hooks";
 import {
@@ -38,17 +49,27 @@ import {
   type TaskLineDraft
 } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
-import { sheetOnPhone } from "../../ui";
+import type { Tag } from "../../types";
+import { phoneSheetColumn, sheetOnPhone } from "../../ui";
+import { CustomFieldInput } from "../custom-field-input";
 import { FormAlert, InfoNote } from "../settings-kit";
+import { TagPicker } from "../tag-picker";
 import { DateTimeField } from "./date-time-field";
 import { OptionSelect, PersonSelect } from "./pickers";
 
-/** `deadline: null` = the default (job deadline − QC buffer), sent only when the leader picks another. */
+/**
+ * `deadline: null` = the default (job deadline − QC buffer), sent only when the leader picks another.
+ * `values` / `tagIds`: the line's TASK custom fields and tags (required fields must be filled, BE
+ * CUSTOM_FIELDS_INVALID "Dòng N: …"). "Giao lại" lines start from the source task's values and tags,
+ * which the API also inherits.
+ */
 type Line = TaskLineDraft & {
   key: string;
   deadline: string | null;
   note: string;
   sourceTaskId: string | null;
+  values: CustomValues;
+  tagIds: string[];
 };
 
 let lineSeq = 0;
@@ -64,6 +85,8 @@ const blankLine = (template?: Partial<Line>): Line => ({
   deadline: null,
   note: "",
   sourceTaskId: null,
+  values: {},
+  tagIds: [],
   ...template
 });
 
@@ -74,8 +97,17 @@ const fromTask = (task: ProductionTask): Line =>
     processId: task.process.isQc ? null : task.process.id,
     shiftId: task.shift.id,
     qty: String(task.qtyAssigned),
-    sourceTaskId: task.id
+    sourceTaskId: task.id,
+    values: task.customValues,
+    tagIds: task.tagIds
   });
+
+/** Line numbers named by a server answer ("Dòng 2: …"), to outline those cards. */
+const linesInMessage = (message: string | null) =>
+  new Set([...(message ?? "").matchAll(/Dòng (\d+):/g)].map((match) => Number(match[1]) - 1));
+
+/** One server error per line ("Dòng 1: … Dòng 2: …" → one per row). */
+const splitLineMessages = (message: string) => message.replace(/\s+(?=Dòng \d+:)/g, "\n");
 
 /**
  * "Chia task" (SPEC Phase 2): several lines at once — assignee, process (never the QC process),
@@ -107,9 +139,17 @@ export const SplitTasksDialog = ({
   const projects = useProductionProjects();
   const processes = useProcesses();
   const shifts = useShifts();
+  const customFields = useCustomFields();
+  const tags = useTags();
   const matrix = useCreditMatrix(today);
   const create = useCreateTasks(job.id);
   const reassign = useReassignFeedback(job.id);
+  const taskFields = useMemo(
+    () => fieldsFor(customFields.data?.items ?? [], "TASK"),
+    [customFields.data]
+  );
+  const tagList = useMemo(() => tags.data?.items ?? [], [tags.data]);
+  const hasExtras = taskFields.length > 0 || tagList.some((tag) => tag.active);
 
   const buffer =
     projects.data?.items.find((project) => project.id === job.project.id)?.qcBufferHours ?? 0;
@@ -120,6 +160,9 @@ export const SplitTasksDialog = ({
   const [lines, setLines] = useState<Line[]>(() => [source ? fromTask(source) : blankLine()]);
   const [showErrors, setShowErrors] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Warn (never block) about deadlines already over, e.g. the default of a late job's feedback
+  // rework (job deadline − QC buffer). The dialog is re-keyed on every open: "now" is when it opened.
+  const [openedAt] = useState(() => Date.now());
 
   const workers = people.withRole("STAFF", "LEADER");
   const checkers = people.withRole("QC");
@@ -137,7 +180,14 @@ export const SplitTasksDialog = ({
   const ruleIndex = useMemo(() => indexRules(matrix.data?.rules ?? []), [matrix.data]);
   const lineContext = { callerId: session.user.id, roles: people.roles, qcProcessIds };
   const problems = lines.map((line) => taskLineProblems(line, lineContext));
-  const valid = problems.every((item) => Object.keys(item).length === 0);
+  // Required TASK fields are checked on every line (the API refuses the whole split otherwise).
+  const fieldProblems = lines.map((line) =>
+    validateCustomValues(taskFields, line.values, { enforceRequired: true })
+  );
+  const valid =
+    problems.every((item) => Object.keys(item).length === 0) &&
+    fieldProblems.every((item) => Object.keys(item).length === 0);
+  const failedLines = linesInMessage(formError);
   const totals = allocation(
     job.totalImages,
     feedback ? 0 : assignedNormalQty(job.tasks),
@@ -159,7 +209,12 @@ export const SplitTasksDialog = ({
       qtyAssigned: Number(line.qty),
       qcId: line.qcId,
       ...(line.deadline ? { deadline: line.deadline } : {}),
-      ...(line.note.trim() ? { note: line.note.trim() } : {})
+      ...(line.note.trim() ? { note: line.note.trim() } : {}),
+      ...(taskFields.length > 0
+        ? { customValues: toCustomValuesPayload(taskFields, line.values) }
+        : {}),
+      // "Giao lại": tags sent on a line replace the inherited ones; the form started from them.
+      ...(line.tagIds.length > 0 || feedback ? { tagIds: line.tagIds } : {})
     }));
     const onSuccess = (result: { tasks: unknown[]; warnings: string[] }) => {
       toast.success(
@@ -168,7 +223,8 @@ export const SplitTasksDialog = ({
       for (const warning of result.warnings) toast.warning(warning);
       onClose();
     };
-    const onError = (error: unknown) => setFormError(productionErrorMessage(error));
+    const onError = (error: unknown) =>
+      setFormError(splitLineMessages(productionErrorMessage(error)));
     if (feedback) {
       reassign.mutate(
         {
@@ -195,8 +251,8 @@ export const SplitTasksDialog = ({
           sheetOnPhone
         )}
       >
-        <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]">
-          <DialogHeader className="border-b px-4 pt-4 pb-3">
+        <div className={cn("flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col", phoneSheetColumn)}>
+          <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
             <DialogTitle>
               {feedback
                 ? `Giao lại theo feedback ${feedback.type === "WRONG" ? "sai" : "yêu cầu thêm"}`
@@ -204,7 +260,7 @@ export const SplitTasksDialog = ({
             </DialogTitle>
             <DialogDescription>
               {feedback
-                ? "Tạo task feedback trỏ về task gốc; mặc định giao lại đúng người cũ, có thể đổi."
+                ? "Tạo task feedback trỏ về task gốc: mặc định giao lại đúng người cũ và giữ trường tùy chỉnh, tag của task gốc — đổi được từng dòng."
                 : "Mỗi dòng là một lần giao N tấm cho một người theo một quy trình. QC phải khác người làm."}
             </DialogDescription>
           </DialogHeader>
@@ -224,30 +280,41 @@ export const SplitTasksDialog = ({
                   : null;
                 const earnings = expectedEarnings(rule, Number(line.qty), shift?.payMode ?? null);
                 return (
-                  <li key={line.key} className="rounded-xl border bg-surface p-3 shadow-xs">
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="text-xs font-semibold text-foreground-muted">
-                        Dòng {index + 1}
-                      </span>
-                      {line.sourceTaskId ? (
-                        <span className="text-xs text-foreground-subtle">
-                          · task gốc #
-                          {job.tasks.find((task) => task.id === line.sourceTaskId)?.number ?? "?"}
+                  <li
+                    key={line.key}
+                    className={cn(
+                      "rounded-xl border bg-surface p-3 shadow-xs",
+                      failedLines.has(index) && "border-danger/60 ring-1 ring-danger/30"
+                    )}
+                  >
+                    <div className="mb-2 flex items-start gap-2">
+                      {/* Phones: label and the expected points wrap onto two lines, the bin stays put. */}
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 pt-1">
+                        <span className="text-xs font-semibold whitespace-nowrap text-foreground-muted">
+                          Dòng {index + 1}
+                          {line.sourceTaskId ? (
+                            <span className="font-normal text-foreground-subtle">
+                              {" "}
+                              · task gốc #
+                              {job.tasks.find((task) => task.id === line.sourceTaskId)?.number ??
+                                "?"}
+                            </span>
+                          ) : null}
                         </span>
-                      ) : null}
-                      <span
-                        className="ml-auto flex items-center gap-1 text-xs text-foreground-muted"
-                        aria-live="polite"
-                      >
-                        <Coins className="size-3.5" aria-hidden="true" />
-                        {feedback?.type === "WRONG"
-                          ? "Làm lại — không tính điểm"
-                          : earnings.credit === null
-                            ? rule || !line.processId
-                              ? "—"
-                              : "Chưa có đơn giá"
-                            : `≈ ${formatCredit(earnings.credit)} điểm${earnings.money !== null ? ` · ${formatMoney(earnings.money)}` : ""}`}
-                      </span>
+                        <span
+                          className="flex items-center gap-1 text-xs text-foreground-muted sm:ml-auto"
+                          aria-live="polite"
+                        >
+                          <Coins className="size-3.5" aria-hidden="true" />
+                          {feedback?.type === "WRONG"
+                            ? "Làm lại — không tính điểm"
+                            : earnings.credit === null
+                              ? rule || !line.processId
+                                ? "—"
+                                : "Chưa có đơn giá"
+                              : `≈ ${formatCredit(earnings.credit)} điểm${earnings.money !== null ? ` · ${formatMoney(earnings.money)}` : ""}`}
+                        </span>
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -352,6 +419,16 @@ export const SplitTasksDialog = ({
                           today={today}
                           aria-label={`Deadline dòng ${index + 1}`}
                         />
+                        {new Date(line.deadline ?? defaultDeadline).getTime() < openedAt ? (
+                          <p
+                            role="status"
+                            className="flex items-start gap-1.5 text-xs text-warning"
+                          >
+                            <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                            Deadline này đã qua — task sẽ bị tính trễ ngay. Chọn ngày giờ khác nếu
+                            cần.
+                          </p>
+                        ) : null}
                       </Field>
                       <Field>
                         <FieldLabel htmlFor={`${ids}-${line.key}-note`}>
@@ -366,6 +443,24 @@ export const SplitTasksDialog = ({
                         />
                       </Field>
                     </div>
+                    {hasExtras ? (
+                      <LineExtras
+                        idPrefix={`${ids}-${line.key}`}
+                        index={index}
+                        fields={taskFields}
+                        tags={tagList}
+                        values={line.values}
+                        tagIds={line.tagIds}
+                        errors={showErrors ? (fieldProblems[index] ?? {}) : {}}
+                        flagged={failedLines.has(index)}
+                        inherited={Boolean(
+                          feedback && (line.sourceTaskId || feedback.sourceTaskId)
+                        )}
+                        today={today}
+                        onValues={(values) => update(line.key, { values })}
+                        onTags={(tagIds) => update(line.key, { tagIds })}
+                      />
+                    ) : null}
                   </li>
                 );
               })}
@@ -384,7 +479,9 @@ export const SplitTasksDialog = ({
                           processId: last.processId,
                           shiftId: last.shiftId,
                           qcId: last.qcId,
-                          deadline: last.deadline
+                          deadline: last.deadline,
+                          values: last.values,
+                          tagIds: last.tagIds
                         }
                       : undefined
                   )
@@ -397,7 +494,7 @@ export const SplitTasksDialog = ({
             <FormAlert>{formError}</FormAlert>
           </div>
 
-          <DialogFooter className="mx-0 mb-0 flex-wrap items-center gap-2 px-4 py-3 sm:justify-between">
+          <DialogFooter className="mx-0 mb-0 flex-wrap gap-2 px-4 py-3 sm:items-center sm:justify-between">
             <p
               className={cn(
                 // The footer stacks in reverse on phones: keep the totals above the buttons.
@@ -407,15 +504,17 @@ export const SplitTasksDialog = ({
               aria-live="polite"
             >
               {feedback ? (
-                <>Giao lại {totals.adding} tấm</>
+                <>Giao lại {formatInteger(totals.adding)} tấm</>
               ) : (
                 <>
-                  Đã giao {assignedNormalQty(job.tasks)} + mới {totals.adding} ={" "}
-                  <b className="text-foreground">{totals.total}</b> / {job.totalImages} tấm
+                  Đã giao {formatInteger(assignedNormalQty(job.tasks))} + mới{" "}
+                  {formatInteger(totals.adding)} ={" "}
+                  <b className="text-foreground">{formatInteger(totals.total)}</b> /{" "}
+                  {formatInteger(job.totalImages)} tấm
                   {totals.over
-                    ? ` · vượt ${totals.total - job.totalImages} tấm (vẫn lưu được, kèm cảnh báo)`
+                    ? ` · vượt ${formatInteger(totals.total - job.totalImages)} tấm (vẫn lưu được, kèm cảnh báo)`
                     : totals.remaining > 0
-                      ? ` · còn ${totals.remaining}`
+                      ? ` · còn ${formatInteger(totals.remaining)}`
                       : " · đủ"}
                 </>
               )}
@@ -433,5 +532,162 @@ export const SplitTasksDialog = ({
         </div>
       </DialogContent>
     </Dialog>
+  );
+};
+
+/** The tag picker fills the rest of the last 4-column row (TEXT fields take two columns). */
+const tagColumns = (fields: readonly CustomField[]) => {
+  const used = fields.reduce((sum, field) => sum + (field.type === "TEXT" ? 2 : 1), 0) % 4;
+  return used === 0 ? 2 : 4 - used;
+};
+const tagSpan: Record<number, string> = {
+  1: "lg:col-span-1",
+  2: "lg:col-span-2",
+  3: "lg:col-span-3"
+};
+
+/** "Độ khó: Khó · 2 tag" — what a collapsed line carries. */
+const extrasSummary = (
+  fields: readonly CustomField[],
+  values: CustomValues,
+  tagIds: readonly string[]
+) =>
+  [
+    ...fields
+      .filter((field) => !isEmptyValue(values[field.key]))
+      .map((field) => `${field.label}: ${formatCustomValue(field, values[field.key])}`),
+    ...(tagIds.length > 0 ? [`${tagIds.length} tag`] : [])
+  ].join(" · ");
+
+/**
+ * The line's TASK custom fields and tags (PLAN §8). Desktop / tablet: a compact grid under the line.
+ * Phones: collapsed behind "Thêm thông tin" (summary of what is set), opened by itself when a
+ * required field is missing after "Chia".
+ */
+const LineExtras = ({
+  idPrefix,
+  index,
+  fields,
+  tags,
+  values,
+  tagIds,
+  errors,
+  flagged,
+  inherited,
+  today,
+  onValues,
+  onTags
+}: {
+  idPrefix: string;
+  index: number;
+  fields: readonly CustomField[];
+  tags: readonly Tag[];
+  values: CustomValues;
+  tagIds: readonly string[];
+  errors: Record<string, string>;
+  /** The server named this line ("Dòng N: …"): its fields / tags are the likely cause. */
+  flagged: boolean;
+  /** "Giao lại" line: started from the source task's values and tags. */
+  inherited: boolean;
+  today: string;
+  onValues: (values: CustomValues) => void;
+  onTags: (tagIds: string[]) => void;
+}) => {
+  const phone = useBreakpoint() === "mobile";
+  const [open, setOpen] = useState(false);
+  const hasErrors = Object.keys(errors).length > 0;
+  const missingRequired = fields.some((field) => field.required && isEmptyValue(values[field.key]));
+  const expanded = !phone || open || hasErrors || flagged;
+  const summary = extrasSummary(fields, values, tagIds);
+  const panelId = `${idPrefix}-extras`;
+
+  return (
+    <div className="mt-3 border-t pt-3">
+      {phone ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          onClick={() => setOpen((value) => !value)}
+          className="flex w-full min-w-0 items-center gap-2 rounded-lg text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronDown
+            className={cn(
+              "size-3.5 shrink-0 text-foreground-muted transition-transform",
+              expanded && "rotate-180"
+            )}
+            aria-hidden="true"
+          />
+          <span className="shrink-0 font-medium">Thêm thông tin</span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              missingRequired ? "text-danger" : "text-foreground-muted"
+            )}
+          >
+            {missingRequired ? "Còn trường bắt buộc" : summary || "Trường tùy chỉnh, tag"}
+          </span>
+        </button>
+      ) : (
+        <p className="mb-2 text-xs font-medium text-foreground-muted">
+          Thông tin thêm
+          {inherited ? (
+            <span className="font-normal text-foreground-subtle"> · lấy từ task gốc, sửa được</span>
+          ) : null}
+        </p>
+      )}
+      {expanded ? (
+        <div
+          id={panelId}
+          className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", phone && "mt-3")}
+        >
+          {phone && inherited ? (
+            <p className="text-xs text-foreground-subtle">Lấy từ task gốc, sửa được.</p>
+          ) : null}
+          {fields.map((field) => {
+            const id = `${idPrefix}-cf-${field.key}`;
+            const error = errors[field.key];
+            return (
+              <Field
+                key={field.id}
+                data-invalid={Boolean(error)}
+                className={cn(field.type === "TEXT" && "lg:col-span-2")}
+              >
+                <FieldLabel htmlFor={id} className="text-xs">
+                  {field.label}
+                  {field.required ? (
+                    <span className="text-danger" aria-label="bắt buộc">
+                      *
+                    </span>
+                  ) : null}
+                </FieldLabel>
+                <CustomFieldInput
+                  id={id}
+                  field={field}
+                  value={values[field.key]}
+                  onChange={(value) => onValues({ ...values, [field.key]: value })}
+                  invalid={Boolean(error)}
+                  today={today}
+                />
+                {error ? <FieldError className="text-xs">{error}</FieldError> : null}
+              </Field>
+            );
+          })}
+          {tags.some((tag) => tag.active || tagIds.includes(tag.id)) ? (
+            <Field className={tagSpan[tagColumns(fields)]}>
+              <FieldLabel id={`${idPrefix}-tags`} className="text-xs">
+                Tag
+              </FieldLabel>
+              <TagPicker
+                tags={tags}
+                value={tagIds}
+                onChange={onTags}
+                aria-label={`Tag dòng ${index + 1}`}
+              />
+            </Field>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 };

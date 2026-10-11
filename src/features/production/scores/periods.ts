@@ -1,7 +1,12 @@
+import type { KpiCloseDayVersion } from "@/contracts/production-catalog";
+import { closeDayOfPeriod, type KpiCloseDays } from "@/contracts/production-scores";
+
 /**
  * KPI period helpers (PLAN §6, SPEC Phase 3 §2): a period "YYYY-MM" runs from the day after the
- * previous month's close day through this month's close day (settings.kpiCloseDay, 1–28), so with
- * close day 25 the period 2026-06 is 26/05/2026 – 25/06/2026. Pure functions, unit tested.
+ * previous period's close day through this period's close day, so with close day 25 the period 2026-06
+ * is 26/05/2026 – 25/06/2026. The close day can change from a given period (settings.kpiCloseDays): the
+ * day ↔ period maths is the contract's kpiPeriodOfDay / kpiPeriodRange / closeDayOfPeriod, fed with
+ * `closeDaysOf(me.settings)`. Pure functions, unit tested.
  */
 
 const periodPattern = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -17,7 +22,33 @@ const parse = (period: string) => {
 
 const key = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;
 const pad = (value: number) => String(value).padStart(2, "0");
-const clampCloseDay = (closeDay: number) => Math.min(Math.max(1, Math.trunc(closeDay)), 28);
+
+/**
+ * Close days to compute periods with: the versions of /production/me (a change applies from a given
+ * period), else the single close day, else 25 while /me loads.
+ */
+export const closeDaysOf = (
+  settings:
+    { kpiCloseDay?: number; kpiCloseDays?: readonly KpiCloseDayVersion[] } | null | undefined
+): KpiCloseDays =>
+  settings?.kpiCloseDays && settings.kpiCloseDays.length > 0
+    ? settings.kpiCloseDays
+    : (settings?.kpiCloseDay ?? 25);
+
+/**
+ * The next close-day change after `period` (e.g. an Admin moved the close day to 20 from 11/2026):
+ * its first period and day, or null when the close day stays the same.
+ */
+export const upcomingCloseDayChange = (closeDays: KpiCloseDays, period: string) => {
+  if (typeof closeDays === "number") return null;
+  const current = closeDayOfPeriod(closeDays, period);
+  const next = [...closeDays]
+    .filter((version) => version.fromPeriod !== null && version.fromPeriod > period)
+    .sort((a, b) => (a.fromPeriod ?? "").localeCompare(b.fromPeriod ?? ""))[0];
+  return next && next.closeDay !== current
+    ? { fromPeriod: next.fromPeriod ?? period, closeDay: next.closeDay }
+    : null;
+};
 
 /** Period `amount` months after (or before, when negative) `period`. */
 export const shiftPeriod = (period: string, amount: number) => {
@@ -26,29 +57,14 @@ export const shiftPeriod = (period: string, amount: number) => {
   return key(Math.floor(index / 12), (index % 12) + 1);
 };
 
-/** Period containing the calendar day `day` (YYYY-MM-DD). */
-export const periodOfDay = (day: string, closeDay: number) => {
-  const [year, month, date] = day.split("-").map(Number) as [number, number, number];
-  const base = key(year, month);
-  return date <= clampCloseDay(closeDay) ? base : shiftPeriod(base, 1);
-};
-
-/** Inclusive calendar-day range of a period. */
-export const periodRange = (period: string, closeDay: number) => {
-  const day = clampCloseDay(closeDay);
-  const { year, month } = parse(period);
-  // The day after the previous month's close day (28 Feb + 1 = 1 Mar), in UTC to avoid DST shifts.
-  const start = new Date(Date.UTC(year, month - 2, day + 1));
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: `${year}-${pad(month)}-${pad(day)}`
-  };
-};
-
 /** Every period from `from` to `to` inclusive (empty when reversed). */
 export const periodsBetween = (from: string, to: string) => {
   const result: string[] = [];
-  for (let current = from; current <= to && result.length < 1200; current = shiftPeriod(current, 1)) {
+  for (
+    let current = from;
+    current <= to && result.length < 1200;
+    current = shiftPeriod(current, 1)
+  ) {
     result.push(current);
   }
   return result;

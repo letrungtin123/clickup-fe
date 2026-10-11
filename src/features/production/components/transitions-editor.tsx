@@ -21,6 +21,7 @@ import {
   type ProductionWorkflow,
   type TransitionActor
 } from "@/contracts/production-catalog";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { toneClass } from "@/lib/colors";
 
 import { productionErrorMessage } from "../errors";
@@ -66,6 +67,7 @@ const StatusOption = ({
  */
 export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }) => {
   const replace = useStatusMutations().replaceTransitions;
+  const compact = useBreakpoint() === "mobile";
   const [drafts, setDrafts] = useState<DraftTransition[]>(() =>
     toDraftTransitions(workflow.transitions)
   );
@@ -94,20 +96,45 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
     setDrafts((items) => items.map((item) => (item.key === key ? { ...item, ...patch } : item)));
   };
 
-  const add = () => {
-    const from = fromFilter !== ALL ? fromFilter : statuses[0]?.id;
+  /** First from → to pair not drafted yet, so a new row does not start as a duplicate (red). */
+  const freePair = () => {
+    const taken = new Set(drafts.map((draft) => `${draft.fromStatusId}>${draft.toStatusId}`));
+    const froms =
+      fromFilter !== ALL
+        ? [fromFilter]
+        : statuses.filter((status) => status.active).map((status) => status.id);
+    for (const from of froms) {
+      const to = statuses.find(
+        (status) => status.active && status.id !== from && !taken.has(`${from}>${status.id}`)
+      );
+      if (to) return { from, to: to.id };
+    }
+    const from = froms[0] ?? statuses[0]?.id;
     const to = statuses.find((status) => status.id !== from)?.id;
-    if (!from || !to) return;
+    return from && to ? { from, to } : null;
+  };
+
+  const add = () => {
+    const pair = freePair();
+    if (!pair) return;
+    const { from, to } = pair;
+    const key = newKey();
     setDrafts((items) => [
       ...items,
       {
-        key: newKey(),
+        key,
         fromStatusId: from,
         toStatusId: to,
         actors: ["ASSIGNEE"],
         requiresNote: false
       }
     ]);
+    // The row is appended at the end of a long list: bring it into view (it is off-screen on phones).
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-draft="${key}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" })
+    );
   };
 
   const save = () => {
@@ -124,8 +151,11 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
     });
   };
 
-  const template =
-    "minmax(10rem,13rem) 1.5rem minmax(10rem,13rem) minmax(26rem,1fr) 7.5rem 2.75rem";
+  // Fits the 1440px desktop without scrolling. Phones scroll the row sideways anyway: keep the
+  // pinned "from" column narrower and the actor chips on one line (short rows).
+  const template = compact
+    ? "11rem 1.25rem 11rem max-content 6.5rem 2.75rem"
+    : "minmax(9rem,13rem) 1.5rem minmax(9rem,13rem) minmax(22rem,1fr) 5.5rem 2.75rem";
 
   return (
     <SettingsSection
@@ -168,11 +198,13 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
           description="Thêm luồng để quy định ai được chuyển task giữa các trạng thái."
         />
       ) : (
-        <div className="overflow-x-auto overscroll-x-contain">
+        // relative: the sr-only header is absolutely positioned and must be clipped by this
+        // scroller, otherwise it widens <main> (hidden 1172px horizontal overflow on phones).
+        <div className="relative overflow-x-auto overscroll-x-contain">
           <div
             role="table"
             aria-label="Luồng chuyển trạng thái"
-            className="min-w-max"
+            className="min-w-min"
             style={{ display: "grid", gridTemplateColumns: template }}
           >
             <div role="row" className="contents text-xs font-medium text-foreground-muted">
@@ -203,9 +235,10 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
                 <div key={draft.key} role="row" className="contents">
                   <div
                     role="cell"
+                    data-draft={draft.key}
                     className={cn(
                       cell,
-                      "sticky left-0 z-[1] flex-col items-stretch gap-1 bg-surface shadow-[1px_0_0_var(--border)]",
+                      "sticky left-0 z-[1] flex-col items-stretch justify-center gap-1 bg-surface shadow-[1px_0_0_var(--border)]",
                       error && "bg-[color-mix(in_oklch,var(--surface),var(--danger)_6%)]"
                     )}
                   >
@@ -272,34 +305,38 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
           theo người liên quan tới task.
         </p>
         <FormAlert>{formError}</FormAlert>
-        <AnimatePresence>
-          {dirty ? (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: 0.16 }}
-              className="sticky bottom-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border bg-surface-raised px-3 py-2.5 shadow-lg"
-            >
-              <span className="min-w-0 flex-1 text-[13px]">Luồng chuyển có thay đổi chưa lưu.</span>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setDrafts(toDraftTransitions(workflow.transitions));
-                  setFormError(null);
-                }}
-              >
-                <Undo2 />
-                Hoàn tác
-              </Button>
-              <Button onClick={save} disabled={replace.isPending}>
-                {replace.isPending ? <Spinner /> : <Save />}
-                Lưu luồng chuyển
-              </Button>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
       </div>
+      {/* A direct child of the section body so it stays pinned while the rows scroll by. */}
+      <AnimatePresence>
+        {dirty ? (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.16 }}
+            className="sticky bottom-3 z-20 mx-3 mb-3 flex flex-wrap items-center gap-2 rounded-xl border bg-surface-raised px-3 py-2.5 shadow-lg md:mx-4"
+          >
+            <span className="min-w-0 flex-1 text-[13px] max-sm:basis-full">
+              Luồng chuyển có thay đổi chưa lưu.
+            </span>
+            <Button
+              variant="ghost"
+              className="max-sm:ml-auto"
+              onClick={() => {
+                setDrafts(toDraftTransitions(workflow.transitions));
+                setFormError(null);
+              }}
+            >
+              <Undo2 />
+              Hoàn tác
+            </Button>
+            <Button onClick={save} disabled={replace.isPending}>
+              {replace.isPending ? <Spinner /> : <Save />}
+              Lưu luồng chuyển
+            </Button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </SettingsSection>
   );
 };

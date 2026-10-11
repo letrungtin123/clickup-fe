@@ -13,7 +13,7 @@ import {
   progressWidth,
   type ToneFamily
 } from "../forecast";
-import { formatPeriod, quarterOfPeriod, rollupLabel } from "../periods";
+import { formatPeriod, periodLabel, quarterOfPeriod, rollupLabel } from "../periods";
 import { ProgressBar } from "./kit";
 
 const toneIcons = {
@@ -96,7 +96,7 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
             <span>
               {forecast.daysLeft === 1
                 ? "Hôm nay là ngày chốt"
-                : `Còn ${forecast.daysLeft} ngày, tính cả hôm nay (${forecast.workingDaysLeft} ngày làm việc), tới ngày chốt ${forecast.closeDay}`}
+                : `Chốt ngày ${forecast.to.slice(8, 10)}/${forecast.to.slice(5, 7)} · trong đó ${forecast.workingDaysLeft} ngày làm việc`}
             </span>
           ) : (
             <span>Kỳ đã kết thúc ngày {forecast.to.slice(8, 10)}/{forecast.to.slice(5, 7)}</span>
@@ -104,7 +104,7 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
         </p>
       </div>
 
-      <KpiChips kpi={forecast.kpi} period={forecast.period} />
+      <KpiChips forecast={forecast} />
 
       {prorated ? (
         <p className="flex items-start gap-1.5 text-xs text-foreground-muted">
@@ -117,9 +117,15 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
   );
 };
 
-const KpiChips = ({ kpi, period }: { kpi: ScoreForecast["kpi"]; period: string }) => {
+const KpiChips = ({ forecast }: { forecast: ScoreForecast }) => {
+  const { kpi, period } = forecast;
+  // The month chip repeats the headline: same (leave-prorated) target and percent, never two numbers.
+  const month: KpiProgress =
+    forecast.target === null
+      ? kpi.month
+      : { ...kpi.month, points: forecast.pointsOfficial, target: forecast.target, percent: forecast.percent };
   const chips: { key: string; label: string; progress: KpiProgress }[] = [
-    { key: "month", label: `Tháng ${formatPeriod(period)}`, progress: kpi.month },
+    { key: "month", label: periodLabel(period), progress: month },
     { key: "quarter", label: rollupLabel(quarterOfPeriod(period)), progress: kpi.quarter },
     { key: "year", label: rollupLabel(period.slice(0, 4)), progress: kpi.year }
   ];

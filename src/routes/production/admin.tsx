@@ -13,6 +13,7 @@ import {
   AdminCardsSkeleton,
   PinnedReportCard
 } from "@/features/production/reports/components/admin-cards";
+import { AdminExportMenu } from "@/features/production/reports/components/admin-export";
 import { formatRange } from "@/features/production/reports/format";
 import { useAdminDashboard, useLiveReports } from "@/features/production/reports/hooks";
 import { PageBody } from "@/features/production/scores/components/kit";
@@ -21,9 +22,10 @@ import { touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 /**
- * /production/admin — Admin dashboard (SPEC Phase 5 §3): the six fixed cards (points today, late jobs,
- * FB rate by worker / client, productivity by shift, KPI attainment), each opening the report builder
- * with its config, then the saved reports an Admin pinned. ADMIN only (the API answers 403 otherwise).
+ * /production/admin — Admin dashboard (SPEC Phase 5 §3, PLAN §7): the six fixed cards (points today, late
+ * jobs, FB rate by worker / client, productivity by shift, KPI attainment), each opening the report builder
+ * with its config (the KPI card opens the KPI report: % per person), "Xuất" (CSV of the six cards or one
+ * card's Excel), then the saved reports an Admin pinned. ADMIN only (the API answers 403 otherwise).
  */
 export const ProductionAdminDashboardRoute = () => (
   <RequireProductionRole roles={["ADMIN"]}>
@@ -64,6 +66,7 @@ const AdminDashboardPage = () => {
             {dashboard.isFetching && !dashboard.isPending ? (
               <Spinner className="size-4 text-foreground-muted" />
             ) : null}
+            <AdminExportMenu data={data} timeZone={timeZone} />
             <Button
               variant="outline"
               render={<Link to="/production/dashboard" />}

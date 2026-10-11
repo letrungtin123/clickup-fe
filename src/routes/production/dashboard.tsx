@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RequireProductionRole } from "@/features/production/components/production-gate";
 import { formatDay, formatInteger } from "@/features/production/format";
 import {
@@ -35,8 +36,14 @@ import {
   TeamPointsPanel,
   WorkloadPanel
 } from "@/features/production/reports/components/leader-dashboard";
+import { leaderAnomalyDays, unreviewedTotal } from "@/features/production/reports/anomalies";
+import { LeaderAnomaliesPanel } from "@/features/production/reports/components/leader-anomalies";
 import { workloadTotals } from "@/features/production/reports/dashboard";
-import { useLeaderDashboard, useLiveReports } from "@/features/production/reports/hooks";
+import {
+  useAnomalies,
+  useLeaderDashboard,
+  useLiveReports
+} from "@/features/production/reports/hooks";
 import { PageBody, StatCard } from "@/features/production/scores/components/kit";
 import { touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
@@ -47,7 +54,8 @@ const ALL = "__all";
 /**
  * /production/dashboard — Leader dashboard (SPEC Phase 5 §2): late (red) and due-soon (amber) tasks of
  * the jobs the leader leads, today's workload of every worker, team points per week. ADMIN sees every
- * job or picks a leader (`?leader=`). Refreshes every minute and on `production:changed`.
+ * job or picks a leader (`?leader=`). "Bất thường" tab (`?tab=anomalies`, SPEC Phase 5.5): the unreviewed
+ * anomalies of the leader's jobs. Refreshes every minute and on `production:changed`.
  */
 export const ProductionDashboardRoute = () => (
   <RequireProductionRole roles={["LEADER"]}>
@@ -63,7 +71,10 @@ const LeaderDashboardPage = () => {
   const isAdmin = access.isAdmin;
   const leaderParam = params.get("leader");
   const leaderId = isAdmin && leaderParam && uuidPattern.test(leaderParam) ? leaderParam : null;
-  const dashboard = useLeaderDashboard(leaderId);
+  const tab = params.get("tab") === "anomalies" ? "anomalies" : "overview";
+  const dashboard = useLeaderDashboard(leaderId, tab === "overview");
+  const anomalies = useAnomalies(leaderAnomalyDays, false);
+  const anomalyCount = unreviewedTotal(anomalies.data?.counts);
   const members = useProductionMembers(isAdmin);
   useLiveReports();
 
@@ -131,56 +142,99 @@ const LeaderDashboardPage = () => {
           </div>
         }
       >
-        {isAdmin ? (
-          <div className={`flex items-center gap-2 ${touchTargets}`}>
-            <span className="text-xs text-foreground-muted">Xem theo Leader</span>
-            <Select
-              items={leaderItems}
-              value={leaderId ?? ALL}
-              onValueChange={(next: string | null) =>
-                setParams(
-                  (previous) => {
-                    const nextParams = new URLSearchParams(previous);
-                    if (!next || next === ALL) nextParams.delete("leader");
-                    else nextParams.set("leader", next);
-                    return nextParams;
-                  },
-                  { replace: true }
-                )
-              }
-            >
-              <SelectTrigger size="sm" className="min-w-44" aria-label="Chọn Leader">
-                <SelectValue>
-                  {selectedLeader ? (
-                    <span className="flex min-w-0 items-center gap-2">
-                      <UserAvatar
-                        user={{
-                          id: selectedLeader.userId,
-                          displayName: selectedLeader.displayName,
-                          avatarUrl: selectedLeader.avatarUrl
-                        }}
-                        size="xs"
-                      />
-                      <span className="truncate">{selectedLeader.displayName}</span>
-                    </span>
-                  ) : (
-                    "Mọi job"
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                {leaderItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
+        <div className="flex flex-col gap-2">
+          {isAdmin ? (
+            <div className={`flex items-center gap-2 ${touchTargets}`}>
+              <span className="text-xs text-foreground-muted">Xem theo Leader</span>
+              <Select
+                items={leaderItems}
+                value={leaderId ?? ALL}
+                onValueChange={(next: string | null) =>
+                  setParams(
+                    (previous) => {
+                      const nextParams = new URLSearchParams(previous);
+                      if (!next || next === ALL) nextParams.delete("leader");
+                      else nextParams.set("leader", next);
+                      return nextParams;
+                    },
+                    { replace: true }
+                  )
+                }
+              >
+                <SelectTrigger size="sm" className="min-w-44" aria-label="Chọn Leader">
+                  <SelectValue>
+                    {selectedLeader ? (
+                      <span className="flex min-w-0 items-center gap-2">
+                        <UserAvatar
+                          user={{
+                            id: selectedLeader.userId,
+                            displayName: selectedLeader.displayName,
+                            avatarUrl: selectedLeader.avatarUrl
+                          }}
+                          size="xs"
+                        />
+                        <span className="truncate">{selectedLeader.displayName}</span>
+                      </span>
+                    ) : (
+                      "Mọi job"
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {leaderItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          <Tabs
+            value={tab}
+            onValueChange={(value) =>
+              setParams(
+                (previous) => {
+                  const nextParams = new URLSearchParams(previous);
+                  if (value === "anomalies") nextParams.set("tab", "anomalies");
+                  else nextParams.delete("tab");
+                  return nextParams;
+                },
+                { replace: true }
+              )
+            }
+          >
+            <TabsList variant="line" className="-mb-3 h-9">
+              <TabsTrigger value="overview" className="max-sm:min-h-10">
+                Tổng quan
+              </TabsTrigger>
+              <TabsTrigger value="anomalies" className="gap-1.5 max-sm:min-h-10">
+                Bất thường
+                {anomalyCount > 0 ? (
+                  <span
+                    className="min-w-5 rounded-full bg-danger-soft px-1.5 text-[11px] font-semibold text-danger tabular-nums"
+                    aria-label={`${anomalyCount} mục chưa xem`}
+                  >
+                    {anomalyCount}
+                  </span>
+                ) : null}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </PageHeader>
       <PageBody className="max-w-7xl">
-        {dashboard.isPending ? (
+        {tab === "anomalies" ? (
+          <LeaderAnomaliesPanel
+            timeZone={timeZone}
+            scope={isAdmin ? "mọi job" : "các job bạn phụ trách"}
+            note={
+              isAdmin && selectedLeader
+                ? "Danh sách này chưa lọc theo Leader đang chọn."
+                : undefined
+            }
+          />
+        ) : dashboard.isPending ? (
           <DashboardSkeleton />
         ) : dashboard.isError || !data ? (
           <div className="rounded-xl border bg-surface">

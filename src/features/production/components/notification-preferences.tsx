@@ -10,8 +10,10 @@ import { productionErrorMessage } from "../errors";
 import { useNotificationPreferences, useUpdateNotificationPreferences } from "../hooks";
 
 /**
- * Personal notification channels (GET/PATCH /me/notification-preferences, any user). Email
- * delivery (at most one digest per 5 minutes, PD-013) starts once the server has SMTP configured.
+ * Personal notification channels (GET/PATCH /me/notification-preferences, any user). "Trên web" only
+ * turns pop-ups on or off (PD-021: the bell and the inbox always record). Email delivery (at most one
+ * digest per 5 minutes, PD-013, never chat) starts once the server has SMTP configured. The session
+ * (`["session"]`, which carries the preferences) is refreshed after a change.
  */
 export const NotificationPreferencesPanel = () => {
   const preferences = useNotificationPreferences();
@@ -53,10 +55,14 @@ export const NotificationPreferencesPanel = () => {
       <PreferenceRow
         icon={<BellRing className="size-4" aria-hidden="true" />}
         title="Thông báo trên web"
-        description="Chuông thông báo và hộp thư trong ứng dụng."
+        // PD-021: the switch only controls pop-ups; the bell, inbox and badges always record.
+        description="Thông báo mới bật lên trên màn hình. Tắt đi thì chuông và Hộp thư vẫn ghi nhận đầy đủ."
         checked={preferences.data.notifyWeb}
         onChange={(notifyWeb) =>
-          set({ notifyWeb }, notifyWeb ? "Đã bật thông báo trên web" : "Đã tắt thông báo trên web")
+          set(
+            { notifyWeb },
+            notifyWeb ? "Đã bật thông báo bật lên trên web" : "Đã tắt thông báo bật lên trên web"
+          )
         }
       />
       <PreferenceRow
@@ -64,8 +70,8 @@ export const NotificationPreferencesPanel = () => {
         title="Thông báo qua email"
         description={
           preferences.data.emailAvailable
-            ? "Gửi tóm tắt tối đa mỗi 5 phút tới email của bạn."
-            : "Gửi tóm tắt tối đa mỗi 5 phút tới email của bạn. Máy chủ chưa cấu hình gửi email (SMTP): lựa chọn được lưu và có hiệu lực khi email được bật."
+            ? "Gửi tóm tắt tối đa mỗi 5 phút tới email của bạn (không gồm tin nhắn chat)."
+            : "Gửi tóm tắt tối đa mỗi 5 phút tới email của bạn (không gồm tin nhắn chat). Email chưa bật trên hệ thống — lựa chọn của bạn được lưu và có hiệu lực khi quản trị bật email."
         }
         checked={preferences.data.notifyEmail}
         onChange={(notifyEmail) =>

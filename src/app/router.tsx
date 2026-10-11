@@ -11,7 +11,8 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /                              home
  *   /my-tasks                      my tasks
  *   /trash?project=                deleted tasks (restore / purge)
- *   /inbox?tab=all|unread|mentions notifications
+ *   /inbox?tab=all|unread|mentions notifications (/notifications redirects here; the header bell
+ *                                  shows the 10 newest)
  *   /search?q=&tab=                global search results
  *   /p/:projectId                  → first list
  *   /p/:projectId/l/:listId        list with ?view=list|board|table and ?task=<id> detail panel
@@ -111,6 +112,12 @@ export const routes: RouteObject[] = [
           {
             path: "inbox",
             lazy: async () => ({ Component: (await import("@/routes/inbox")).InboxRoute })
+          },
+          {
+            path: "notifications",
+            lazy: async () => ({
+              Component: (await import("@/routes/inbox")).NotificationsRedirectRoute
+            })
           },
           {
             path: "search",

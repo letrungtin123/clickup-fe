@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "motion/react";
-import { Hash, Lock, SearchX, ShieldOff, UploadCloud } from "lucide-react";
+import { ArrowLeft, Hash, Lock, SearchX, ShieldOff, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -404,27 +404,45 @@ const ChannelSkeleton = () => (
 
 const ChannelUnavailable = ({ error, onRetry }: { error: unknown; onRetry: () => void }) => {
   const gone = isApiError(error) && (error.status === 404 || error.status === 403);
+  // Phones hide the global top bar inside /c/:id: keep a way back like the channel header (P14).
+  const mobile = useBreakpoint() === "mobile";
   return (
-    <div className="flex h-full flex-col items-center justify-center">
-      {gone ? (
-        <EmptyState
-          icon={
-            error instanceof Error && isApiError(error) && error.status === 403
-              ? ShieldOff
-              : SearchX
-          }
-          title="Không mở được cuộc trò chuyện"
-          description="Kênh không tồn tại, đã bị xóa, hoặc bạn không còn quyền truy cập."
-          action={
-            <Button variant="outline" size="sm" render={<Link to="/c" />} nativeButton={false}>
-              <Hash />
-              Về danh sách kênh
-            </Button>
-          }
-        />
-      ) : (
-        <ErrorState error={error} onRetry={onRetry} />
-      )}
+    <div className="flex h-full flex-col">
+      {mobile ? (
+        <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-1 border-b bg-background px-2 pt-[env(safe-area-inset-top)]">
+          <Button
+            variant="ghost"
+            size="icon"
+            render={<Link to="/c" />}
+            nativeButton={false}
+            aria-label="Danh sách trò chuyện"
+          >
+            <ArrowLeft />
+          </Button>
+          <span className="text-sm font-semibold">Tin nhắn</span>
+        </header>
+      ) : null}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+        {gone ? (
+          <EmptyState
+            icon={
+              error instanceof Error && isApiError(error) && error.status === 403
+                ? ShieldOff
+                : SearchX
+            }
+            title="Không mở được cuộc trò chuyện"
+            description="Kênh không tồn tại, đã bị xóa, hoặc bạn không còn quyền truy cập."
+            action={
+              <Button variant="outline" size="sm" render={<Link to="/c" />} nativeButton={false}>
+                <Hash />
+                Về danh sách kênh
+              </Button>
+            }
+          />
+        ) : (
+          <ErrorState error={error} onRetry={onRetry} />
+        )}
+      </div>
     </div>
   );
 };

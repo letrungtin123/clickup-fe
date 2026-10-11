@@ -32,7 +32,7 @@ import {
 import { useCreateJob, useUpdateJob } from "../../jobs-hooks";
 import { zonedToIso } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
-import { sheetOnPhone } from "../../ui";
+import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { CustomFieldsForm } from "../custom-field-input";
 import { FormAlert } from "../settings-kit";
 import { TagPicker } from "../tag-picker";
@@ -188,13 +188,13 @@ export const JobFormDialog = ({
       >
         <form
           noValidate
-          className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]"
+          className={cn("flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col", phoneSheetColumn)}
           onSubmit={(event) => {
             event.preventDefault();
             submit();
           }}
         >
-          <DialogHeader className="border-b px-4 pt-4 pb-3">
+          <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
             <DialogTitle>{job ? `Sửa job ${job.code}` : "Tạo job"}</DialogTitle>
             <DialogDescription>
               Một job là một gói ảnh của dự án; Leader phụ trách chia task cho nhân viên.

@@ -381,10 +381,12 @@ const StatusDialog = ({
             </div>
             <Field>
               <FieldLabel id={`${ids}-color`}>Màu</FieldLabel>
+              {/* The sheet stretches every button to 40px tall on phones: keep the swatches round. */}
               <ColorSwatchPicker
                 aria-labelledby={`${ids}-color`}
                 value={color}
                 onChange={setColor}
+                className="max-sm:[&_button]:size-10"
               />
             </Field>
             <div className="grid gap-2 sm:grid-cols-3">

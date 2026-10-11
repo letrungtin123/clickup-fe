@@ -14,19 +14,18 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import type { KpiSettlementRunResult } from "@/contracts/production-scores";
+import {
+  closeDayOfPeriod,
+  kpiPeriodRange,
+  type KpiCloseDays,
+  type KpiSettlementRunResult
+} from "@/contracts/production-scores";
 
 import { ConfirmDialog, FormAlert, InfoNote } from "../../components/settings-kit";
 import { formatCredit, formatInteger, formatMoney } from "../../format";
 import { scoreErrorMessage } from "../../scores/errors";
 import { Panel } from "../../scores/components/kit";
-import {
-  formatDayRange,
-  periodLabel,
-  periodRange,
-  periodsBetween,
-  shiftPeriod
-} from "../../scores/periods";
+import { formatDayRange, periodLabel, periodsBetween, shiftPeriod } from "../../scores/periods";
 import { useRunKpiSettlement } from "../hooks";
 
 /**
@@ -36,11 +35,12 @@ import { useRunKpiSettlement } from "../hooks";
  */
 export const SettlementRunPanel = ({
   currentPeriod,
-  closeDay,
+  closeDays,
   onDone
 }: {
   currentPeriod: string;
-  closeDay: number;
+  /** settings.kpiCloseDays (closeDaysOf): each period keeps the close day in force for it. */
+  closeDays: KpiCloseDays;
   /** Called with the settled period (the page shows its report). */
   onDone: (period: string) => void;
 }) => {
@@ -57,7 +57,8 @@ export const SettlementRunPanel = ({
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<KpiSettlementRunResult | null>(null);
-  const range = periodRange(period, closeDay);
+  const range = kpiPeriodRange(period, closeDays);
+  const closeDay = closeDayOfPeriod(closeDays, currentPeriod);
 
   const review = () => {
     const trimmed = reason.trim();
@@ -95,7 +96,7 @@ export const SettlementRunPanel = ({
   return (
     <Panel
       title="Chạy chốt KPI"
-      description={`Hệ thống tự chốt lúc 23:59 ngày ${closeDay} hằng tháng. Chạy tay khi cần sửa kết quả của một kỳ.`}
+      description={`Hệ thống tự chốt lúc 23:59 ngày chốt của mỗi kỳ (kỳ đang chạy: ngày ${closeDay}). Chạy tay khi cần sửa kết quả của một kỳ.`}
       bodyClassName="flex flex-col gap-4 p-4"
     >
       <form
@@ -153,8 +154,8 @@ export const SettlementRunPanel = ({
         <div className="flex flex-wrap items-center gap-3 md:col-span-2">
           {period === currentPeriod ? (
             <InfoNote icon={TriangleAlert} tone="warning" className="min-w-60 flex-1">
-              Kỳ này chưa tới ngày chốt; kết quả sẽ được tính với số liệu tới hiện tại và bị thay thế khi
-              hệ thống tự chốt.
+              Kỳ này chưa tới ngày chốt; kết quả sẽ được tính với số liệu tới hiện tại và bị thay
+              thế khi hệ thống tự chốt.
             </InfoNote>
           ) : (
             <span className="min-w-60 flex-1 text-xs text-foreground-muted">
@@ -177,8 +178,8 @@ export const SettlementRunPanel = ({
         description={
           <>
             Tính lại cho mọi người có điểm hoặc KPI trong kỳ {formatDayRange(range.from, range.to)}:
-            đủ KPI thì tiền Khoán được trả, thiếu thì điểm Khoán quy về điểm. Kết quả hiện tại của kỳ bị
-            thay thế và mỗi người nhận thông báo. Lý do: “{reason.trim()}”.
+            đủ KPI thì tiền Khoán được trả, thiếu thì điểm Khoán quy về điểm. Kết quả hiện tại của
+            kỳ bị thay thế và mỗi người nhận thông báo. Lý do: “{reason.trim()}”.
           </>
         }
         confirmLabel="Chạy chốt"
@@ -192,10 +193,14 @@ export const SettlementRunPanel = ({
 const RunResult = ({ result }: { result: KpiSettlementRunResult }) => {
   const { run } = result;
   return (
-    <div role="status" className="flex flex-col gap-3 rounded-lg border border-success/30 bg-success-soft/50 p-3">
+    <div
+      role="status"
+      className="flex flex-col gap-3 rounded-lg border border-success/30 bg-success-soft/50 p-3"
+    >
       <p className="flex items-center gap-2 text-[13px] font-medium">
         <CheckCircle2 className="size-4 text-success" aria-hidden="true" />
-        Đã chốt {periodLabel(run.period).toLocaleLowerCase("vi")} cho {formatInteger(run.userCount)} người
+        Đã chốt {periodLabel(run.period).toLocaleLowerCase("vi")} cho {formatInteger(run.userCount)}{" "}
+        người
         {run.replacedCount > 0 ? ` (thay ${formatInteger(run.replacedCount)} kết quả cũ)` : ""}.
       </p>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -208,7 +213,15 @@ const RunResult = ({ result }: { result: KpiSettlementRunResult }) => {
   );
 };
 
-const Stat = ({ label, value, tone }: { label: string; value: string; tone?: "success" | "danger" }) => (
+const Stat = ({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "danger";
+}) => (
   <div className="flex min-w-0 flex-col gap-0.5 rounded-md bg-surface px-2.5 py-2 shadow-xs ring-1 ring-border/60">
     <dt className="text-[11px] text-foreground-muted">{label}</dt>
     <dd

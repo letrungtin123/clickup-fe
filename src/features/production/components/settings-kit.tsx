@@ -81,7 +81,8 @@ export const PageIntro = ({
   const page = settingsPageBySlug(slug);
   return (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      {/* basis-64: on phones the actions wrap below instead of squeezing the title column. */}
+      <div className="flex min-w-0 flex-1 basis-64 items-start gap-3">
         {page ? (
           <span className="mt-0.5 hidden size-9 shrink-0 items-center justify-center rounded-lg border bg-surface text-foreground-muted shadow-xs sm:flex [&_svg]:size-[18px]">
             <page.icon aria-hidden="true" strokeWidth={1.75} />

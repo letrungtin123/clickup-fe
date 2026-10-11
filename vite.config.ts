@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 const vendorChunk = (id: string) => {
   const normalizedId = id.replace(/\\/g, "/");
@@ -14,13 +14,9 @@ const vendorChunk = (id: string) => {
     return "react";
   }
 
-  if (
-    /\/node_modules\/(@tanstack\/query-core|@tanstack\/react-query|zod|zustand)\//.test(
-      normalizedId
-    )
-  ) {
-    return "data";
-  }
+  // No manual "data" group (TanStack Query, zod, zustand): rolldown then hoisted its CJS interop helpers into an
+  // app chunk that imports zod back, a static import cycle that crashed the app at start-up ("t is not a function").
+  // Those libraries are shared by almost every route, so the bundler keeps them in common chunks on its own.
 
   // Every lucide icon is its own tiny module: one cacheable chunk instead of dozens of requests (PERF-16).
   if (/\/node_modules\/lucide-react\//.test(normalizedId)) {
@@ -30,6 +26,35 @@ const vendorChunk = (id: string) => {
   // Base UI, motion, dnd-kit etc. are left to the bundler so each lazy route only loads what it uses.
   return undefined;
 };
+
+/**
+ * Fails the build on a static import cycle between output chunks: in a cycle one chunk is evaluated before the
+ * other has run, so shared helpers it imports are still undefined and the app crashes at start-up.
+ */
+const noChunkCycles = (): Plugin => ({
+  name: "nesso:no-chunk-cycles",
+  apply: "build",
+  generateBundle(_options, bundle) {
+    const graph = new Map<string, string[]>();
+    for (const [name, item] of Object.entries(bundle)) {
+      if (item.type === "chunk") graph.set(name, item.imports);
+    }
+    const state = new Map<string, "visiting" | "done">();
+    const cycles: string[] = [];
+    const visit = (name: string, path: string[]) => {
+      if (state.get(name) === "done") return;
+      if (state.get(name) === "visiting") {
+        cycles.push([...path.slice(path.indexOf(name)), name].join(" → "));
+        return;
+      }
+      state.set(name, "visiting");
+      for (const next of graph.get(name) ?? []) visit(next, [...path, name]);
+      state.set(name, "done");
+    };
+    for (const name of graph.keys()) visit(name, []);
+    if (cycles.length > 0) this.error(`Static import cycle between chunks: ${cycles.join("; ")}`);
+  }
+});
 
 /**
  * Paths with dot segments or encoded separators are refused before proxying: the upstream gateway
@@ -78,7 +103,7 @@ export default defineConfig(({ mode }) => {
   const storageTarget = env.DEV_STORAGE_TARGET || "http://127.0.0.1:56321";
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), noChunkCycles()],
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url))

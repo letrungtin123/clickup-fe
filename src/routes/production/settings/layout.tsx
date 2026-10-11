@@ -121,6 +121,8 @@ const SideNav = ({ pages }: { pages: readonly SettingsPage[] }) => (
 const TabsNav = ({ pages }: { pages: readonly SettingsPage[] }) => {
   const ref = useRef<HTMLElement | null>(null);
   const { pathname } = useLocation();
+  // Same order as the grouped side navigation (KPI sits with "Con người", not after "Cài đặt chung").
+  const ordered = groupOrder.flatMap((group) => pages.filter((page) => page.group === group));
   // Keep the active tab visible when the row overflows (deep links on mobile).
   useEffect(() => {
     ref.current
@@ -131,9 +133,10 @@ const TabsNav = ({ pages }: { pages: readonly SettingsPage[] }) => {
     <nav
       ref={ref}
       aria-label="Mục cấu hình sản xuất"
-      className="-mb-3 flex gap-1 overflow-x-auto scrollbar-none"
+      // Edge-to-edge row with faded edges: a cut-off tab at the border signals that the row scrolls.
+      className="-mx-4 -mb-3 flex scroll-px-6 gap-1 overflow-x-auto px-4 scrollbar-none [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%-1.5rem),transparent)] md:-mx-6 md:px-6"
     >
-      {pages.map((page) => (
+      {ordered.map((page) => (
         <NavLink
           key={page.slug}
           to={`/production/settings/${page.slug}`}

@@ -8,6 +8,7 @@ import {
   Info,
   ListFilter,
   Plus,
+  Tag,
   X
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -24,7 +25,10 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -38,12 +42,12 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import type { CustomField } from "@/contracts/production-catalog";
 import {
-  reportDimensionInfo,
   reportMeasureInfo,
   reportRangePresets,
+  type CustomFieldDimension,
   type ReportConfig,
-  type ReportDimension,
   type ReportFilters,
   type ReportMeasure,
   type ReportRangePreset
@@ -53,8 +57,24 @@ import { toneClass } from "@/lib/colors";
 import { touchTargets } from "../../ui";
 import { foldText } from "../../catalog";
 import { DateField } from "../../components/date-field";
-import { filterKeys, filterValues, type FilterKey, type FilterOption } from "../filter-options";
 import {
+  customEntityLabels,
+  customFieldDimensionId,
+  dimensionLabel,
+  dimensionMeta,
+  emptyCatalog,
+  type DimensionKey,
+  type FieldCatalog
+} from "../dimensions";
+import {
+  customFieldFilterOptions,
+  filterKeys,
+  filterValues,
+  type FilterKey,
+  type FilterOption
+} from "../filter-options";
+import {
+  customFieldFilterValues,
   filterLabels,
   monthRange,
   rangeOfConfig,
@@ -62,6 +82,7 @@ import {
   recentMonths,
   taskDateInfo,
   usesSource,
+  withCustomFieldFilter,
   withFilter,
   withLimit,
   withRange,
@@ -133,7 +154,7 @@ export const RangeControl = ({ config, onChange, today }: SettingsProps & { toda
 
   return (
     <div className="flex w-full min-w-0 flex-wrap items-end gap-2 sm:w-auto">
-      <Field label="Thời gian" className="w-full sm:w-52">
+      <Field label="Thời gian" className="w-full sm:w-56">
         <Select items={items} value={value} onValueChange={(next: string | null) => pick(next)}>
           <SelectTrigger className="w-full" aria-label="Khoảng thời gian">
             <CalendarRange className="text-foreground-muted" aria-hidden="true" />
@@ -240,12 +261,16 @@ export const TaskDateControl = ({ config, onChange }: SettingsProps) => {
 const DEFAULT_SORT = "__default";
 const limits = [5, 10, 20, 50, 100] as const;
 
-export const SortControl = ({ config, onChange }: SettingsProps) => {
-  const keys: (ReportDimension | ReportMeasure)[] = [...config.dimensions, ...config.measures];
-  const labelOf = (key: ReportDimension | ReportMeasure) =>
+export const SortControl = ({
+  config,
+  onChange,
+  catalog
+}: SettingsProps & { catalog?: FieldCatalog }) => {
+  const keys: (DimensionKey | ReportMeasure)[] = [...config.dimensions, ...config.measures];
+  const labelOf = (key: DimensionKey | ReportMeasure) =>
     key in reportMeasureInfo
       ? reportMeasureInfo[key as ReportMeasure].label
-      : reportDimensionInfo[key as ReportDimension].label;
+      : dimensionLabel(key as DimensionKey, catalog);
   const sortItems = [
     { value: DEFAULT_SORT, label: "Mặc định" },
     ...keys.map((key) => ({ value: key, label: labelOf(key) }))
@@ -267,7 +292,7 @@ export const SortControl = ({ config, onChange }: SettingsProps) => {
                 config,
                 !next || next === DEFAULT_SORT
                   ? null
-                  : { key: next as ReportDimension | ReportMeasure, direction }
+                  : { key: next as DimensionKey | ReportMeasure, direction }
               )
             )
           }
@@ -348,34 +373,52 @@ const OptionDot = ({ color }: { color?: string | undefined }) =>
     />
   ) : null;
 
+/**
+ * One filter as a pill: "Dự án: ABC +2". Multi-select list (search from 9 options); `single` picks one
+ * value; `freeText` (text custom fields) adds the typed text as an exact value.
+ */
 const FilterPill = ({
-  filterKey,
+  label,
   values,
   options,
   open,
   onOpenChange,
-  onChange
+  onChange,
+  single = false,
+  freeText = false
 }: {
-  filterKey: FilterKey;
+  label: string;
   values: string[];
   options: FilterOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (values: string[]) => void;
+  single?: boolean;
+  freeText?: boolean;
 }) => {
   const [query, setQuery] = useState("");
   const selected = new Set(values);
   const q = foldText(query);
-  const visible = q ? options.filter((item) => item.search.includes(q)) : options;
   const byId = new Map(options.map((item) => [item.id, item]));
-  const first = values[0] ? byId.get(values[0])?.label : undefined;
+  // Typed values of a text field are options too (shown checked).
+  const all: FilterOption[] = freeText
+    ? [
+        ...options,
+        ...values
+          .filter((value) => !byId.has(value))
+          .map((value) => ({ id: value, label: value, search: foldText(value) }))
+      ]
+    : options;
+  const visible = q ? all.filter((item) => item.search.includes(q)) : all;
+  const typed = query.trim();
+  const canAddTyped = freeText && typed.length > 0 && !all.some((item) => item.id === typed);
+  const first = values[0] ? (byId.get(values[0])?.label ?? values[0]) : undefined;
   const summary =
     values.length === 0
       ? "Tất cả"
       : values.length === 1
         ? (first ?? "1 mục")
         : `${first ?? values.length} +${values.length - 1}`;
-  const single = singleChoice.has(filterKey);
   const toggle = (id: string) => {
     if (single) {
       onChange(selected.has(id) ? [] : [id]);
@@ -405,15 +448,15 @@ const FilterPill = ({
           />
         }
       >
-        <span className="shrink-0 text-foreground-muted">{filterLabels[filterKey]}:</span>
+        <span className="max-w-32 shrink-0 truncate text-foreground-muted">{label}:</span>
         <span className="max-w-40 truncate font-medium">{summary}</span>
         <ChevronDown className="size-3.5 shrink-0 opacity-60" aria-hidden="true" />
       </PopoverTrigger>
       <PopoverContent align="start" className={cn("w-72 p-0", touchTargets)}>
         <Command shouldFilter={false} loop>
-          {options.length > 8 ? (
+          {options.length > 8 || freeText ? (
             <CommandInput
-              placeholder={`Tìm ${filterLabels[filterKey].toLowerCase()}…`}
+              placeholder={freeText ? "Nhập giá trị cần lọc…" : `Tìm ${label.toLowerCase()}…`}
               value={query}
               onValueChange={setQuery}
               autoFocus
@@ -421,8 +464,26 @@ const FilterPill = ({
           ) : null}
           <CommandList>
             <CommandEmpty>
-              {options.length === 0 ? "Chưa có dữ liệu." : "Không có kết quả phù hợp."}
+              {freeText
+                ? "Nhập đúng nội dung của trường để lọc."
+                : options.length === 0
+                  ? "Chưa có dữ liệu."
+                  : "Không có kết quả phù hợp."}
             </CommandEmpty>
+            {canAddTyped ? (
+              <CommandGroup>
+                <CommandItem
+                  value={`__typed:${typed}`}
+                  onSelect={() => {
+                    onChange([...values, typed]);
+                    setQuery("");
+                  }}
+                >
+                  <Plus className="text-foreground-muted" />
+                  <span className="min-w-0 truncate">Lọc đúng “{typed}”</span>
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
             {visible.length > 0 ? (
               <CommandGroup>
                 {visible.map((item) => (
@@ -480,21 +541,69 @@ const setValues = (config: ReportConfig, key: FilterKey, values: string[]): Repo
   return withFilter(config, key, values as never);
 };
 
+/** A filter pill slot: a fixed filter key or a custom field ("cf:" + dimension id). */
+type Slot = { kind: "key"; key: FilterKey } | { kind: "field"; field: CustomFieldDimension };
+const slotId = (slot: Slot) => (slot.kind === "key" ? slot.key : `cf:${slot.field}`);
+
+const RemoveFilter = ({ label, onClick }: { label: string; onClick: () => void }) => (
+  <Button
+    variant="ghost"
+    size="icon-xs"
+    className="text-foreground-subtle"
+    aria-label={`Bỏ bộ lọc ${label}`}
+    onClick={onClick}
+  >
+    <X />
+  </Button>
+);
+
 export const FilterBar = ({
   config,
   onChange,
   options,
-  optionsPending
-}: SettingsProps & { options: Record<FilterKey, FilterOption[]>; optionsPending: boolean }) => {
-  const [shown, setShown] = useState<FilterKey[]>([]);
-  const [openKey, setOpenKey] = useState<FilterKey | null>(null);
-  const active = filterKeys.filter((key) => filterValues(config.filters, key).length > 0);
-  const visible = [...active, ...shown.filter((key) => !active.includes(key))];
+  optionsPending,
+  fields = [],
+  catalog = emptyCatalog
+}: SettingsProps & {
+  options: Record<FilterKey, FilterOption[]>;
+  optionsPending: boolean;
+  /** Custom fields the role can filter on (useReportFields). */
+  fields?: readonly CustomField[];
+  /** Definitions of every custom field (labels and options of saved filters). */
+  catalog?: FieldCatalog;
+}) => {
+  const [shown, setShown] = useState<string[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const activeKeys = filterKeys.filter((key) => filterValues(config.filters, key).length > 0);
+  const activeFields = (config.filters.customFields ?? []).map((filter) => filter.field);
+  const slots: Slot[] = [
+    ...activeKeys.map((key): Slot => ({ kind: "key", key })),
+    ...activeFields.map((field): Slot => ({ kind: "field", field })),
+    ...shown.flatMap((id): Slot[] => {
+      if (id.startsWith("cf:")) {
+        const field = id.slice(3) as CustomFieldDimension;
+        return activeFields.includes(field) ? [] : [{ kind: "field", field }];
+      }
+      const key = id as FilterKey;
+      return activeKeys.includes(key) ? [] : [{ kind: "key", key }];
+    })
+  ];
+  const visibleIds = new Set(slots.map(slotId));
   const addable = filterKeys.filter(
-    (key) => !visible.includes(key) && applicable(key, config.measures)
+    (key) => !visibleIds.has(key) && applicable(key, config.measures)
   );
+  const addableFields =
+    activeFields.length >= 10
+      ? []
+      : fields.filter((field) => !visibleIds.has(`cf:${customFieldDimensionId(field)}`));
   const jobs = config.filters.job ?? [];
-  const ignored = active.filter((key) => !applicable(key, config.measures));
+  const ignored = activeKeys.filter((key) => !applicable(key, config.measures));
+  const hide = (id: string) => setShown((current) => current.filter((item) => item !== id));
+  const reveal = (id: string) => {
+    setShown((current) => [...current, id]);
+    // Open after the menu closes so focus lands in the picker.
+    window.setTimeout(() => setOpenId(id), 0);
+  };
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -503,50 +612,69 @@ export const FilterBar = ({
         Bộ lọc
       </span>
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {visible.map((key) => (
-          <span key={key} className="flex max-w-full min-w-0 items-center">
-            <FilterPill
-              filterKey={key}
-              values={filterValues(config.filters, key)}
-              options={options[key]}
-              open={openKey === key}
-              onOpenChange={(open) => setOpenKey(open ? key : null)}
-              onChange={(values) => onChange(setValues(config, key, values))}
-            />
-            {filterValues(config.filters, key).length > 0 || shown.includes(key) ? (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-foreground-subtle"
-                aria-label={`Bỏ bộ lọc ${filterLabels[key]}`}
+        {slots.map((slot) => {
+          const id = slotId(slot);
+          if (slot.kind === "key") {
+            const values = filterValues(config.filters, slot.key);
+            return (
+              <span key={id} className="flex max-w-full min-w-0 items-center">
+                <FilterPill
+                  label={filterLabels[slot.key]}
+                  values={values}
+                  options={options[slot.key]}
+                  single={singleChoice.has(slot.key)}
+                  open={openId === id}
+                  onOpenChange={(open) => setOpenId(open ? id : null)}
+                  onChange={(next) => onChange(setValues(config, slot.key, next))}
+                />
+                {values.length > 0 || shown.includes(id) ? (
+                  <RemoveFilter
+                    label={filterLabels[slot.key]}
+                    onClick={() => {
+                      hide(id);
+                      onChange(setValues(config, slot.key, []));
+                    }}
+                  />
+                ) : null}
+              </span>
+            );
+          }
+          const field = catalog.get(slot.field) ?? null;
+          const label = dimensionMeta(slot.field, catalog).label;
+          return (
+            <span key={id} className="flex max-w-full min-w-0 items-center">
+              <FilterPill
+                label={label}
+                values={customFieldFilterValues(config.filters, slot.field)}
+                options={customFieldFilterOptions(field)}
+                freeText={field?.type === "TEXT"}
+                open={openId === id}
+                onOpenChange={(open) => setOpenId(open ? id : null)}
+                onChange={(next) => onChange(withCustomFieldFilter(config, slot.field, next))}
+              />
+              <RemoveFilter
+                label={label}
                 onClick={() => {
-                  setShown((current) => current.filter((item) => item !== key));
-                  onChange(setValues(config, key, []));
+                  hide(id);
+                  onChange(withCustomFieldFilter(config, slot.field, []));
                 }}
-              >
-                <X />
-              </Button>
-            ) : null}
-          </span>
-        ))}
+              />
+            </span>
+          );
+        })}
         {jobs.length > 0 ? (
           <span className="flex items-center">
             <span className="inline-flex h-7 items-center gap-1 rounded-full border border-brand/40 bg-brand-soft px-2.5 text-[0.8rem]">
               <span className="text-foreground-muted">Job:</span>
               <span className="font-medium">{jobs.length} job</span>
             </span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="text-foreground-subtle"
-              aria-label="Bỏ bộ lọc job"
+            <RemoveFilter
+              label="job"
               onClick={() => onChange(withFilter(config, "job", undefined))}
-            >
-              <X />
-            </Button>
+            />
           </span>
         ) : null}
-        {addable.length > 0 ? (
+        {addable.length > 0 || addableFields.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -559,22 +687,36 @@ export const FilterBar = ({
               }
             >
               <Plus />
-              {visible.length === 0 && jobs.length === 0 ? "Thêm bộ lọc" : "Lọc thêm"}
+              {slots.length === 0 && jobs.length === 0 ? "Thêm bộ lọc" : "Lọc thêm"}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuContent align="start" className="max-h-96 w-60">
               {addable.map((key) => (
-                <DropdownMenuItem
-                  key={key}
-                  onClick={() => {
-                    setShown((current) => [...current, key]);
-                    // Open after the menu closes so focus lands in the picker.
-                    window.setTimeout(() => setOpenKey(key), 0);
-                  }}
-                >
+                <DropdownMenuItem key={key} onClick={() => reveal(key)}>
                   <Filter className="text-foreground-muted" />
                   {filterLabels[key]}
                 </DropdownMenuItem>
               ))}
+              {addableFields.length > 0 ? (
+                <DropdownMenuGroup>
+                  {addable.length > 0 ? <DropdownMenuSeparator /> : null}
+                  <DropdownMenuLabel>Trường tùy chỉnh</DropdownMenuLabel>
+                  {addableFields.map((field) => {
+                    const dimension = customFieldDimensionId(field);
+                    const entity = dimensionMeta(dimension).custom?.entity;
+                    return (
+                      <DropdownMenuItem key={dimension} onClick={() => reveal(`cf:${dimension}`)}>
+                        <Tag className="text-foreground-muted" />
+                        <span className="min-w-0 flex-1 truncate">{field.label}</span>
+                        {entity ? (
+                          <span className="shrink-0 text-xs text-foreground-subtle">
+                            {customEntityLabels[entity]}
+                          </span>
+                        ) : null}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuGroup>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}

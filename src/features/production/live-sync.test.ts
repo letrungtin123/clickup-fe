@@ -76,6 +76,8 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
   qcFailCount: 0,
   customValues: {},
   tagIds: [],
+  myCredits: [],
+  lastQcFail: null,
   createdAt: "2026-10-01T01:00:00.000Z",
   updatedAt: "2026-10-01T01:00:00.000Z",
   capabilities: { transitions: [], canEdit: false, canAssign: false, canEditQty: false },

@@ -189,10 +189,12 @@ const MyTaskRow = memo(function MyTaskRow({
     >
       <StatusCell task={task} editable={editable} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
-        <span className={cn("truncate text-[13px]", task.status.category !== "active" && "text-foreground-muted line-through decoration-foreground-subtle/60")}>
+        {/* Phones: up to two lines instead of a few truncated words. */}
+        <span className={cn("line-clamp-2 text-[13px] break-words sm:line-clamp-1", task.status.category !== "active" && "text-foreground-muted line-through decoration-foreground-subtle/60")}>
           {task.title}
         </span>
-        <span className="flex min-w-0 shrink-0 items-center gap-1.5 text-[11px] text-foreground-subtle">
+        {/* From sm up the meta shrinks with the title (the project chip truncates first). */}
+        <span className="flex min-w-0 shrink-0 items-center gap-1.5 text-[11px] text-foreground-subtle sm:shrink">
           <span className="shrink-0 font-mono whitespace-nowrap">{task.key}</span>
           {project ? (
             <span className="inline-flex max-w-[12rem] items-center gap-1 truncate rounded-full border px-1.5 py-px">

@@ -8,7 +8,8 @@ import {
   MessageSquareReply,
   Pencil,
   SmilePlus,
-  Trash2
+  Trash2,
+  Users
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -35,12 +36,15 @@ export const MessageActionSheet = ({
   message,
   abilities,
   open,
-  onOpenChange
+  onOpenChange,
+  onShowReactions
 }: {
   message: ChatMessage;
   abilities: MessageSheetAbilities;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Present when the message has reactions: opens the "who reacted" sheet. */
+  onShowReactions?: (() => void) | undefined;
 }) => {
   const actions = useMessageActions();
   const [picking, setPicking] = useState(false);
@@ -136,6 +140,11 @@ export const MessageActionSheet = ({
             </div>
           ) : null}
           <div className="flex flex-col p-2">
+            {onShowReactions ? (
+              <ActionSheetItem icon={<Users />} onClick={run(onShowReactions)}>
+                Xem ai đã thả biểu cảm
+              </ActionSheetItem>
+            ) : null}
             {abilities.canReply ? (
               <ActionSheetItem
                 icon={<MessageSquareReply />}

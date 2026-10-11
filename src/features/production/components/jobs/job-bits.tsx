@@ -56,7 +56,7 @@ export const KindBadge = ({ kind, className }: { kind: TaskKind; className?: str
           : "Làm thêm theo yêu cầu của khách"
       }
       className={cn(
-        "inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold",
+        "inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[11px] font-semibold",
         kind === "FB_WRONG" ? "bg-danger-soft text-danger" : "bg-warning-soft text-foreground",
         className
       )}

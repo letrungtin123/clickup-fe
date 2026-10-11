@@ -29,8 +29,16 @@ import type { ProductionRole } from "@/contracts/production-catalog";
 import { useSessionContext } from "@/features/auth/hooks";
 import { LateBadge, StatusChip } from "@/features/production/components/jobs/job-bits";
 import { RoleBadge } from "@/features/production/components/role-chips";
-import { formatDay, formatNumber, kpiPeriod, todayIn } from "@/features/production/format";
+import {
+  formatCredit,
+  formatDay,
+  formatKpiPeriod,
+  formatNumber,
+  kpiPeriod,
+  todayIn
+} from "@/features/production/format";
 import { useProductionMe, useTeams } from "@/features/production/hooks";
+import { useMyScores } from "@/features/production/scores/hooks";
 import { useJobs, useMyTasks, useQcQueue } from "@/features/production/jobs-hooks";
 import {
   flattenPages,
@@ -51,6 +59,9 @@ const greetingFor = (date: Date) => {
   if (hour < 18) return "Chào buổi chiều";
   return "Chào buổi tối";
 };
+
+/** Team names often already start with "Team" ("Team Ánh Sáng"): never "Team Team …". */
+const teamLabel = (name: string) => (/^team\b/i.test(name) ? name : `Team ${name}`);
 
 /** Quick links worth surfacing first for admins (the rest live in the settings navigation). */
 const featuredSlugs = [
@@ -76,7 +87,8 @@ export const ProductionOverviewRoute = () => {
   if (!me.data) return null;
   const { roles, settings, teamId } = me.data;
   const today = todayIn(settings.timezone);
-  const period = kpiPeriod(today, settings.kpiCloseDay);
+  // Close-day versions (G15): a changed close day only applies from the next period.
+  const period = kpiPeriod(today, settings.kpiCloseDays);
   const team = teams.data?.items.find((item) => item.id === teamId) ?? null;
   const links = visibleSettingsPages(roles)
     .filter((page) => featuredSlugs.includes(page.slug))
@@ -116,7 +128,7 @@ export const ProductionOverviewRoute = () => {
                 {teams.isPending ? (
                   <Skeleton className="h-3 w-16" />
                 ) : team ? (
-                  <>Team {team.name}</>
+                  teamLabel(team.name)
                 ) : (
                   "Chưa thuộc team nào"
                 )}
@@ -185,14 +197,17 @@ export const ProductionOverviewRoute = () => {
                 description="Điểm hôm nay, tuần, kỳ; tiền Khoán tạm tính và dự báo KPI."
               />
             </li>
-            <li>
-              <QuickLink
-                to="/production/scores/board"
-                icon={Trophy}
-                title="Xếp hạng"
-                description="Xếp hạng điểm chính thức theo kỳ và team."
-              />
-            </li>
+            {/* Like the menu: the ranking only while the board is public (Admins always). */}
+            {settings.scoresPublic || me.data.isAdmin ? (
+              <li>
+                <QuickLink
+                  to="/production/scores/board"
+                  icon={Trophy}
+                  title="Xếp hạng"
+                  description="Xếp hạng điểm chính thức theo kỳ và team."
+                />
+              </li>
+            ) : null}
             <li>
               <QuickLink
                 to="/production/leave"
@@ -284,12 +299,13 @@ const taskRoles: readonly ProductionRole[] = ["STAFF", "QC", "LEADER"];
 
 /**
  * What needs doing now, per role: my open tasks (Staff / QC / Leader), the QC queue (QC) and late
- * jobs (Leader / Account). Hidden for roles without a queue of their own (e.g. Admin only).
+ * jobs (Leader / Account / Admin, who all see every job).
  */
 const Agenda = ({ roles, timeZone }: { roles: readonly ProductionRole[]; timeZone: string }) => {
   const hasTasks = roles.some((role) => taskRoles.includes(role));
   const isQc = roles.includes("QC");
-  const watchesJobs = roles.includes("LEADER") || roles.includes("ACCOUNT");
+  const watchesJobs =
+    roles.includes("LEADER") || roles.includes("ACCOUNT") || roles.includes("ADMIN");
   if (!hasTasks && !isQc && !watchesJobs) return null;
   return (
     <section aria-labelledby="production-agenda" className="flex flex-col gap-3">
@@ -298,14 +314,57 @@ const Agenda = ({ roles, timeZone }: { roles: readonly ProductionRole[]; timeZon
       </h2>
       <div className="grid gap-4 lg:grid-cols-2">
         {hasTasks ? <MyTasksCard timeZone={timeZone} /> : null}
-        {isQc || watchesJobs ? (
+        {isQc || watchesJobs || hasTasks ? (
           <div className="flex min-w-0 flex-col gap-4">
             {isQc ? <QcCard timeZone={timeZone} /> : null}
             {watchesJobs ? <LateJobsCard timeZone={timeZone} /> : null}
+            {/* People who earn points (worker / QC / Leader) see today / week / period at a glance. */}
+            {hasTasks ? <MyPointsCard /> : null}
           </div>
         ) : null}
       </div>
     </section>
+  );
+};
+
+/** "Điểm của tôi": official points today, this week and this KPI period (GET /scores/me cards). */
+const MyPointsCard = () => {
+  const scores = useMyScores(null);
+  const cards = scores.data?.pages[0]?.cards;
+  const khoan = cards?.period.pointsKhoan ?? 0;
+  return (
+    <AgendaCard
+      title="Điểm của tôi"
+      icon={ChartColumnBig}
+      to="/production/scores"
+      linkLabel="Bảng điểm"
+    >
+      {scores.isPending ? (
+        <AgendaSkeleton rows={1} />
+      ) : scores.isError || !cards ? (
+        <ErrorState
+          size="sm"
+          error={scores.error}
+          onRetry={() => void scores.refetch()}
+          retrying={scores.isFetching}
+        />
+      ) : (
+        <>
+          <dl className="grid grid-cols-3 gap-2">
+            <Count label="Hôm nay" value={formatCredit(cards.today.pointsOfficial)} />
+            <Count label="Tuần này" value={formatCredit(cards.week.pointsOfficial)} />
+            <Count
+              label={`Kỳ ${formatKpiPeriod(cards.period.period)}`}
+              value={formatCredit(cards.period.pointsOfficial)}
+            />
+          </dl>
+          <p className="text-xs text-foreground-muted">
+            Điểm chính thức · kỳ {formatDay(cards.period.from)} – {formatDay(cards.period.to)}
+            {khoan > 0 ? ` · thêm ${formatCredit(khoan)} điểm Khoán` : ""}
+          </p>
+        </>
+      )}
+    </AgendaCard>
   );
 };
 
@@ -477,11 +536,13 @@ const QcCard = ({ timeZone }: { timeZone: string }) => {
             {items.slice(0, 3).map((task) => (
               <li key={task.id}>
                 <button type="button" className={rowClass} onClick={() => openTask(task.id)}>
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium">
                       #{task.number} · {task.process.name}
                     </span>
-                    <span className="text-foreground-muted"> · {task.assignee.displayName}</span>
+                    <span className="truncate text-xs text-foreground-muted">
+                      {task.jobCode} · {task.assignee.displayName}
+                    </span>
                   </span>
                   <span className="shrink-0 text-[11px] text-foreground-muted tabular-nums">
                     Xong {formatDateTime(task.doneAt, timeZone)}

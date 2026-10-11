@@ -1,7 +1,8 @@
 import { CalendarDays, CalendarPlus, Flag, UserPlus } from "lucide-react";
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { DiscardDraftDialog } from "@/components/shared/discard-draft-dialog";
 import { PriorityFlag } from "@/components/shared/task-meta";
 import { AvatarGroup } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -18,10 +19,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { RichTextDoc } from "@/contracts/rich-text";
 import type { List, Project, TaskPriority, TaskStatus, UserRef } from "@/contracts/work";
+import { useDiscardGuard } from "@/hooks/use-discard-guard";
 import { useInFlightGuard } from "@/hooks/use-in-flight-guard";
 import { isModKey } from "@/lib/keyboard";
 
 import { prepareDoc } from "@/components/shared/rich-text/helpers";
+import { isCreateTaskDraftDirty } from "../create-draft";
 import { datesValid, formatShortDate } from "../due";
 import { useCreateTask, useMentionSource, useWorkflow } from "../hooks";
 import { useTaskAbilities } from "../use-task-abilities";
@@ -42,22 +45,48 @@ type CreateTaskDialogProps = {
   initialStatusId?: string | undefined;
 };
 
-/** "+ Công việc": full create form (title, description, status, people, priority, dates). */
-export const CreateTaskDialog = ({ open, onOpenChange, ...rest }: CreateTaskDialogProps) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="gap-0 p-0 sm:max-w-xl" showCloseButton>
-      {open ? <CreateTaskForm {...rest} onClose={() => onOpenChange(false)} /> : null}
-    </DialogContent>
-  </Dialog>
-);
+/**
+ * "+ Công việc": full create form (title, description, status, people, priority, dates). Closing it
+ * with something typed or picked (Esc, click outside, ✕, "Hủy") asks "Bỏ bản nháp?" first (P3).
+ */
+export const CreateTaskDialog = ({ open, onOpenChange, ...rest }: CreateTaskDialogProps) => {
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  const guard = useDiscardGuard(close);
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => (next ? onOpenChange(true) : guard.requestClose())}
+      >
+        <DialogContent className="gap-0 p-0 sm:max-w-xl" showCloseButton>
+          {open ? (
+            <CreateTaskForm
+              {...rest}
+              onCancel={guard.requestClose}
+              onCreated={guard.close}
+              onDirtyChange={guard.setDirty}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+      <DiscardDraftDialog {...guard.confirm} />
+    </>
+  );
+};
 
 const CreateTaskForm = ({
   project,
   list,
   openTask,
   initialStatusId,
-  onClose
-}: Omit<CreateTaskDialogProps, "open" | "onOpenChange"> & { onClose: () => void }) => {
+  onCancel,
+  onCreated,
+  onDirtyChange
+}: Omit<CreateTaskDialogProps, "open" | "onOpenChange"> & {
+  onCancel: () => void;
+  onCreated: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) => {
   const workflow = useWorkflow(project.id, list.id);
   const abilities = useTaskAbilities(project);
   const mentionSource = useMentionSource(project.id);
@@ -75,6 +104,20 @@ const CreateTaskForm = ({
   const statuses = workflow.data?.items ?? [];
   const status: TaskStatus | undefined =
     statuses.find((item) => item.id === statusId) ?? statuses.find((item) => item.isInitial) ?? statuses[0];
+
+  const dirty = isCreateTaskDraftDirty(
+    {
+      title,
+      description,
+      statusId,
+      priority,
+      assigneeIds: assignees.map((user) => user.id),
+      startAt,
+      dueAt
+    },
+    initialStatusId
+  );
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   const submit = () => {
     // Enter + Ctrl+Enter / double clicks while the request is in flight create one task (BUG-WK-15).
@@ -111,7 +154,7 @@ const CreateTaskForm = ({
       },
       {
         onSuccess: (task) => {
-          onClose();
+          onCreated();
           toast.success(`Đã tạo ${task.key}`, {
             description: task.title,
             action: { label: "Mở", onClick: () => openTask(task.id) }
@@ -279,7 +322,7 @@ const CreateTaskForm = ({
       <DialogFooter className="mx-0 mb-0 items-center px-4 py-3 sm:justify-between">
         <span className="hidden text-xs text-foreground-subtle sm:inline">Ctrl/⌘ + Enter để tạo</span>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onCancel}>
             Hủy
           </Button>
           <Button type="submit" disabled={create.isPending || !title.trim()}>

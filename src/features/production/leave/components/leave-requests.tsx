@@ -40,9 +40,13 @@ import {
 import { useDecideLeave } from "../hooks";
 import { LeaveStatusBadge } from "./leave-bits";
 
+// "10:05 06/10/2026": full dates like the rest of the module (dateStyle short gives "6/10/26").
 const dateTime = new Intl.DateTimeFormat("vi-VN", {
-  dateStyle: "short",
-  timeStyle: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
   timeZone: "Asia/Ho_Chi_Minh"
 });
 

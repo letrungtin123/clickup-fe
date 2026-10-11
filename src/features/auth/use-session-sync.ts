@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef } from "react";
 
+import { api } from "@/lib/api/client";
 import { isAuthError } from "@/lib/api/errors";
 import { qk } from "@/lib/query-keys";
 
@@ -42,7 +43,11 @@ export const useCrossTabSession = (userId: string | null, onSignedOut: () => voi
         const action = sessionSignalAction(userId, signal);
         if (action === "reload") reloadForNewUser();
         else if (action === "sign-out") signOut();
-        else if (action === "refresh") void queryClient.refetchQueries({ queryKey: qk.session(), exact: true });
+        else if (action === "refresh") {
+          // Signed in elsewhere: the server rotated the CSRF token with that sign-in (SEC2-23).
+          api.resetCsrfToken();
+          void queryClient.refetchQueries({ queryKey: qk.session(), exact: true });
+        }
       }),
     [queryClient, userId]
   );

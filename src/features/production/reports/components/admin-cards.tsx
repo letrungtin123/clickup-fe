@@ -30,6 +30,7 @@ import {
 } from "@/contracts/production-reports";
 
 import { formatCredit, formatInteger, formatPercent } from "../../format";
+import { kpiReportHref } from "../../kpi/report";
 import { periodLabel } from "../../scores/periods";
 import { formatDeadline } from "../dashboard";
 import { reportErrorMessage } from "../errors";
@@ -50,6 +51,7 @@ const CardFrame = ({
   title,
   subtitle,
   href,
+  linkLabel = "Mở báo cáo",
   index,
   children
 }: {
@@ -57,6 +59,7 @@ const CardFrame = ({
   title: string;
   subtitle?: ReactNode;
   href: string;
+  linkLabel?: string;
   index: number;
   children: ReactNode;
 }) => (
@@ -85,7 +88,7 @@ const CardFrame = ({
         render={<Link to={href} />}
         nativeButton={false}
       >
-        Mở báo cáo
+        {linkLabel}
         <ArrowUpRight />
       </Button>
     </footer>
@@ -180,7 +183,7 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
   const bucketColor: Record<string, string> = {
     LT50: statusColor.critical,
     LT80: statusColor.warning,
-    LT100: "color-mix(in oklch, var(--success) 45%, var(--surface))",
+    LT100: "color-mix(in oklab, var(--success) 45%, var(--surface))",
     MET: statusColor.good
   };
 
@@ -333,13 +336,10 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
         icon={Target}
         title={kpiAttainment.title}
         subtitle={periodLabel(kpiAttainment.period)}
-        href={reportBuilderHref(kpiAttainment.config, kpiAttainment.title)}
+        href={kpiReportHref(kpiAttainment.period)}
+        linkLabel="Mở báo cáo KPI · % đạt từng người"
       >
-        <Headline
-          value={
-            formatPercent(kpiAttainment.averagePercent)
-          }
-        >
+        <Headline value={formatPercent(kpiAttainment.averagePercent)}>
           Trung bình của {kpiAttainment.members - kpiAttainment.withoutTarget} người có KPI
           {kpiAttainment.withoutTarget > 0
             ? ` · ${kpiAttainment.withoutTarget} người chưa đặt KPI`
@@ -440,8 +440,8 @@ export const PinnedReportCard = ({
       <header className="flex items-center gap-2 border-b px-4 py-3">
         <Pin className="size-4 shrink-0 text-foreground-muted" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 flex-col">
-          <h3 className="truncate text-sm font-semibold">{report.name}</h3>
-          <p className="truncate text-xs text-foreground-muted tabular-nums">
+          <h3 className="line-clamp-2 text-sm font-semibold break-words">{report.name}</h3>
+          <p className="text-xs text-foreground-muted tabular-nums">
             {result.data
               ? `${formatRange(result.data.from, result.data.to)} · ${result.data.rows.length} dòng`
               : "Đang tính…"}

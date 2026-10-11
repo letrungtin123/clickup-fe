@@ -38,7 +38,7 @@ import { FormAlert, InfoNote } from "../../components/settings-kit";
 import { countDataRows, normalizeCreditCsv, sourceLine } from "../../credit-matrix";
 import { scoreErrorMessage } from "../../scores/errors";
 import { formatPeriod, periodsBetween, rollupLabel } from "../../scores/periods";
-import { sheetOnPhone } from "../../ui";
+import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { useImportKpiTargets } from "../hooks";
 import { hasKpiHeader, isAlignedPeriod, KPI_CSV_HEADER, periodTypeLabels } from "../matrix";
 
@@ -51,7 +51,9 @@ type Source = "file" | "paste";
 const optionLabel = (periodType: KpiPeriodType, period: string) => {
   if (periodType === "MONTH") return `Kỳ ${formatPeriod(period)}`;
   if (periodType === "YEAR") return rollupLabel(period.slice(0, 4));
-  return rollupLabel(`${period.slice(0, 4)}-Q${Math.floor((Number(period.slice(5, 7)) - 1) / 3) + 1}`);
+  return rollupLabel(
+    `${period.slice(0, 4)}-Q${Math.floor((Number(period.slice(5, 7)) - 1) / 3) + 1}`
+  );
 };
 
 /**
@@ -87,7 +89,10 @@ export const KpiImportDialog = ({
   const choices = periodsBetween(`${year}-01`, `${year}-12`).filter((item) =>
     isAlignedPeriod(periodType, item)
   );
-  const periodItems = choices.map((item) => ({ value: item, label: optionLabel(periodType, item) }));
+  const periodItems = choices.map((item) => ({
+    value: item,
+    label: optionLabel(periodType, item)
+  }));
   const chosen = choices.includes(period) ? period : (choices[0] ?? period);
 
   const reset = () => {
@@ -145,14 +150,18 @@ export const KpiImportDialog = ({
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent
-        className={cn("max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-xl", sheetOnPhone)}
+        className={cn(
+          "max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-xl",
+          sheetOnPhone
+        )}
       >
-        <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]">
+        <div className={cn("flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col", phoneSheetColumn)}>
           <DialogHeader className="border-b px-4 pt-4 pb-3">
             <DialogTitle>Nhập KPI từ CSV</DialogTitle>
             <DialogDescription>
               Cột <code className="rounded bg-muted px-1 font-mono text-xs">{KPI_CSV_HEADER}</code>{" "}
-              (có dòng tiêu đề). Mỗi email một dòng; lỗi ở bất kỳ dòng nào thì không dòng nào được ghi.
+              (có dòng tiêu đề). Mỗi email một dòng; lỗi ở bất kỳ dòng nào thì không dòng nào được
+              ghi.
             </DialogDescription>
           </DialogHeader>
 
@@ -168,9 +177,12 @@ export const KpiImportDialog = ({
                 <span className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
                   <CheckCircle2 className="size-6" aria-hidden="true" />
                 </span>
-                <p className="text-[15px] font-semibold">Đã nhập {result.value.imported} chỉ tiêu</p>
+                <p className="text-[15px] font-semibold">
+                  Đã nhập {result.value.imported} chỉ tiêu
+                </p>
                 <p className="text-[13px] text-foreground-muted">
-                  KPI {periodTypeLabels[periodType]} có hiệu lực từ {optionLabel(periodType, chosen).toLocaleLowerCase("vi")}.
+                  KPI {periodTypeLabels[periodType]} có hiệu lực từ{" "}
+                  {optionLabel(periodType, chosen).toLocaleLowerCase("vi")}.
                 </p>
               </motion.div>
             ) : (
@@ -248,7 +260,10 @@ export const KpiImportDialog = ({
                       }}
                       className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition-colors hover:border-border-strong hover:bg-surface-hover has-focus-visible:ring-2 has-focus-visible:ring-ring"
                     >
-                      <FileSpreadsheet className="size-6 text-foreground-muted" aria-hidden="true" />
+                      <FileSpreadsheet
+                        className="size-6 text-foreground-muted"
+                        aria-hidden="true"
+                      />
                       <span className="text-[13px] font-medium">
                         {fileName ?? "Bấm để chọn tệp CSV hoặc kéo thả vào đây"}
                       </span>
@@ -279,15 +294,18 @@ export const KpiImportDialog = ({
                 )}
                 <p className="text-xs text-foreground-muted">
                   Chỉ tiêu nhận số kiểu Việt Nam (2.472,5) hoặc kiểu Anh (2,472.5), tối đa 2 chữ số
-                  thập phân. Trong tệp CSV, số có dấu phẩy cần nằm trong ngoặc kép (&quot;2472,5&quot;);
-                  dán từ bảng tính thì không cần.
+                  thập phân. Trong tệp CSV, số có dấu phẩy cần nằm trong ngoặc kép
+                  (&quot;2472,5&quot;); dán từ bảng tính thì không cần.
                 </p>
                 {!headerOk ? (
                   <InfoNote icon={TriangleAlert} tone="warning">
-                    Dòng đầu tiên chưa có cột user_email và target. Máy chủ sẽ từ chối nếu thiếu cột.
+                    Dòng đầu tiên chưa có cột user_email và target. Máy chủ sẽ từ chối nếu thiếu
+                    cột.
                   </InfoNote>
                 ) : null}
-                {result && !result.value.ok ? <ImportErrors result={result.value} csv={result.csv} /> : null}
+                {result && !result.value.ok ? (
+                  <ImportErrors result={result.value} csv={result.csv} />
+                ) : null}
                 <FormAlert>{error}</FormAlert>
               </>
             )}
@@ -342,7 +360,10 @@ const ImportErrors = ({ result, csv }: { result: KpiTargetImportResult; csv: str
       {result.errors.map((item, index) => {
         const line = sourceLine(csv, item.line);
         return (
-          <li key={`${item.line}-${index}`} className="flex flex-col gap-1 rounded-md bg-surface px-2.5 py-2">
+          <li
+            key={`${item.line}-${index}`}
+            className="flex flex-col gap-1 rounded-md bg-surface px-2.5 py-2"
+          >
             <span className="flex items-start gap-2 text-[13px]">
               <span className="shrink-0 rounded bg-danger-soft px-1.5 py-0.5 text-[11px] font-semibold text-danger tabular-nums">
                 Dòng {item.line}
@@ -350,7 +371,10 @@ const ImportErrors = ({ result, csv }: { result: KpiTargetImportResult; csv: str
               <span className="min-w-0">{item.message}</span>
             </span>
             {line ? (
-              <code className="block truncate font-mono text-[11px] text-foreground-muted" title={line}>
+              <code
+                className="block truncate font-mono text-[11px] text-foreground-muted"
+                title={line}
+              >
                 {line}
               </code>
             ) : null}

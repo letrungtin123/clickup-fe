@@ -56,7 +56,6 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  reportDimensionInfo,
   reportMeasureInfo,
   type ReportConfig,
   type SavedReport
@@ -65,26 +64,32 @@ import { useSessionContext } from "@/features/auth/hooks";
 
 import { useProductionAccess } from "../../hooks";
 import { touchTargets } from "../../ui";
+import { dimensionLabel, type FieldCatalog } from "../dimensions";
 import { reportErrorMessage } from "../errors";
 import {
   useCreateSavedReport,
   useDeleteSavedReport,
+  useReportFields,
   useSavedReports,
   useUpdateSavedReport
 } from "../hooks";
-import { rangeOfConfig, rangePresetLabels } from "../model";
+import { activeFilterCount, rangeOfConfig, rangePresetLabels } from "../model";
 import { formatRange } from "../format";
 
-/** One line describing a config: "Nhân viên × Tuần · Điểm, Số tấm done · Tháng này". */
-const describe = (config: ReportConfig) => {
-  const dims = config.dimensions
-    .map((dimension) => reportDimensionInfo[dimension].label)
-    .join(" × ");
+/**
+ * One line describing a config: "Nhân viên × Tuần · Điểm, Số tấm done · Tháng này · 2 bộ lọc".
+ * Custom-field dimensions are named from the catalog ("Năng lực").
+ */
+const describe = (config: ReportConfig, catalog: FieldCatalog) => {
+  const dims = config.dimensions.map((dimension) => dimensionLabel(dimension, catalog)).join(" × ");
   const measures = config.measures.map((measure) => reportMeasureInfo[measure].label).join(", ");
   const range = rangeOfConfig(config);
   const when =
     range.kind === "preset" ? rangePresetLabels[range.preset] : formatRange(range.from, range.to);
-  return [dims || "Tổng", measures, when].join(" · ");
+  const filters = activeFilterCount(config.filters);
+  return [dims || "Tổng", measures, when, filters > 0 ? `${filters} bộ lọc` : null]
+    .filter(Boolean)
+    .join(" · ");
 };
 
 // Save --------------------------------------------------------------------------------------------
@@ -116,6 +121,7 @@ export const SaveReportDialog = ({
   const [error, setError] = useState<string | null>(null);
   const create = useCreateSavedReport();
   const update = useUpdateSavedReport();
+  const { catalog } = useReportFields(open);
   const pending = create.isPending || update.isPending;
 
   const submit = async (mode: "update" | "create") => {
@@ -158,7 +164,9 @@ export const SaveReportDialog = ({
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{editing ? "Lưu báo cáo" : "Lưu báo cáo mới"}</DialogTitle>
-            <DialogDescription className="line-clamp-2">{describe(config)}</DialogDescription>
+            <DialogDescription className="line-clamp-2">
+              {describe(config, catalog)}
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${id}-name`}>Tên báo cáo</Label>
@@ -242,6 +250,7 @@ type Tab = "mine" | "shared";
 
 const SavedItem = ({
   report,
+  catalog,
   active,
   mine,
   onOpen,
@@ -250,6 +259,7 @@ const SavedItem = ({
   busy
 }: {
   report: SavedReport;
+  catalog: FieldCatalog;
   active: boolean;
   mine: boolean;
   onOpen: () => void;
@@ -285,7 +295,7 @@ const SavedItem = ({
           <Badge
             variant="outline"
             className="h-4.5 gap-0.5 px-1.5 text-[10px]"
-            title="Dùng chỉ số tiền khoán: chỉ Quản trị xem và chạy được"
+            title="Dùng tiền khoán hoặc trường tùy chỉnh của nhân viên: chỉ Quản trị xem và chạy được"
           >
             <ShieldCheck aria-hidden="true" />
             Chỉ Quản trị
@@ -299,7 +309,7 @@ const SavedItem = ({
         ) : null}
       </span>
       <span className="line-clamp-2 text-xs text-foreground-muted">
-        {report.description || describe(report.config)}
+        {report.description || describe(report.config, catalog)}
       </span>
       {!mine ? (
         <span className="flex items-center gap-1.5 text-xs text-foreground-subtle">
@@ -359,6 +369,7 @@ export const SavedReportsSheet = ({
   const session = useSessionContext();
   const access = useProductionAccess();
   const saved = useSavedReports(open);
+  const { catalog } = useReportFields(open);
   const update = useUpdateSavedReport();
   const remove = useDeleteSavedReport();
   const [tab, setTab] = useState<Tab>("mine");
@@ -403,14 +414,20 @@ export const SavedReportsSheet = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className={cn("w-full gap-0 p-0 sm:max-w-md", touchTargets)}>
+        <SheetContent
+          side="right"
+          className={cn(
+            "gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md",
+            touchTargets
+          )}
+        >
           <SheetHeader className="border-b px-4 pt-4 pb-3">
             <SheetTitle>Báo cáo đã lưu</SheetTitle>
             <SheetDescription>
               Mở lại cấu hình đã lưu, ghim lên trang Quản trị số liệu hoặc xoá.
             </SheetDescription>
           </SheetHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <Tabs value={tab} onValueChange={(next) => setTab(next as Tab)}>
               <TabsList className="w-full">
                 <TabsTrigger value="mine">
@@ -448,6 +465,7 @@ export const SavedReportsSheet = ({
                     <SavedItem
                       key={report.id}
                       report={report}
+                      catalog={catalog}
                       active={report.id === activeId}
                       mine={tab === "mine"}
                       busy={busyId === report.id}

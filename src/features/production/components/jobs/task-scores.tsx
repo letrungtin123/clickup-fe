@@ -99,7 +99,7 @@ const ScoresBody = ({ scores }: { scores: TaskScores }) => {
           className={cn("size-3.5 transition-transform", open && "rotate-180")}
           aria-hidden="true"
         />
-        {open ? "Ẩn chi tiết" : `Chi tiết (${scores.items.length} dòng)`}
+        {open ? "Ẩn các dòng điểm" : `Các dòng điểm (${scores.items.length})`}
       </button>
       {open ? (
         <ol aria-label="Các dòng điểm" className="flex flex-col gap-1">

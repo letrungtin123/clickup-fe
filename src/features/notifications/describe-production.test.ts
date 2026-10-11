@@ -109,7 +109,15 @@ describe("production notifications", () => {
       )
     ).toEqual({
       kind: "path",
-      path: "/production/leave"
+      path: "/production/leave?tab=mine"
+    });
+    expect(
+      notificationTarget(
+        make({ type: "production.leave_requested", target: bare, payload: { days: 1 } })
+      )
+    ).toEqual({
+      kind: "path",
+      path: "/production/leave?tab=pending"
     });
     expect(
       notificationTarget(

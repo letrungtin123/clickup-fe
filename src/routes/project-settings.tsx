@@ -377,7 +377,8 @@ const MembersSection = ({ project, canManage }: { project: Project; canManage: b
             return (
               <li key={member.user.id} className="flex flex-wrap items-center gap-3 py-2.5">
                 <UserAvatar user={member.user} size="md" />
-                <div className="flex min-w-0 flex-1 flex-col">
+                {/* Phones: name + email keep the first line; access and remove wrap below, indented. */}
+                <div className="flex min-w-0 flex-1 flex-col max-sm:basis-[calc(100%-3.5rem)]">
                   <span className="truncate text-[13px] font-medium">
                     {member.user.displayName}
                     {isSelf ? (
@@ -402,7 +403,7 @@ const MembersSection = ({ project, canManage }: { project: Project; canManage: b
                     >
                       <SelectTrigger
                         size="sm"
-                        className="w-32"
+                        className="w-32 max-sm:ml-11 max-sm:w-auto max-sm:flex-1"
                         aria-label={`Quyền của ${member.user.displayName}`}
                       >
                         <SelectValue />

@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { Inbox, Menu, MessagesSquare, Search } from "lucide-react";
+import { Menu, MessagesSquare, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Suspense, useEffect } from "react";
 import { Link, Outlet, useLocation, useMatch } from "react-router";
@@ -10,8 +10,7 @@ import { useSessionContext } from "@/features/auth/hooks";
 import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
 import { useChatUnreadLabel } from "@/features/chat/hooks/use-chat-unread-label";
 import { CommandPalette } from "@/features/command/command-palette";
-import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
-import { useUnreadNotificationCount } from "@/features/notifications/hooks";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { NewProjectDialog } from "@/features/projects/components/new-project-dialog";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useUiStore } from "@/stores/ui-store";
@@ -157,11 +156,10 @@ export const AppShell = () => {
   );
 };
 
-/** Phone header: navigation drawer, workspace, search, chat and inbox (with unread badges). */
+/** Phone header: navigation drawer, workspace, search, chat and the notification bell (with unread badges). */
 const MobileTopBar = ({ onOpenNav }: { onOpenNav: () => void }) => {
   const session = useSessionContext();
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
-  const inboxUnread = useUnreadNotificationCount().data ?? 0;
   const chatLabel = useChatUnreadLabel("Tin nhắn");
   return (
     <header className="shrink-0 border-b bg-canvas pt-[env(safe-area-inset-top)] pr-[max(0.25rem,env(safe-area-inset-right))] pl-[max(0.25rem,env(safe-area-inset-left))]">
@@ -197,21 +195,8 @@ const MobileTopBar = ({ onOpenNav }: { onOpenNav: () => void }) => {
           <MessagesSquare />
           <ChatNavBadge />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          nativeButton={false}
-          render={
-            <Link
-              to="/inbox"
-              aria-label={inboxUnread > 0 ? `Hộp thư, ${inboxUnread} chưa đọc` : "Hộp thư"}
-            />
-          }
-        >
-          <Inbox />
-          <InboxNavBadge variant="dot" />
-        </Button>
+        {/* The bell replaces the old inbox shortcut: 10 newest + "Xem tất cả" → /inbox. */}
+        <NotificationBell placement="topbar" />
       </div>
     </header>
   );

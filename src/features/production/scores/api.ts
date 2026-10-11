@@ -5,6 +5,8 @@ import {
 } from "@/contracts/production-scores";
 import { api } from "@/lib/api/client";
 
+import { searchWithPeopleFilter, type PeopleFilter } from "./people-filter";
+
 /** Score entries per page of GET /production/scores/me (API default 100, max 500). */
 export const SCORE_ENTRIES_PAGE = 100;
 
@@ -22,6 +24,13 @@ export const scoresApi = {
     }),
   forecast: (period: string | undefined, signal?: AbortSignal) =>
     api.get("/production/scores/forecast", ScoreForecastSchema, { query: { period }, signal }),
-  board: (query: { period?: string | undefined; teamId?: string | undefined }, signal?: AbortSignal) =>
-    api.get("/production/scores/board", ScoreBoardSchema, { query, signal })
+  /** ADMIN may filter people by USER tags / custom fields (repeated parameters, see people-filter.ts). */
+  board: (
+    query: { period?: string | undefined; teamId?: string | undefined },
+    people: PeopleFilter,
+    signal?: AbortSignal
+  ) =>
+    api.get(`/production/scores/board${searchWithPeopleFilter(query, people)}`, ScoreBoardSchema, {
+      signal
+    })
 };

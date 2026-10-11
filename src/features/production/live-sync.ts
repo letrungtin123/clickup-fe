@@ -149,9 +149,11 @@ export const planChangeInvalidations = (client: QueryClient, change: PendingChan
       speculative.push(key);
     }
   }
-  const qcKey = productionKeys.qcQueue();
-  if (isCached(client, qcKey)) {
-    if (pageHolds(client.getQueryData<ProductionTaskPage>(qcKey), change.taskIds)) add(qcKey);
+  // The plain queue and its tag / custom-field filtered variants (same prefix).
+  for (const [qcKey, data] of client.getQueriesData<ProductionTaskPage>({
+    queryKey: productionKeys.qcQueue()
+  })) {
+    if (pageHolds(data, change.taskIds)) add(qcKey);
     else if (taskHints) {
       add(qcKey, true, false);
       speculative.push(qcKey);

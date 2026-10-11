@@ -88,7 +88,8 @@ export const WorkflowEditorDialog = ({ open, onOpenChange, project, list }: Prop
               { value: "list", label: `Danh sách “${list.name}”` },
               { value: "project", label: "Toàn dự án" }
             ]}
-            className="self-start"
+            // A long list name ellipsizes on phones instead of spilling past the dialog edge.
+            className="max-w-full self-start [&>button]:min-w-0 [&>button]:flex-auto [&>button>span]:truncate"
           />
         </DialogHeader>
         <WorkflowForm key={scope} project={project} list={list} scope={scope} onClose={() => onOpenChange(false)} />
@@ -346,7 +347,8 @@ const StatusDraftRow = ({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "flex items-center gap-1.5 rounded-lg border bg-surface px-2 py-1.5 sm:gap-2",
+        // Phones (P5): the category select drops to a second line so the name keeps the width.
+        "flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg border bg-surface px-2 py-1.5 sm:flex-nowrap sm:gap-2",
         isDragging && "relative z-10 shadow-lg ring-1 ring-brand/30"
       )}
     >
@@ -380,7 +382,11 @@ const StatusDraftRow = ({
         className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1.5 text-sm outline-none pointer-coarse:h-9 focus-visible:bg-surface-hover"
       />
       <Select value={draft.category} onValueChange={(value) => onChange({ category: value as Category })}>
-        <SelectTrigger size="sm" className="w-28 shrink-0 sm:w-32" aria-label="Loại trạng thái">
+        <SelectTrigger
+          size="sm"
+          className="order-last ml-[3.75rem] basis-[calc(100%-3.75rem)] pointer-coarse:ml-[4.25rem] pointer-coarse:basis-[calc(100%-4.25rem)] sm:order-none sm:ml-0 sm:w-32 sm:shrink-0 sm:basis-auto pointer-coarse:sm:ml-0 pointer-coarse:sm:basis-auto"
+          aria-label="Loại trạng thái"
+        >
           <SelectValue>{categoryOptions.find((option) => option.value === draft.category)?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent>

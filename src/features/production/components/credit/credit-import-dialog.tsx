@@ -40,7 +40,7 @@ import { useImportCredits } from "../../hooks";
 import { DateField } from "../date-field";
 import { FormAlert, InfoNote } from "../settings-kit";
 import { downloadText } from "./download";
-import { sheetOnPhone } from "../../ui";
+import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 
 const MAX_CSV_CHARS = 2_000_000;
 // Obviously fake sample rows: the template must never carry real client codes or prices.
@@ -143,7 +143,14 @@ export const CreditImportDialog = ({
           sheetOnPhone
         )}
       >
-        <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]">
+        {/* min-w-0: the dialog is a grid; without it the auto-sized textarea (one long CSV line)
+            widens the whole sheet past the phone screen. */}
+        <div
+          className={cn(
+            "flex max-h-[calc(100dvh-2rem)] min-h-0 min-w-0 flex-col",
+            phoneSheetColumn
+          )}
+        >
           <DialogHeader className="border-b px-4 pt-4 pb-3">
             <DialogTitle>Nhập bảng đơn giá từ CSV</DialogTitle>
             <DialogDescription>

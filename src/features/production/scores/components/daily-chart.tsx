@@ -24,7 +24,8 @@ import { formatCredit } from "../../format";
 type Day = ScoreSummary["byDay"][number];
 
 const OFFICIAL = "var(--brand)";
-const KHOAN = "color-mix(in oklab, var(--brand) 42%, var(--surface))";
+// Mixed with white (not the surface) so the lighter step stays visible on the dark theme too.
+const KHOAN = "color-mix(in oklab, var(--brand) 42%, white)";
 const weekdays = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 const weekday = (day: string) => {

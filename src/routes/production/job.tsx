@@ -15,7 +15,7 @@ import {
   Undo2,
   XCircle
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 
@@ -48,10 +48,13 @@ import { JobTasks } from "@/features/production/components/jobs/job-tasks";
 import { SplitTasksDialog } from "@/features/production/components/jobs/split-tasks-dialog";
 import { ProductionTimeline } from "@/features/production/components/jobs/timeline";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
+import { CustomFieldValue } from "@/features/production/components/custom-field-input";
 import { ConfirmDialog } from "@/features/production/components/settings-kit";
 import { TagChips } from "@/features/production/components/tag-picker";
+import { fieldsFor, isEmptyValue } from "@/features/production/custom-fields";
 import { productionErrorMessage } from "@/features/production/errors";
-import { useProductionMe, useTags } from "@/features/production/hooks";
+import { formatInteger } from "@/features/production/format";
+import { useCustomFields, useProductionMe, useTags } from "@/features/production/hooks";
 import {
   useJob,
   useJobTransition,
@@ -114,6 +117,15 @@ const JobPage = ({ job }: { job: JobDetail }) => {
   const breakpoint = useBreakpoint();
   const navigate = useNavigate();
   const tags = useTags();
+  const customFields = useCustomFields();
+  const jobFields = useMemo(
+    () => fieldsFor(customFields.data?.items ?? [], "JOB"),
+    [customFields.data]
+  );
+  const taskFields = useMemo(
+    () => fieldsFor(customFields.data?.items ?? [], "TASK"),
+    [customFields.data]
+  );
   const openTask = useOpenTask();
   const mover = useTaskMover();
   const bulk = useJobTransition(job.id);
@@ -135,7 +147,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
   const progress = jobProgress(job);
   // Over-allocation is about the client's images: feedback redo tasks are extra work, not extra images.
   const overBy = assignedNormalQty(job.tasks) - job.totalImages;
-  const deadline = jobDeadlineCountdown(job, mover.lookup.statuses);
+  // An archived job is parked: a countdown ("trễ 8 giờ") means nothing there.
+  const deadline = job.archived ? null : jobDeadlineCountdown(job, mover.lookup.statuses);
   const late = job.lateTaskCount > 0;
   const caps = job.capabilities;
   // Archived jobs are read-only: only restoring (and reading the chat) stays available.
@@ -151,6 +164,14 @@ const JobPage = ({ job }: { job: JobDetail }) => {
     : [];
   const desktop = breakpoint === "desktop";
   const openFeedbacks = job.feedbacks.filter((feedback) => feedback.status !== "RESOLVED");
+  // A feedback waiting to be re-assigned is the Leader's next step: "Giao lại" leads, "Chia task" steps back.
+  const awaitingReassign =
+    caps.canSplit && active && openFeedbacks.some((feedback) => feedback.status === "OPEN");
+  // Project name / client often repeat the project code (e.g. "ABC · ABC"): show each part once.
+  const subtitle = [job.project.name, job.project.clientName, job.name].filter(
+    (part, index, parts): part is string =>
+      Boolean(part) && part !== job.project.code && parts.indexOf(part) === index
+  );
 
   // Anyone who can see the job opens its chat through the API (which adds them as a member);
   // creating it stays with Leader / Account / Admin. Archived jobs only reopen an existing chat.
@@ -205,9 +226,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   {job.code}
                 </h1>
                 <p className="text-[13px] text-foreground-muted">
-                  <span className="font-mono">{job.project.code}</span> · {job.project.name}
-                  {job.project.clientName ? ` · ${job.project.clientName}` : ""}
-                  {job.name ? ` · ${job.name}` : ""}
+                  <span className="font-mono">{job.project.code}</span>
+                  {subtitle.length > 0 ? ` · ${subtitle.join(" · ")}` : ""}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -249,7 +269,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                     href={job.driveLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex max-w-full items-center gap-1 rounded text-brand-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex max-w-full items-center gap-1 rounded text-brand-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring max-sm:-my-2.5 max-sm:py-2.5 max-sm:pr-3"
                   >
                     <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate">Mở link</span>
@@ -265,6 +285,18 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   <span className="text-foreground-subtle">—</span>
                 )}
               </Fact>
+              {/* JOB custom fields with a value (e.g. "Mã đơn hàng", PLAN §8). */}
+              {jobFields
+                .filter((field) => !isEmptyValue(job.customValues[field.key]))
+                .map((field) => (
+                  <Fact key={field.id} label={field.label}>
+                    <CustomFieldValue
+                      field={field}
+                      value={job.customValues[field.key]}
+                      className="block"
+                    />
+                  </Fact>
+                ))}
             </dl>
 
             <section
@@ -277,7 +309,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                 value={job.qtyAssigned}
                 percent={progress.assigned}
                 tone={overBy > 0 ? "warning" : "muted"}
-                hint={overBy > 0 ? `vượt ${overBy}` : undefined}
+                hint={overBy > 0 ? `vượt ${formatInteger(overBy)}` : undefined}
               />
               <ProgressStat
                 label="Đã xong"
@@ -325,7 +357,10 @@ const JobPage = ({ job }: { job: JobDetail }) => {
 
             <div className="flex flex-wrap items-center gap-2">
               {caps.canSplit && active ? (
-                <Button onClick={() => setDialog("split")}>
+                <Button
+                  variant={awaitingReassign ? "outline" : "default"}
+                  onClick={() => setDialog("split")}
+                >
                   <Split />
                   Chia task
                 </Button>
@@ -359,7 +394,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   Hoạt động
                 </Button>
               ) : null}
-              {(caps.canEdit && active) || caps.canArchive ? (
+              {/* Archived: "Khôi phục job" sits in the banner above, so no menu with only that. */}
+              {active && (caps.canEdit || caps.canArchive) ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={<Button variant="ghost" size="icon" aria-label="Tùy chọn job" />}
@@ -367,7 +403,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                     <Ellipsis />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
-                    {caps.canEdit && active ? (
+                    {caps.canEdit ? (
                       <DropdownMenuItem onClick={() => setDialog("edit")}>
                         <PencilLine />
                         Sửa job
@@ -375,10 +411,10 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                     ) : null}
                     {caps.canArchive ? (
                       <>
-                        {caps.canEdit && active ? <DropdownMenuSeparator /> : null}
+                        {caps.canEdit ? <DropdownMenuSeparator /> : null}
                         <DropdownMenuItem onClick={() => setDialog("archive")}>
-                          {job.archived ? <ArchiveRestore /> : <Archive />}
-                          {job.archived ? "Khôi phục job" : "Lưu trữ job"}
+                          <Archive />
+                          Lưu trữ job
                         </DropdownMenuItem>
                       </>
                     ) : null}
@@ -420,8 +456,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                         {caps.canSplit && active ? (
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="bg-surface"
+                            variant={feedback.status === "OPEN" ? "default" : "outline"}
+                            className={feedback.status === "OPEN" ? undefined : "bg-surface"}
                             onClick={() => setReassignFor(feedback)}
                           >
                             <Undo2 />
@@ -460,6 +496,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
             </div>
             <JobTasks
               tasks={job.tasks}
+              fields={taskFields}
               timeZone={timeZone}
               onOpen={openTask}
               onMove={(task, option) => mover.start(task, option)}
@@ -603,7 +640,7 @@ const ProgressStat = ({
       {label}
     </span>
     <span className="flex items-baseline gap-1.5">
-      <span className="text-lg font-semibold tabular-nums">{value}</span>
+      <span className="text-lg font-semibold tabular-nums">{formatInteger(value)}</span>
       {percent !== undefined ? (
         <span className="text-xs text-foreground-muted tabular-nums">{percent}%</span>
       ) : null}

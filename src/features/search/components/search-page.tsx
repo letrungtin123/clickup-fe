@@ -237,7 +237,7 @@ const Overview = ({
                 <button
                   type="button"
                   onClick={() => onTab(group)}
-                  className="ml-auto inline-flex items-center gap-1 rounded text-xs text-foreground-muted outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="ml-auto inline-flex items-center gap-1 rounded text-xs text-foreground-muted outline-none pointer-coarse:-my-2.5 pointer-coarse:py-2.5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Xem tất cả <ArrowRight className="size-3" aria-hidden="true" />
                 </button>
@@ -338,19 +338,26 @@ const ResultRow = ({ item, q }: { item: SearchItem; q: string }) => {
     case "tasks":
       return (
         <Link to={item.href} className={rowClass} data-search-result>
-          <span className="mt-0.5 w-16 shrink-0 font-mono text-xs text-foreground-muted">
+          <span className="mt-0.5 hidden w-16 shrink-0 font-mono text-xs text-foreground-muted sm:inline">
             <Highlight text={item.key} query={q} />
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {/* Phones: the key moves to the meta line and the title gets two lines. */}
             <span
               className={cn(
-                "truncate text-sm font-medium",
+                "line-clamp-2 text-sm font-medium break-words sm:line-clamp-1",
                 item.hit.completedAt && "text-foreground-muted line-through"
               )}
             >
               <Highlight text={item.title} query={q} />
             </span>
-            <span className="truncate text-xs text-foreground-muted">{item.meta}</span>
+            <span className="truncate text-xs text-foreground-muted">
+              <span className="font-mono sm:hidden">
+                <Highlight text={item.key} query={q} />
+                {" · "}
+              </span>
+              {item.meta}
+            </span>
           </span>
           <StatusPill status={item.hit.status} size="xs" className="max-w-32" />
         </Link>
