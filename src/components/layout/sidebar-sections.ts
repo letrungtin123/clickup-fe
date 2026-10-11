@@ -4,10 +4,10 @@ import { useCallback, useSyncExternalStore } from "react";
  * Open / collapsed state of the sidebar sections, remembered per user on this device (localStorage,
  * every access guarded: private mode or blocked storage simply means "not remembered").
  */
-export type SidebarSectionId = "production" | "projects" | "channels" | "dms";
+export type SidebarSectionId = "production" | "projects" | "knowledge" | "channels" | "dms";
 export type SidebarSectionState = Partial<Record<SidebarSectionId, boolean>>;
 
-const sectionIds: readonly SidebarSectionId[] = ["production", "projects", "channels", "dms"];
+const sectionIds: readonly SidebarSectionId[] = ["production", "projects", "knowledge", "channels", "dms"];
 const keyPrefix = "nesso-work-sidebar-sections:";
 export const sidebarSectionsKey = (userId: string) => `${keyPrefix}${userId}`;
 

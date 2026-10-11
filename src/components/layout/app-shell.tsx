@@ -11,6 +11,9 @@ import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
 import { useChatUnreadLabel } from "@/features/chat/hooks/use-chat-unread-label";
 import { CommandPalette } from "@/features/command/command-palette";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
+import { NewSpaceDialog } from "@/features/knowledge/components/new-space-dialog";
+import { useKnowledgePermissions } from "@/features/knowledge/hooks";
+import { useKnowledgeSidebarSync } from "@/features/knowledge/realtime";
 import { NewProjectDialog } from "@/features/projects/components/new-project-dialog";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useUiStore } from "@/stores/ui-store";
@@ -37,7 +40,11 @@ export const AppShell = () => {
   const setOverlayOpen = useUiStore((state) => state.setNavOverlayOpen);
   const newProjectOpen = useUiStore((state) => state.newProjectOpen);
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
+  const newSpaceOpen = useUiStore((state) => state.newSpaceOpen);
+  const setNewSpaceOpen = useUiStore((state) => state.setNewSpaceOpen);
   const location = useLocation();
+  // Knowledge spaces created / shared / archived elsewhere refresh the sidebar list (PD-031).
+  useKnowledgeSidebarSync(useKnowledgePermissions().view);
 
   // Overlays never survive a layout tier change or a navigation.
   useEffect(() => setOverlayOpen(false), [breakpoint, setOverlayOpen]);
@@ -121,7 +128,7 @@ export const AppShell = () => {
             className="w-[86vw] max-w-[20rem] gap-0 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
           >
             <SheetTitle className="sr-only">Điều hướng</SheetTitle>
-            <SheetDescription className="sr-only">Dự án, kênh và cài đặt</SheetDescription>
+            <SheetDescription className="sr-only">Dự án, tri thức, kênh và cài đặt</SheetDescription>
             <Sidebar variant="full" onNavigate={closeOverlay} />
           </SheetContent>
         </Sheet>
@@ -152,6 +159,7 @@ export const AppShell = () => {
 
       <CommandPalette />
       <NewProjectDialog open={newProjectOpen} onOpenChange={setNewProjectOpen} />
+      <NewSpaceDialog open={newSpaceOpen} onOpenChange={setNewSpaceOpen} />
     </div>
   );
 };

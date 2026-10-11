@@ -28,7 +28,9 @@ const notification = (n: number, readAt: string | null = null): Notification => 
     channelId: null,
     messageId: null,
     productionTaskId: null,
-    jobId: null
+    jobId: null,
+    knowledgeSpaceId: null,
+    knowledgeItemId: null
   },
   payload: {},
   createdAt: new Date(Date.UTC(2026, 9, 10, 0, 0, 0) + n * 60_000).toISOString(),

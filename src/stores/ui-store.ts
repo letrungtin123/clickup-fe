@@ -9,6 +9,8 @@ type UiState = {
   navOverlayOpen: boolean;
   commandOpen: boolean;
   newProjectOpen: boolean;
+  /** "Tạo kho" dialog (knowledge base). */
+  newSpaceOpen: boolean;
   /** A notification bell list is open (new notifications then skip the toast). Not persisted. */
   bellOpen: boolean;
   /** Project ids whose list tree is collapsed in the sidebar. */
@@ -18,6 +20,7 @@ type UiState = {
   setNavOverlayOpen: (open: boolean) => void;
   setCommandOpen: (open: boolean) => void;
   setNewProjectOpen: (open: boolean) => void;
+  setNewSpaceOpen: (open: boolean) => void;
   setBellOpen: (open: boolean) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
 };
@@ -29,6 +32,7 @@ export const useUiStore = create<UiState>()(
       navOverlayOpen: false,
       commandOpen: false,
       newProjectOpen: false,
+      newSpaceOpen: false,
       bellOpen: false,
       collapsedProjects: {},
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
@@ -36,6 +40,7 @@ export const useUiStore = create<UiState>()(
       setNavOverlayOpen: (navOverlayOpen) => set({ navOverlayOpen }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
       setNewProjectOpen: (newProjectOpen) => set({ newProjectOpen }),
+      setNewSpaceOpen: (newSpaceOpen) => set({ newSpaceOpen }),
       setBellOpen: (bellOpen) => set({ bellOpen }),
       setProjectExpanded: (projectId, expanded) =>
         set((state) => {

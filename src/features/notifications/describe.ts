@@ -18,6 +18,7 @@ import {
 
 import type { Notification, NotificationType } from "@/contracts/notifications";
 
+import { describeKnowledgeNotification, knowledgePath } from "./describe-knowledge";
 import { describeProductionNotification, productionPath } from "./describe-production";
 import { mentionTypeList } from "./feeds";
 
@@ -73,6 +74,10 @@ export const describeNotification = (notification: Notification): NotificationDe
   if (type.startsWith("production.")) {
     const production = describeProductionNotification(notification);
     if (production) return production;
+  }
+  if (type.startsWith("knowledge.")) {
+    const knowledge = describeKnowledgeNotification(notification);
+    if (knowledge) return knowledge;
   }
 
   switch (type) {
@@ -257,6 +262,10 @@ export const notificationTarget = (notification: Notification): NotificationTarg
   const { target } = notification;
   if (notification.type.startsWith("production.")) {
     const path = productionPath(notification);
+    return path ? { kind: "path", path } : { kind: "none" };
+  }
+  if (notification.type.startsWith("knowledge.")) {
+    const path = knowledgePath(notification);
     return path ? { kind: "path", path } : { kind: "none" };
   }
   if (notification.type.startsWith("task.") && target.taskId) {

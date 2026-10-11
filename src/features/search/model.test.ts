@@ -42,6 +42,18 @@ const result: GlobalSearchResult = {
       text: "Đã cập nhật thiết kế",
       createdAt: "2026-10-09T08:00:00Z"
     }
+  ],
+  knowledge: [
+    {
+      id: id(9),
+      spaceId: id(10),
+      spaceName: "Quy trình Sản xuất",
+      title: "Quy trình retouch",
+      summary: "Các bước retouch chuẩn",
+      importance: "critical",
+      status: { id: id(11), name: "Đã ban hành", color: "green", group: "active" },
+      updatedAt: "2026-10-10T08:00:00Z"
+    }
   ]
 };
 
@@ -50,6 +62,7 @@ describe("search result mapping", () => {
     const items = mapSearchResults(result);
     expect(items.map((item) => item.group)).toEqual([
       "tasks",
+      "knowledge",
       "messages",
       "projects",
       "lists",
@@ -57,13 +70,18 @@ describe("search result mapping", () => {
     ]);
     expect(items[0]).toMatchObject({ href: `/p/${id(2)}/l/${id(3)}?task=${id(1)}`, key: "WEB-12" });
     expect(items[1]).toMatchObject({
+      href: `/k/${id(10)}/i/${id(9)}`,
+      meta: "Quy trình Sản xuất · Đã ban hành"
+    });
+    expect(items[2]).toMatchObject({
       href: `/c/${id(7)}?thread=${id(8)}&message=${id(6)}`,
       meta: "#thiết-kế"
     });
-    expect(items[2]).toMatchObject({ href: `/p/${id(2)}`, meta: "Dự án riêng tư" });
-    expect(items[3]).toMatchObject({ href: `/p/${id(2)}/l/${id(3)}`, meta: "Web" });
+    expect(items[3]).toMatchObject({ href: `/p/${id(2)}`, meta: "Dự án riêng tư" });
+    expect(items[4]).toMatchObject({ href: `/p/${id(2)}/l/${id(3)}`, meta: "Web" });
     expect(countByGroup(items)).toEqual({
       tasks: 1,
+      knowledge: 1,
       messages: 1,
       projects: 1,
       lists: 1,

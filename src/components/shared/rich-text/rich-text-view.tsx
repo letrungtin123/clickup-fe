@@ -3,7 +3,7 @@ import { Fragment, memo, type ReactNode } from "react";
 
 import type { RichTextNode } from "@/contracts/rich-text";
 
-import { asRichTextDoc, isSafeHref, type RichTextDocLike } from "./helpers";
+import { asRichTextDoc, headingAnchorId, isSafeHref, type RichTextDocLike } from "./helpers";
 import "./rich-text.css";
 
 type RichTextViewProps = {
@@ -17,9 +17,21 @@ type RichTextViewProps = {
   selfId?: string | null | undefined;
   /** Makes mention chips buttons (e.g. open a profile / DM). */
   onMentionClick?: ((userId: string) => void) | undefined;
+  /**
+   * Gives headings stable ids (`<prefix>-<path>`, see headingAnchorId) so a table of contents can
+   * link to them (knowledge items).
+   */
+  headingIdPrefix?: string | undefined;
+  /**
+   * Renders node types this shared view does not know (knowledge tables and images). Return undefined to
+   * fall back to the default rendering. `children()` renders the node's content with the same options.
+   */
+  renderCustom?: CustomNodeRenderer | undefined;
 };
 
-type RenderContext = Pick<RichTextViewProps, "selfId" | "onMentionClick">;
+export type CustomNodeRenderer = (node: RichTextNode, key: string, children: () => ReactNode) => ReactNode | undefined;
+
+type RenderContext = Pick<RichTextViewProps, "selfId" | "onMentionClick" | "headingIdPrefix" | "renderCustom">;
 
 const headingTags = { 1: "h1", 2: "h2", 3: "h3" } as const;
 
@@ -65,6 +77,10 @@ const renderNodes = (nodes: RichTextNode[] | undefined, context: RenderContext, 
 
 const renderNode = (node: RichTextNode, context: RenderContext, key: string): ReactNode => {
   const children = () => renderNodes(node.content, context, key);
+  if (context.renderCustom) {
+    const custom = context.renderCustom(node, key, children);
+    if (custom !== undefined) return custom;
+  }
   switch (node.type) {
     case "text":
       return renderMarks(node, key);
@@ -99,7 +115,12 @@ const renderNode = (node: RichTextNode, context: RenderContext, key: string): Re
     case "heading": {
       const level = node.attrs?.level === 1 || node.attrs?.level === 3 ? node.attrs.level : 2;
       const Tag = headingTags[level];
-      return <Tag key={key}>{children()}</Tag>;
+      const id = context.headingIdPrefix ? headingAnchorId(context.headingIdPrefix, key) : undefined;
+      return (
+        <Tag key={key} id={id}>
+          {children()}
+        </Tag>
+      );
     }
     case "bulletList":
       return <ul key={key}>{children()}</ul>;
@@ -157,7 +178,9 @@ export const RichTextView = memo(function RichTextView({
   compact = false,
   empty = null,
   selfId,
-  onMentionClick
+  onMentionClick,
+  headingIdPrefix,
+  renderCustom
 }: RichTextViewProps) {
   const doc = asRichTextDoc(input);
   if (!doc?.content || doc.content.length === 0) {
@@ -165,7 +188,7 @@ export const RichTextView = memo(function RichTextView({
   }
   return (
     <div className={cn("rt-content", compact && "rt-compact", className)}>
-      {renderNodes(doc.content, { selfId, onMentionClick }, "n")}
+      {renderNodes(doc.content, { selfId, onMentionClick, headingIdPrefix, renderCustom }, "n")}
     </div>
   );
 });

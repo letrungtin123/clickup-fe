@@ -1,0 +1,320 @@
+/*
+ * Long-form reading typography for knowledge items ("chế độ đọc"). Builds on the shared rich-text styles
+ * (.rt-content) with a calmer rhythm: larger text, generous line height, clear heading hierarchy and
+ * anchors that land below the sticky item bar. Same tokens → light and dark.
+ */
+
+.kb-prose.rt-content {
+  font-size: 0.96875rem;
+  line-height: 1.75;
+  color: var(--foreground);
+  letter-spacing: -0.003em;
+}
+
+@media (max-width: 639px) {
+  .kb-prose.rt-content {
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+}
+
+.kb-prose.rt-content > * + * {
+  margin-top: 0.9em;
+}
+
+.kb-prose.rt-content p + p {
+  margin-top: 0.9em;
+}
+
+.kb-prose.rt-content h1,
+.kb-prose.rt-content h2,
+.kb-prose.rt-content h3 {
+  scroll-margin-top: 5.5rem;
+  color: var(--foreground);
+  letter-spacing: -0.018em;
+  line-height: 1.3;
+}
+
+.kb-prose.rt-content h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 2em;
+}
+
+.kb-prose.rt-content h2 {
+  font-size: 1.25rem;
+  font-weight: 650;
+  margin-top: 1.8em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border);
+}
+
+.kb-prose.rt-content h3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-top: 1.5em;
+}
+
+.kb-prose.rt-content > :first-child {
+  margin-top: 0;
+}
+
+.kb-prose.rt-content h1 + *,
+.kb-prose.rt-content h2 + *,
+.kb-prose.rt-content h3 + * {
+  margin-top: 0.6em;
+}
+
+.kb-prose.rt-content ul,
+.kb-prose.rt-content ol {
+  padding-left: 1.5em;
+}
+
+.kb-prose.rt-content li + li {
+  margin-top: 0.35em;
+}
+
+.kb-prose.rt-content ol > li::marker {
+  color: var(--foreground-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quotes read as a "Lưu ý" callout in knowledge items. */
+.kb-prose.rt-content blockquote {
+  border-left: 3px solid var(--brand);
+  background: var(--brand-soft);
+  border-radius: 0 0.6rem 0.6rem 0;
+  padding: 0.75em 1em;
+  color: var(--foreground);
+}
+
+.kb-prose.rt-content blockquote > * + * {
+  margin-top: 0.5em;
+}
+
+.kb-prose.rt-content pre {
+  font-size: 0.8125rem;
+  border-radius: 0.6rem;
+  padding: 0.85em 1em;
+}
+
+.kb-prose.rt-content hr {
+  margin: 2em 0;
+}
+
+.kb-prose.rt-content a {
+  font-weight: 500;
+}
+
+/* A heading reached from the table of contents flashes softly. */
+.kb-prose.rt-content :is(h1, h2, h3):target,
+.kb-prose.rt-content :is(h1, h2, h3)[data-flash="true"] {
+  animation: kb-flash 1.6s ease-out;
+}
+
+@keyframes kb-flash {
+  0% {
+    background: color-mix(in oklch, var(--brand) 22%, transparent);
+    box-shadow: 0 0 0 0.35rem color-mix(in oklch, var(--brand) 22%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 0.35rem transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-prose.rt-content :is(h1, h2, h3)[data-flash="true"] {
+    animation: none;
+  }
+}
+
+/*
+ * Touch screens: every button of the item page, editor, comments, history and their dialogs / sheets is at
+ * least 40 px tall (the shared xs / sm sizes stop at 32 / 36 px); checkboxes get an invisible 40 px hit area.
+ */
+@media (pointer: coarse) {
+  .kb-touch :is([data-slot="button"], [data-slot="select-trigger"]) {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .kb-touch [data-slot="checkbox"] {
+    position: relative;
+  }
+
+  .kb-touch [data-slot="checkbox"]::after {
+    content: "";
+    position: absolute;
+    inset: -0.75rem;
+  }
+}
+
+/* Editor toolbar on touch screens: 40 px targets (the shared toolbar stops at 36 px). */
+@media (pointer: coarse) {
+  .kb-editor [role="toolbar"] > button,
+  .kb-editor [role="toolbar"] > [data-slot="popover-trigger"] {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+}
+
+/* Editor: the document area gets the same reading rhythm. */
+.kb-editor .ProseMirror {
+  min-height: 18rem;
+}
+
+.kb-editor .rt-content {
+  font-size: 0.96875rem;
+  line-height: 1.75;
+}
+
+.kb-editor .rt-content h2 {
+  font-size: 1.2rem;
+}
+
+/* Block rhythm close to the reading view: headings get air above them, paragraphs a little between. */
+.kb-editor .rt-content .ProseMirror > * + * {
+  margin-top: 0.75em;
+}
+
+.kb-editor .rt-content .ProseMirror > :is(h1, h2, h3) {
+  margin-top: 1.5em;
+}
+
+.kb-editor .rt-content .ProseMirror > :is(h1, h2, h3) + * {
+  margin-top: 0.5em;
+}
+
+.kb-editor .rt-content .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.kb-editor .rt-content blockquote {
+  border-left: 3px solid var(--brand);
+  background: var(--brand-soft);
+  border-radius: 0 0.6rem 0.6rem 0;
+  padding: 0.6em 0.9em;
+  color: var(--foreground);
+}
+
+/* Tables (knowledge bodies only) ------------------------------------------------------------------- */
+
+.kb-prose .kb-table-wrap,
+.kb-editor .tableWrapper {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  margin: 1.1em 0;
+}
+
+.kb-prose .kb-table-wrap:focus-visible {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: 2px;
+}
+
+.kb-prose table,
+.kb-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 100%;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.kb-prose th,
+.kb-prose td,
+.kb-editor .ProseMirror th,
+.kb-editor .ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.75em;
+  vertical-align: top;
+  text-align: left;
+  min-width: 7rem;
+  position: relative;
+}
+
+/* Columns given a width by dragging keep it (the <colgroup> carries it), down to 80 px. */
+.kb-prose :is(th, td)[data-colwidth],
+.kb-editor .ProseMirror :is(th, td)[colwidth] {
+  min-width: 0;
+}
+
+/* Column resizing (editor, mouse): a handle on the hovered column edge. */
+.kb-editor .ProseMirror .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -1px;
+  width: 4px;
+  background: var(--brand);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.kb-editor .ProseMirror.resize-cursor,
+.kb-editor .ProseMirror.resize-cursor * {
+  cursor: col-resize;
+}
+
+.kb-prose tr:first-child > *,
+.kb-editor .ProseMirror tr:first-child > * {
+  border-top: 0;
+}
+
+.kb-prose tr > :first-child,
+.kb-editor .ProseMirror tr > :first-child {
+  border-left: 0;
+}
+
+.kb-prose tr > :last-child,
+.kb-editor .ProseMirror tr > :last-child {
+  border-right: 0;
+}
+
+.kb-prose tr:last-child > *,
+.kb-editor .ProseMirror tr:last-child > * {
+  border-bottom: 0;
+}
+
+.kb-prose th,
+.kb-editor .ProseMirror th {
+  background: var(--muted);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.kb-prose td > * + *,
+.kb-prose th > * + *,
+.kb-editor .ProseMirror td > * + *,
+.kb-editor .ProseMirror th > * + * {
+  margin-top: 0.4em;
+}
+
+.kb-editor .ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--brand) 14%, transparent);
+  pointer-events: none;
+}
+
+/* Images (knowledge bodies only) ------------------------------------------------------------------- */
+
+.kb-prose .kb-image,
+.kb-editor .kb-image {
+  margin: 1.1em 0;
+  max-width: 100%;
+}
+
+.kb-editor .kb-image img {
+  max-width: 100%;
+  height: auto;
+}
+
+.kb-editor .ProseMirror-selectednode.kb-image > div {
+  outline: none;
+}

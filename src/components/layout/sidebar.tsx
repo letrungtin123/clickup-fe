@@ -3,6 +3,7 @@ import {
   ChevronRight,
   House,
   Inbox,
+  Library,
   ListTodo,
   MessagesSquare,
   PanelLeftClose,
@@ -30,6 +31,9 @@ import {
   DirectMessagesSectionAction
 } from "@/features/chat/components/sidebar-sections";
 import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
+import { KnowledgeSidebarSection } from "@/features/knowledge/components/sidebar-section";
+import { useKnowledgePermissions } from "@/features/knowledge/hooks";
+import { canCreateSpace, canSeeKnowledge } from "@/features/knowledge/model/access";
 import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { useProductionNavEntries } from "@/features/production/hooks";
@@ -83,6 +87,8 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
   const { can } = usePermissions();
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
+  const setNewSpaceOpen = useUiStore((state) => state.setNewSpaceOpen);
+  const knowledge = useKnowledgePermissions();
   const productionNav = useProductionNavEntries();
   const productionDefaultOpen = useProductionSectionDefault();
   // Phones reach the bell from the top bar; the drawer keeps "Hộp thư".
@@ -165,6 +171,21 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
         >
           <ProjectTree onNavigate={onNavigate} />
         </SidebarSection>
+
+        {/* Knowledge base (PD-031): only with knowledge.view; "Tạo kho" with knowledge.create. */}
+        {canSeeKnowledge(knowledge) ? (
+          <SidebarSection
+            id="knowledge"
+            title="Tri thức"
+            action={
+              canCreateSpace(knowledge) ? (
+                <SectionActionButton label="Tạo kho" onClick={() => setNewSpaceOpen(true)} />
+              ) : null
+            }
+          >
+            <KnowledgeSidebarSection onNavigate={onNavigate} />
+          </SidebarSection>
+        ) : null}
 
         <SidebarSection id="channels" title="Kênh" action={<ChannelsSectionAction />}>
           <ChannelsSection />
@@ -352,6 +373,7 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
   const projects = useProjects();
   const projectMatch = useMatch("/p/:projectId/*");
   const productionNav = useProductionNavEntries();
+  const knowledge = useKnowledgePermissions();
   const userId = useSessionContext().user.id;
   const [productionOpen] = useSidebarSection(userId, "production", useProductionSectionDefault());
   // A collapsed "Sản xuất" section leaves one icon (the overview) on the rail.
@@ -392,6 +414,9 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
         ))}
         {/* Chat lives in sidebar sections on the full sidebar; the rail links to all conversations. */}
         <RailLink entry={{ to: "/c", label: "Tin nhắn", icon: MessagesSquare }} />
+        {canSeeKnowledge(knowledge) ? (
+          <RailLink entry={{ to: "/k", label: "Tri thức", icon: Library }} />
+        ) : null}
         {railProduction.length > 0 ? (
           <>
             <Separator className="my-1 w-6" />

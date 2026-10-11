@@ -17,6 +17,12 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /p/:projectId                  → first list
  *   /p/:projectId/l/:listId        list with ?view=list|board|table and ?task=<id> detail panel
  *   /p/:projectId/settings         project settings + members
+ *   /k                             knowledge base: every space (knowledge.view, PD-031)
+ *   /k/:spaceId                    space: category tree + items (filters in the URL)
+ *   /k/:spaceId/new                new item (editor)
+ *   /k/:spaceId/i/:itemId          item (reader: TOC, comments, history; ?tab=comments|history)
+ *   /k/:spaceId/i/:itemId/edit     item editor (versions, conflict handling)
+ *   /k/:spaceId/{settings,audit,trash}  space settings / audit log / trash
  *   /c                             all conversations (mobile chat entry)
  *   /c/:channelId                  channel / DM with ?thread=<rootId> and ?message=<id>
  *   /settings/{profile,members,roles}
@@ -144,6 +150,77 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({
                   Component: (await import("@/routes/project-settings")).ProjectSettingsRoute
                 })
+              }
+            ]
+          },
+          {
+            path: "k",
+            lazy: async () => ({
+              Component: (await import("@/routes/knowledge/layout")).KnowledgeGateRoute
+            }),
+            children: [
+              {
+                index: true,
+                lazy: async () => ({
+                  Component: (await import("@/routes/knowledge/layout")).KnowledgeHomeRoute
+                })
+              },
+              {
+                path: ":spaceId",
+                lazy: async () => ({
+                  Component: (await import("@/routes/knowledge/layout")).KnowledgeSpaceLayoutRoute
+                }),
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/space")).KnowledgeSpaceRoute
+                    })
+                  },
+                  {
+                    path: "new",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/editor")).KnowledgeNewItemRoute
+                    })
+                  },
+                  {
+                    path: "i/:itemId",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/item")).KnowledgeItemRoute
+                    })
+                  },
+                  {
+                    path: "i/:itemId/edit",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/editor")).KnowledgeEditItemRoute
+                    })
+                  },
+                  {
+                    path: "settings",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/settings")).KnowledgeSettingsRoute
+                    })
+                  },
+                  {
+                    path: "audit",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/audit")).KnowledgeAuditRoute
+                    })
+                  },
+                  {
+                    path: "trash",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/trash")).KnowledgeTrashRoute
+                    })
+                  },
+                  {
+                    path: ":itemId",
+                    lazy: async () => ({
+                      Component: (await import("@/routes/knowledge/layout")).KnowledgeItemShortcutRoute
+                    })
+                  },
+                  { path: "*", element: <NotFoundRoute /> }
+                ]
               }
             ]
           },

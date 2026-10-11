@@ -19,9 +19,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Attachment } from "@/contracts/work";
-
-import { formatBytes, openAttachment, useAttachmentUrl, type UploadItem } from "../../attachments";
+import {
+  formatBytes,
+  openAttachment,
+  useAttachmentSource,
+  useAttachmentUrl,
+  type AttachmentLike,
+  type UploadItem
+} from "../../attachments";
 import { relativeTime } from "../../time";
 
 const FileTypeIcon = ({ mime, name }: { mime: string; name: string }) => {
@@ -42,7 +47,7 @@ export const ImageThumb = ({
   onDelete,
   size = "md"
 }: {
-  attachment: Attachment;
+  attachment: AttachmentLike;
   onOpen: () => void;
   onDelete?: (() => void) | undefined;
   size?: "sm" | "md";
@@ -97,10 +102,11 @@ export const FileRow = ({
   onDelete,
   compact = false
 }: {
-  attachment: Attachment;
+  attachment: AttachmentLike;
   onDelete?: (() => void) | undefined;
   compact?: boolean;
 }) => {
+  const source = useAttachmentSource();
   return (
     <div className={cn("group/file flex items-center gap-2.5 rounded-lg border bg-surface px-2.5", compact ? "h-10" : "h-12")}>
       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-foreground-muted">
@@ -109,7 +115,7 @@ export const FileRow = ({
       <span className="flex min-w-0 flex-1 flex-col">
         <button
           type="button"
-          onClick={() => void openAttachment(attachment)}
+          onClick={() => void openAttachment(attachment, source)}
           className="truncate rounded text-left text-[13px] font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
           title={attachment.fileName}
         >
@@ -125,7 +131,7 @@ export const FileRow = ({
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button variant="ghost" size="icon-sm" aria-label={`Tải xuống ${attachment.fileName}`} onClick={() => void openAttachment(attachment)} />
+            <Button variant="ghost" size="icon-sm" aria-label={`Tải xuống ${attachment.fileName}`} onClick={() => void openAttachment(attachment, source)} />
           }
         >
           <Download />
@@ -182,7 +188,7 @@ export const ImageLightbox = ({
   onIndexChange,
   onClose
 }: {
-  images: Attachment[];
+  images: AttachmentLike[];
   index: number | null;
   onIndexChange: (index: number) => void;
   onClose: () => void;
@@ -232,8 +238,9 @@ export const ImageLightbox = ({
   );
 };
 
-const LightboxBody = ({ attachment, position, onClose }: { attachment: Attachment; position: string; onClose: () => void }) => {
+const LightboxBody = ({ attachment, position, onClose }: { attachment: AttachmentLike; position: string; onClose: () => void }) => {
   const url = useAttachmentUrl(attachment.id);
+  const source = useAttachmentSource();
   const [loaded, setLoaded] = useState<string | null>(null);
   return (
     <>
@@ -241,7 +248,7 @@ const LightboxBody = ({ attachment, position, onClose }: { attachment: Attachmen
         <DialogTitle className="min-w-0 flex-1 truncate text-sm">{attachment.fileName}</DialogTitle>
         <DialogDescription className="sr-only">Xem ảnh đính kèm</DialogDescription>
         <span className="text-xs text-foreground-muted tabular-nums">{position}</span>
-        <Button variant="ghost" size="icon-sm" aria-label="Tải xuống" onClick={() => void openAttachment(attachment)}>
+        <Button variant="ghost" size="icon-sm" aria-label="Tải xuống" onClick={() => void openAttachment(attachment, source)}>
           <Download />
         </Button>
         <Button variant="ghost" size="icon-sm" aria-label="Đóng" onClick={onClose}>

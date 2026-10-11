@@ -12,6 +12,7 @@ export type SearchTab = "all" | SearchGroup;
 export const searchTabs: readonly { value: SearchTab; label: string }[] = [
   { value: "all", label: "Tất cả" },
   { value: "tasks", label: "Công việc" },
+  { value: "knowledge", label: "Tri thức" },
   { value: "messages", label: "Tin nhắn" },
   { value: "projects", label: "Dự án" },
   { value: "lists", label: "Danh sách" },
@@ -20,6 +21,7 @@ export const searchTabs: readonly { value: SearchTab; label: string }[] = [
 
 export const groupLabels: Record<SearchGroup, string> = {
   tasks: "Công việc",
+  knowledge: "Tri thức",
   messages: "Tin nhắn",
   projects: "Dự án",
   lists: "Danh sách",
@@ -70,6 +72,14 @@ export type SearchItem =
     }
   | { group: "people"; id: string; title: string; meta: string; user: UserRef }
   | {
+      group: "knowledge";
+      id: string;
+      href: string;
+      title: string;
+      meta: string;
+      hit: GlobalSearchResult["knowledge"][number];
+    }
+  | {
       group: "messages";
       id: string;
       href: string;
@@ -83,7 +93,10 @@ const conversationName = (hit: GlobalSearchResult["messages"][number]) =>
     ? "Tin nhắn trực tiếp"
     : `#${hit.channelName ?? "kênh"}`;
 
-/** Flattens grouped results in display order: tasks, messages, projects, lists, people. */
+/** Knowledge item page (PD-031): /k/<spaceId>/i/<itemId>. */
+export const knowledgeItemHref = (hit: { spaceId: string; id: string }) => `/k/${hit.spaceId}/i/${hit.id}`;
+
+/** Flattens grouped results in display order: tasks, knowledge, messages, projects, lists, people. */
 export const mapSearchResults = (result: GlobalSearchResult | undefined): SearchItem[] => {
   if (!result) return [];
   return [
@@ -94,6 +107,14 @@ export const mapSearchResults = (result: GlobalSearchResult | undefined): Search
       title: hit.title,
       key: hit.key,
       meta: `${hit.projectName} · ${hit.listName}`,
+      hit
+    })),
+    ...(result.knowledge ?? []).map((hit): SearchItem => ({
+      group: "knowledge",
+      id: hit.id,
+      href: knowledgeItemHref(hit),
+      title: hit.title,
+      meta: `${hit.spaceName} · ${hit.status.name}`,
       hit
     })),
     ...result.messages.map((hit): SearchItem => ({
@@ -134,6 +155,7 @@ export const mapSearchResults = (result: GlobalSearchResult | undefined): Search
 export const countByGroup = (items: readonly SearchItem[]) => {
   const counts: Record<SearchGroup, number> = {
     tasks: 0,
+    knowledge: 0,
     messages: 0,
     projects: 0,
     lists: 0,

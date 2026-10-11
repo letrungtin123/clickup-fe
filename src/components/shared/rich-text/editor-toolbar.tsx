@@ -36,11 +36,13 @@ type ToolbarProps = {
   mentions: boolean;
   disabled?: boolean | undefined;
   className?: string | undefined;
+  /** Extra formatting controls after the built-in ones (surface-specific blocks). */
+  extras?: ReactNode;
   /** Extra controls rendered at the end (e.g. attach / send buttons). */
   trailing?: ReactNode;
 };
 
-const ToolButton = ({
+export const ToolButton = ({
   icon: Icon,
   label,
   shortcut,
@@ -81,10 +83,10 @@ const ToolButton = ({
   </Tooltip>
 );
 
-const Divider = () => <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border" />;
+export const ToolbarDivider = () => <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border" />;
 
 /** Formatting bar for RichTextEditor. Buttons never steal focus from the document. */
-export const EditorToolbar = ({ editor, variant, mentions, disabled, className, trailing }: ToolbarProps) => {
+export const EditorToolbar = ({ editor, variant, mentions, disabled, className, extras, trailing }: ToolbarProps) => {
   const state = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -120,19 +122,19 @@ export const EditorToolbar = ({ editor, variant, mentions, disabled, className, 
       <ToolButton icon={Strikethrough} label="Gạch ngang" active={state.strike} disabled={disabled} onClick={() => chain().toggleStrike().run()} />
       <ToolButton icon={Code} label="Mã" shortcut={`${mod}+E`} active={state.code} disabled={disabled} onClick={() => chain().toggleCode().run()} />
       <LinkButton editor={editor} active={state.link} disabled={disabled} />
-      <Divider />
+      <ToolbarDivider />
       {rich ? (
         <>
           <ToolButton icon={Heading1} label="Tiêu đề 1" active={state.h1} disabled={disabled} onClick={() => chain().toggleHeading({ level: 1 }).run()} />
           <ToolButton icon={Heading2} label="Tiêu đề 2" active={state.h2} disabled={disabled} onClick={() => chain().toggleHeading({ level: 2 }).run()} />
           <ToolButton icon={Heading3} label="Tiêu đề 3" active={state.h3} disabled={disabled} onClick={() => chain().toggleHeading({ level: 3 }).run()} />
-          <Divider />
+          <ToolbarDivider />
         </>
       ) : null}
       <ToolButton icon={List} label="Danh sách dấu chấm" active={state.bulletList} disabled={disabled} onClick={() => chain().toggleBulletList().run()} />
       <ToolButton icon={ListOrdered} label="Danh sách đánh số" active={state.orderedList} disabled={disabled} onClick={() => chain().toggleOrderedList().run()} />
       <ToolButton icon={ListChecks} label="Danh sách việc cần làm" active={state.taskList} disabled={disabled} onClick={() => chain().toggleTaskList().run()} />
-      <Divider />
+      <ToolbarDivider />
       <ToolButton icon={Quote} label="Trích dẫn" active={state.blockquote} disabled={disabled} onClick={() => chain().toggleBlockquote().run()} />
       <ToolButton icon={SquareCode} label="Khối mã" active={state.codeBlock} disabled={disabled} onClick={() => chain().toggleCodeBlock().run()} />
       {rich ? (
@@ -149,6 +151,12 @@ export const EditorToolbar = ({ editor, variant, mentions, disabled, className, 
             chain().insertContent(before.trim() ? " @" : "@").run();
           }}
         />
+      ) : null}
+      {extras ? (
+        <>
+          <ToolbarDivider />
+          {extras}
+        </>
       ) : null}
       {trailing ? <div className="ml-auto flex items-center gap-1">{trailing}</div> : null}
     </div>

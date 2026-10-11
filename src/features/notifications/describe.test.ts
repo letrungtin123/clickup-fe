@@ -26,7 +26,9 @@ const make = (overrides: Partial<Notification>): Notification => ({
     channelId: null,
     messageId: null,
     productionTaskId: null,
-    jobId: null
+    jobId: null,
+    knowledgeSpaceId: null,
+    knowledgeItemId: null
   },
   payload: {},
   createdAt: "2026-10-09T08:00:00.000Z",
@@ -82,7 +84,9 @@ describe("notification sentences", () => {
         channelId: "00000000-0000-4000-8000-0000000000c1",
         messageId: "00000000-0000-4000-8000-0000000000d1",
         productionTaskId: null,
-        jobId: null
+        jobId: null,
+        knowledgeSpaceId: null,
+        knowledgeItemId: null
       },
       title: "thiết-kế",
       body: "@Linh xem giúp nhé"
@@ -125,7 +129,9 @@ describe("notification targets", () => {
         channelId: "00000000-0000-4000-8000-0000000000c1",
         messageId: "00000000-0000-4000-8000-0000000000d1",
         productionTaskId: null,
-        jobId: null
+        jobId: null,
+        knowledgeSpaceId: null,
+        knowledgeItemId: null
       }
     });
     expect(notificationTarget(chat)).toEqual({

@@ -16,7 +16,8 @@ export const feedNames: readonly FeedName[] = ["all", "unread", "mentions"];
 export const mentionTypeList = [
   "task.mentioned",
   "chat.mentioned",
-  "production.mentioned"
+  "production.mentioned",
+  "knowledge.mentioned"
 ] as const satisfies readonly NotificationType[];
 
 const mentionTypeSet: ReadonlySet<string> = new Set(mentionTypeList);

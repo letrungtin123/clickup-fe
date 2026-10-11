@@ -16,6 +16,7 @@ import type { TaskPriority, TaskSort } from "@/contracts/work";
  *   ["admin", ...]                               roles / permissions / org members
  *   ["chat", ...]                                channels / DMs / messages (chat UI)
  *   ["presence", sortedUserIds]                  realtime presence poll
+ *   ["knowledge", ...]                           knowledge base spaces / items (see qk.knowledge)
  */
 
 export type TaskQueryParams = {
@@ -122,6 +123,38 @@ export const qk = {
     unreadCount: () => ["notifications", "unread-count"] as const,
     /** "mentions" = the "Nhắc đến" tab, filtered server side by type. */
     feed: (filter: "all" | "unread" | "mentions") => ["notifications", "feed", filter] as const
+  },
+
+  /**
+   * Knowledge base (PD-031). Space-scoped lists live under the space so one prefix refreshes a space;
+   * an item and everything about it (versions, history, comments) lives under the item.
+   */
+  knowledge: {
+    all: () => ["knowledge"] as const,
+    spaces: () => ["knowledge", "spaces"] as const,
+    space: (spaceId: string) => ["knowledge", "space", spaceId] as const,
+    members: (spaceId: string) => ["knowledge", "space", spaceId, "members"] as const,
+    /** Without `query`: prefix for every item page of the space. */
+    items: (spaceId: string, query?: Readonly<Record<string, unknown>>) =>
+      query === undefined
+        ? (["knowledge", "space", spaceId, "items"] as const)
+        : (["knowledge", "space", spaceId, "items", query] as const),
+    trash: (spaceId: string) => ["knowledge", "space", spaceId, "trash"] as const,
+    audit: (spaceId: string, query?: Readonly<Record<string, unknown>>) =>
+      query === undefined
+        ? (["knowledge", "space", spaceId, "audit"] as const)
+        : (["knowledge", "space", spaceId, "audit", query] as const),
+    item: (itemId: string) => ["knowledge", "item", itemId] as const,
+    versions: (itemId: string) => ["knowledge", "item", itemId, "versions"] as const,
+    version: (itemId: string, number: number) => ["knowledge", "item", itemId, "version", number] as const,
+    history: (itemId: string) => ["knowledge", "item", itemId, "history"] as const,
+    comments: (itemId: string, filter?: "all" | "open") =>
+      filter === undefined
+        ? (["knowledge", "item", itemId, "comments"] as const)
+        : (["knowledge", "item", itemId, "comments", filter] as const),
+    replies: (itemId: string, commentId: string) =>
+      ["knowledge", "item", itemId, "comments", "replies", commentId] as const,
+    attachmentUrl: (attachmentId: string) => ["knowledge", "attachment-url", attachmentId] as const
   },
 
   search: (q: string, groups?: readonly string[]) =>

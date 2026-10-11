@@ -8,6 +8,7 @@ import {
   mergeAttributes,
   ReactRenderer,
   useEditor,
+  type AnyExtension,
   type Editor
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -15,6 +16,7 @@ import { exitSuggestion, type SuggestionOptions } from "@tiptap/suggestion";
 import { cn } from "cn";
 import {
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -89,6 +91,15 @@ export type RichTextEditorProps = {
   onBlur?: ((doc: RichTextDoc) => void) | undefined;
   "aria-label"?: string | undefined;
   ref?: Ref<RichTextEditorHandle> | undefined;
+  /**
+   * Extra Tiptap extensions for one surface only (knowledge items: tables, images). Keep the array
+   * stable (memoize it): a new array recreates the editor.
+   */
+  extensions?: readonly AnyExtension[] | undefined;
+  /** Extra toolbar controls placed before `toolbarTrailing` (e.g. insert table / image). */
+  toolbarExtras?: ((editor: Editor) => ReactNode) | undefined;
+  /** The editor instance (to run commands from outside, e.g. insert an uploaded image). */
+  onEditorReady?: ((editor: Editor) => void) | undefined;
 };
 
 type Callbacks = Pick<
@@ -287,7 +298,10 @@ export const RichTextEditor = ({
   onFocus,
   onBlur,
   "aria-label": ariaLabel,
-  ref
+  ref,
+  extensions: extraExtensions,
+  toolbarExtras,
+  onEditorReady
 }: RichTextEditorProps) => {
   const [bridge] = useState(createBridge);
   useLayoutEffect(() => {
@@ -296,8 +310,11 @@ export const RichTextEditor = ({
   const hasMentions = Boolean(mentionSource);
 
   const extensions = useMemo(
-    () => buildExtensions(variant, placeholder, bridge, new PluginKey(`mention-${variant}`)),
-    [variant, placeholder, bridge]
+    () => [
+      ...buildExtensions(variant, placeholder, bridge, new PluginKey(`mention-${variant}`)),
+      ...(extraExtensions ?? [])
+    ],
+    [variant, placeholder, bridge, extraExtensions]
   );
 
   const editor = useEditor(
@@ -349,6 +366,11 @@ export const RichTextEditor = ({
     editor.commands.setContent(toEditorContent(value), { emitUpdate: false });
   }, [editor, value, variant]);
 
+  const announceEditor = useEffectEvent((instance: Editor) => onEditorReady?.(instance));
+  useEffect(() => {
+    if (!editor.isDestroyed) announceEditor(editor);
+  }, [editor]);
+
   useEffect(() => {
     if (!editor.isDestroyed && editor.isEditable === disabled) {
       editor.setEditable(!disabled, false);
@@ -385,6 +407,7 @@ export const RichTextEditor = ({
           variant={variant}
           mentions={hasMentions}
           disabled={disabled}
+          extras={toolbarExtras ? toolbarExtras(editor) : null}
           trailing={toolbarTrailing}
           className={cn("pb-1.5", toolbarClassName)}
         />

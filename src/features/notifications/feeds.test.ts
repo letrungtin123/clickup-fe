@@ -20,7 +20,9 @@ const notification = (n: number, type: Notification["type"], readAt: string | nu
     channelId: null,
     messageId: null,
     productionTaskId: null,
-    jobId: null
+    jobId: null,
+    knowledgeSpaceId: null,
+    knowledgeItemId: null
   },
   payload: {},
   createdAt: "2026-10-09T00:00:00.000Z",

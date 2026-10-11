@@ -1,9 +1,12 @@
 import {
+  BookOpenText,
+  BookPlus,
   Compass,
   FolderPlus,
   Hash,
   House,
   Inbox,
+  Library,
   ListTodo,
   LogOut,
   MessageSquarePlus,
@@ -44,9 +47,12 @@ import { ChannelGlyph } from "@/features/chat/components/channel-glyph";
 import { useChannels, useOpenDm } from "@/features/chat/hooks/use-channels";
 import { channelTitle, sortChannels } from "@/features/chat/model/channels";
 import { useChatDialogStore } from "@/features/chat/model/ui-state";
+import { ImportanceBadge, KnowledgeStatusChip } from "@/features/knowledge/components/badges";
+import { useKnowledgePermissions, useKnowledgeSpaces } from "@/features/knowledge/hooks";
+import { canCreateSpace, canSeeKnowledge } from "@/features/knowledge/model/access";
 import { useProjects } from "@/features/projects/hooks";
 import { Highlight } from "@/features/search/components/highlight";
-import { excerptAround, foldText, messageHref } from "@/features/search/model";
+import { excerptAround, foldText, knowledgeItemHref, messageHref } from "@/features/search/model";
 import { tasksApi } from "@/features/tasks/api";
 import { taskHref } from "@/features/tasks/use-task-panel";
 import { isModKey } from "@/lib/keyboard";
@@ -103,6 +109,10 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
   const channels = useChannels();
   const { can } = usePermissions();
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
+  const setNewSpaceOpen = useUiStore((state) => state.setNewSpaceOpen);
+  const knowledgePermissions = useKnowledgePermissions();
+  const knowledgeVisible = canSeeKnowledge(knowledgePermissions);
+  const knowledgeSpaces = useKnowledgeSpaces(knowledgeVisible);
   const openChatDialog = useChatDialogStore((state) => state.open);
   const setMode = useThemeStore((state) => state.setMode);
   const openDm = useOpenDm();
@@ -245,6 +255,35 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandGroup>
         ) : null}
 
+        {results && knowledgeVisible && (results.knowledge ?? []).length > 0 ? (
+          <CommandGroup heading="Tri thức">
+            {(results.knowledge ?? []).map((hit) => (
+              <CommandItem
+                key={hit.id}
+                value={`remote:knowledge:${hit.id}`}
+                onSelect={() => go(knowledgeItemHref(hit))}
+                className="items-start"
+              >
+                <BookOpenText className="mt-0.5" />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">
+                    <Highlight text={hit.title} query={highlightTerm} />
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-foreground-muted">
+                    <span className="truncate">{hit.spaceName}</span>
+                    <ImportanceBadge importance={hit.importance} size="xs" />
+                    {/* Phones hide the status column: a retired item must still say so. */}
+                    {hit.status.group === "retired" ? (
+                      <KnowledgeStatusChip status={hit.status} size="xs" className="max-w-28 sm:hidden" />
+                    ) : null}
+                  </span>
+                </span>
+                <KnowledgeStatusChip status={hit.status} size="xs" className="max-w-28 max-sm:hidden" />
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ) : null}
+
         {results && results.messages.length > 0 ? (
           <CommandGroup heading="Tin nhắn">
             {results.messages.map((message) => (
@@ -372,6 +411,26 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           })}
         </CommandGroup>
 
+        {knowledgeVisible && (knowledgeSpaces.data?.items ?? []).some((space) => space.archivedAt === null) ? (
+          <CommandGroup heading="Kho tri thức">
+            {(knowledgeSpaces.data?.items ?? [])
+              .filter((space) => space.archivedAt === null)
+              .map((space) => (
+                <CommandItem
+                  key={space.id}
+                  value={`knowledge space kho tri thức ${space.name}`}
+                  onSelect={() => go(`/k/${space.id}`)}
+                >
+                  <ProjectIcon color={space.color} icon={space.icon} name={space.name} size="xs" />
+                  <span className="truncate">{space.name}</span>
+                  <CommandShortcut className="tracking-normal text-foreground-subtle">
+                    {space.visibility === "private" ? "Riêng tư" : "Công khai"}
+                  </CommandShortcut>
+                </CommandItem>
+              ))}
+          </CommandGroup>
+        ) : null}
+
         {trimmed ? (
           <CommandGroup heading="Danh sách">
             {projectItems.flatMap((project) =>
@@ -407,6 +466,11 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           <CommandItem value="nav hộp thư inbox thông báo" onSelect={() => go("/inbox")}>
             <Inbox /> Hộp thư
           </CommandItem>
+          {knowledgeVisible ? (
+            <CommandItem value="nav tri thức kho tri thức knowledge wiki quy trình chính sách" onSelect={() => go("/k")}>
+              <Library /> Tri thức
+            </CommandItem>
+          ) : null}
           <CommandItem value="nav tìm kiếm search" onSelect={() => go("/search")}>
             <Search /> Trang tìm kiếm
           </CommandItem>
@@ -456,6 +520,14 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
               onSelect={() => run(() => setNewProjectOpen(true))}
             >
               <FolderPlus /> Tạo dự án mới
+            </CommandItem>
+          ) : null}
+          {canCreateSpace(knowledgePermissions) ? (
+            <CommandItem
+              value="action tạo kho tri thức mới new knowledge space"
+              onSelect={() => run(() => setNewSpaceOpen(true))}
+            >
+              <BookPlus /> Tạo kho tri thức
             </CommandItem>
           ) : null}
           <CommandItem

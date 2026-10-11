@@ -147,6 +147,13 @@ const isEmptyStructure = (doc: RichTextDoc) =>
   doc.content.length === 0 ||
   (doc.content.length === 1 && doc.content[0]?.type === "paragraph" && !doc.content[0].content?.length);
 
+/**
+ * DOM id of a heading rendered by RichTextView with `headingIdPrefix`: derived from the node's path in
+ * the document ("n.4.0" → "<prefix>-4-0"), so tables of contents can link to it (knowledge items).
+ */
+export const headingAnchorId = (prefix: string, path: string) =>
+  `${prefix}-${path.replace(/^n\.?/, "").replace(/\./g, "-")}`;
+
 const safeHref = /^(https?:\/\/|mailto:)[^\s<>"']{1,2000}$/i;
 
 /** Only http(s) and mailto links are kept by the server; everything else is dropped. */

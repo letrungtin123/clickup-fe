@@ -7,6 +7,7 @@ import { isAuthError } from "@/lib/api/errors";
 import type { SessionContext } from "@/lib/api/schemas";
 import { qk } from "@/lib/query-keys";
 import { disconnectRealtime } from "@/lib/realtime/socket";
+import { notifySessionEnd } from "@/lib/session-cleanup";
 
 import { authApi } from "./api";
 import { can as canFn, type PermissionLike } from "./permissions";
@@ -52,6 +53,7 @@ export const useEndSession = () => {
     (to: string) => {
       disconnectRealtime();
       api.resetCsrfToken();
+      notifySessionEnd("ended");
       void Promise.resolve(navigate(to, { replace: true })).finally(() => queryClient.clear());
     },
     [navigate, queryClient]
@@ -80,6 +82,8 @@ export const useLogout = () => {
     onSettled: () => {
       // The cookies are gone for every tab: tell the others to leave too (BUG-WK-16).
       announceSession({ type: "signed-out" });
+      // Local drafts and other per-device state of this user (shared computers).
+      notifySessionEnd("signed-out");
       endSession("/login");
     }
   });

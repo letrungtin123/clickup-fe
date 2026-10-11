@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import {
   ArrowRight,
+  BookOpenText,
   FolderKanban,
   Hash,
   ListTodo,
@@ -30,6 +31,8 @@ import { chatApi } from "@/features/chat/api";
 import { useOpenDm } from "@/features/chat/hooks/use-channels";
 import { chatKeys } from "@/features/chat/keys";
 import { useDebouncedValue, useGlobalSearch } from "@/features/command/search-api";
+import { ImportanceBadge, KnowledgeStatusChip } from "@/features/knowledge/components/badges";
+import { useKnowledgePermissions } from "@/features/knowledge/hooks";
 
 import {
   countByGroup,
@@ -46,13 +49,14 @@ import { Highlight } from "./highlight";
 
 const groupIcons: Record<SearchGroup, LucideIcon> = {
   tasks: ListTodo,
+  knowledge: BookOpenText,
   messages: MessageSquare,
   projects: FolderKanban,
   lists: Hash,
   people: Users
 };
 
-const order: SearchGroup[] = ["tasks", "messages", "projects", "lists", "people"];
+const order: SearchGroup[] = ["tasks", "knowledge", "messages", "projects", "lists", "people"];
 
 /** `/search?q=&tab=` — full results with tabs, keyboard navigation (↑/↓, Enter) and highlights. */
 export const SearchPage = () => {
@@ -65,6 +69,9 @@ export const SearchPage = () => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
   const tablistRef = useRef<HTMLDivElement | null>(null);
+  // "Tri thức" only for people who can see the knowledge base (knowledge.view).
+  const knowledgeVisible = useKnowledgePermissions().view;
+  const tabs = searchTabs.filter((entry) => entry.value !== "knowledge" || knowledgeVisible);
 
   // Phones scroll the tab row: keep the active tab (deep links, keyboard) in view.
   useEffect(() => {
@@ -141,7 +148,7 @@ export const SearchPage = () => {
             type="search"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="Tìm công việc, tin nhắn, dự án, danh sách, mọi người…"
+            placeholder={knowledgeVisible ? "Tìm công việc, tri thức, tin nhắn, dự án, mọi người…" : "Tìm công việc, tin nhắn, dự án, danh sách, mọi người…"}
             aria-label="Từ khóa tìm kiếm"
             className="h-11 w-full rounded-xl border bg-surface pr-10 pl-10 text-[15px] shadow-xs outline-none placeholder:text-foreground-subtle focus-visible:border-brand/50 focus-visible:ring-3 focus-visible:ring-ring/30"
           />
@@ -155,7 +162,7 @@ export const SearchPage = () => {
           aria-label="Nhóm kết quả"
           className="mx-auto -mb-px flex w-full max-w-3xl gap-1 overflow-x-auto scrollbar-none"
         >
-          {searchTabs.map((entry) => {
+          {tabs.map((entry) => {
             const active = entry.value === tab;
             const count = entry.value === "all" ? items.length : counts[entry.value];
             return (
@@ -191,7 +198,7 @@ export const SearchPage = () => {
             <EmptyState
               icon={Search}
               title="Tìm trong toàn bộ không gian làm việc"
-              description="Nhập ít nhất 2 ký tự. Kết quả chỉ gồm những gì bạn có quyền xem: công việc, tin nhắn trong các cuộc trò chuyện của bạn, dự án, danh sách và đồng nghiệp."
+              description={`Nhập ít nhất 2 ký tự. Kết quả chỉ gồm những gì bạn có quyền xem: công việc, ${knowledgeVisible ? "tri thức, " : ""}tin nhắn trong các cuộc trò chuyện của bạn, dự án, danh sách và đồng nghiệp.`}
             />
           ) : tab === "all" ? (
             <Overview q={q} query={overview} items={items} onTab={setTab} />
@@ -408,6 +415,33 @@ const ResultRow = ({ item, q }: { item: SearchItem; q: string }) => {
           </span>
         </Link>
       );
+    case "knowledge": {
+      const retired = item.hit.status.group === "retired";
+      return (
+        <Link to={item.href} className={rowClass} data-search-result>
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand-text">
+            <BookOpenText className="size-4" aria-hidden="true" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className={cn("line-clamp-2 text-sm font-medium break-words sm:line-clamp-1", retired && "text-foreground-muted")}>
+              <Highlight text={item.title} query={q} />
+            </span>
+            {item.hit.summary ? (
+              <span className="line-clamp-2 text-xs text-foreground-muted">
+                <Highlight text={item.hit.summary} query={q} />
+              </span>
+            ) : null}
+            <span className="flex min-w-0 flex-wrap items-center gap-1.5 pt-0.5 text-xs text-foreground-subtle">
+              <span className="truncate">{item.hit.spaceName}</span>
+              <ImportanceBadge importance={item.hit.importance} size="xs" />
+              {/* Phones hide the status column: a retired item must still say so. */}
+              {retired ? <KnowledgeStatusChip status={item.hit.status} size="xs" className="max-w-32 sm:hidden" /> : null}
+            </span>
+          </span>
+          <KnowledgeStatusChip status={item.hit.status} size="xs" className="max-w-32 max-sm:hidden" />
+        </Link>
+      );
+    }
     case "lists":
       return (
         <Link to={item.href} className={rowClass} data-search-result>

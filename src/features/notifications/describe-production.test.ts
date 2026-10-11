@@ -21,7 +21,9 @@ const make = (overrides: Partial<Notification>): Notification => ({
     channelId: null,
     messageId: null,
     productionTaskId: id(10),
-    jobId: id(20)
+    jobId: id(20),
+    knowledgeSpaceId: null,
+    knowledgeItemId: null
   },
   payload: {
     jobCode: "VD JOB-1",
