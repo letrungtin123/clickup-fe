@@ -13,44 +13,10 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 
+import { copyText, dialogAround } from "../../clipboard";
 import { sheetOnPhone } from "../../ui";
 import { InfoNote } from "../settings-kit";
 import type { TemporarySecret } from "./member-admin";
-
-/**
- * Copies text. The async clipboard needs a secure context, and the app is also served over plain
- * http: fall back to a hidden textarea + execCommand("copy"). The textarea goes inside `container`
- * (the open dialog) so the dialog's focus trap does not pull focus away before the copy.
- */
-const copyText = async (text: string, container: HTMLElement | null) => {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Permission refused or not focused: try the legacy path.
-  }
-  const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.setAttribute("aria-hidden", "true");
-  area.tabIndex = -1;
-  Object.assign(area.style, { position: "fixed", top: "0", left: "0", opacity: "0" });
-  (container ?? document.body).append(area);
-  area.focus({ preventScroll: true });
-  area.select();
-  let copied = false;
-  try {
-    copied = document.execCommand("copy");
-  } catch {
-    copied = false;
-  }
-  area.remove();
-  previous?.focus({ preventScroll: true });
-  return copied;
-};
 
 /**
  * The one-time temporary password after "Thêm thành viên" or "Đặt lại mật khẩu". It lives only in
@@ -77,7 +43,7 @@ export const TemporaryPasswordDialog = ({
 
   const copy = async () => {
     if (!shown) return;
-    const ok = await copyText(shown.password, fieldRef.current?.closest("[role=dialog]") ?? null);
+    const ok = await copyText(shown.password, dialogAround(fieldRef.current));
     if (ok) {
       setCopied(true);
       toast.success("Đã sao chép mật khẩu tạm thời");

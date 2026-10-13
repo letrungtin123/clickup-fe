@@ -24,6 +24,7 @@ import {
   type CreateJobInput,
   type FeedbackInput,
   type JobListQuery,
+  type JobOptionsInput,
   type MyTasksRole,
   type QtyInput,
   type ReassignInput,
@@ -31,7 +32,8 @@ import {
   type TimelineEntity,
   type TransitionInput,
   type UpdateJobInput,
-  type UpdateTaskInput
+  type UpdateTaskInput,
+  type WorkEntryInput
 } from "./jobs-api";
 import { productionKeys } from "./keys";
 import {
@@ -64,6 +66,24 @@ export const useJobs = (query: JobListQuery, enabled = true) =>
     getNextPageParam: nextCursor,
     placeholderData: keepPreviousData,
     enabled
+  });
+
+/**
+ * "Gói công việc" picker of "Nhập công việc" (PD-038): the project's jobs (closed ones too) filtered on the server by
+ * text and statuses; the previous answer stays while the next search loads.
+ */
+export const useJobOptions = (query: JobOptionsInput | null, enabled = true) =>
+  useQuery({
+    queryKey: productionKeys.jobOptions({
+      projectId: query?.projectId ?? null,
+      q: query?.q?.trim() ?? "",
+      statusIds: [...(query?.statusIds ?? [])].sort(),
+      limit: query?.limit ?? 50
+    }),
+    queryFn: ({ signal }) => jobsApi.jobOptions(query!, signal),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    enabled: enabled && Boolean(query?.projectId)
   });
 
 export const useJob = (jobId: string | undefined) =>
@@ -143,6 +163,7 @@ export const invalidateProductionViews = (
 ) =>
   Promise.all([
     client.invalidateQueries({ queryKey: productionKeys.jobs() }),
+    client.invalidateQueries({ queryKey: productionKeys.jobOptions() }),
     client.invalidateQueries({
       queryKey: jobId ? productionKeys.job(jobId) : productionKeys.jobAll()
     }),
@@ -211,6 +232,8 @@ export const useCreateJob = () => {
     onSuccess: (job) => {
       client.setQueryData(productionKeys.job(job.id), job);
       void client.invalidateQueries({ queryKey: productionKeys.jobs() });
+      // A new job is offered by the "Nhập công việc" picker.
+      void client.invalidateQueries({ queryKey: productionKeys.jobOptions() });
     }
   });
 };
@@ -225,9 +248,53 @@ export const useUpdateJob = (jobId: string) => {
       // Rows are patched; filtered lists (archived, deadline range) re-apply on the next visit.
       void client.invalidateQueries({ queryKey: productionKeys.jobs(), refetchType: "none" });
       void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", jobId) });
-      // Archiving hides the job's tasks from my tasks.
+      // Archiving hides the job's tasks from my tasks, and the job from the "Nhập công việc" picker.
       void client.invalidateQueries({ queryKey: productionKeys.myTasks(), refetchType: "none" });
+      void client.invalidateQueries({ queryKey: productionKeys.jobOptions() });
     }
+  });
+};
+
+/**
+ * The manual job status (PD-038): the answer is stored (detail + list rows); filtered lists (by status), the job picker,
+ * the timeline (history row) and led jobs refresh. The line workflow is untouched, so no task view changes.
+ */
+export const useChangeJobStatus = (jobId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (statusId: string) => jobsApi.changeStatus(jobId, statusId),
+    meta: { errorMessage: false },
+    onSuccess: (job) => {
+      storeJob(client, job);
+      void client.invalidateQueries({ queryKey: productionKeys.jobs() });
+      void client.invalidateQueries({ queryKey: productionKeys.jobOptions() });
+      void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", jobId) });
+      void client.invalidateQueries({ queryKey: ["production", "led-jobs"] });
+    }
+  });
+};
+
+/** Deletes a job and its lines (PD-036); every derived view refreshes, scores too (reversals). */
+export const useDeleteJob = (jobId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => jobsApi.remove(jobId),
+    meta: { errorMessage: false },
+    onSuccess: () => {
+      client.removeQueries({ queryKey: productionKeys.job(jobId), exact: true });
+      void invalidateProductionViews(client, null);
+      requestScoresRefresh(client);
+    }
+  });
+};
+
+/** "Nhập công việc" (PD-035): one work-log row; the job list, my tasks and the job refresh. */
+export const useCreateWorkEntry = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WorkEntryInput) => jobsApi.createWorkEntry(input),
+    meta: { errorMessage: false },
+    onSuccess: (result) => void invalidateProductionViews(client, result.jobId)
   });
 };
 
@@ -378,6 +445,16 @@ export const useTaskMutations = () => {
         jobsApi.assign(taskId, input),
       meta: { errorMessage: false },
       onSuccess
+    }),
+    /** Deletes a line (PD-036): its job, lists and scores (reversal rows) refresh. */
+    remove: useMutation({
+      mutationFn: (taskId: string) => jobsApi.removeTask(taskId),
+      meta: { errorMessage: false },
+      onSuccess: (result) => {
+        client.removeQueries({ queryKey: productionKeys.task(result.taskId), exact: true });
+        void invalidateProductionViews(client, result.jobId);
+        requestScoresRefresh(client);
+      }
     })
   };
 };

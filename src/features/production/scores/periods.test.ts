@@ -56,6 +56,34 @@ describe("upcomingCloseDayChange", () => {
   });
 });
 
+describe("close day 31 “Cuối tháng” (PD-032)", () => {
+  it("periods are calendar months: February 28/29, 30- and 31-day months", () => {
+    const days = closeDaysOf({
+      kpiCloseDay: 31,
+      kpiCloseDays: [{ fromPeriod: null, closeDay: 31 }]
+    });
+    expect(kpiPeriodRange("2026-02", days)).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+    expect(kpiPeriodRange("2028-02", days)).toEqual({ from: "2028-02-01", to: "2028-02-29" });
+    expect(kpiPeriodRange("2026-04", days)).toEqual({ from: "2026-04-01", to: "2026-04-30" });
+    expect(kpiPeriodRange("2026-12", days)).toEqual({ from: "2026-12-01", to: "2026-12-31" });
+    expect(kpiPeriodOfDay("2026-10-31", days)).toBe("2026-10");
+    expect(kpiPeriodOfDay("2026-11-01", days)).toBe("2026-11");
+  });
+
+  it("a scheduled change to the month's end is announced and starts after the old close day", () => {
+    const toEnd = [
+      { fromPeriod: null, closeDay: 25 },
+      { fromPeriod: "2026-11", closeDay: 31 }
+    ];
+    expect(upcomingCloseDayChange(toEnd, "2026-10")).toEqual({
+      fromPeriod: "2026-11",
+      closeDay: 31
+    });
+    expect(kpiPeriodRange("2026-11", toEnd)).toEqual({ from: "2026-10-26", to: "2026-11-30" });
+    expect(kpiPeriodRange("2026-12", toEnd)).toEqual({ from: "2026-12-01", to: "2026-12-31" });
+  });
+});
+
 describe("shiftPeriod / periodsBetween", () => {
   it("moves across years in both directions", () => {
     expect(shiftPeriod("2026-12", 1)).toBe("2027-01");

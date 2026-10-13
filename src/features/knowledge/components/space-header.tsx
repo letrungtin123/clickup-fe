@@ -1,7 +1,16 @@
 import { cn } from "cn";
-import { Archive, BookOpenText, History, Library, Lock, Settings2, Trash2, type LucideIcon } from "lucide-react";
+import {
+  Archive,
+  BookOpenText,
+  History,
+  Library,
+  Lock,
+  Settings2,
+  Trash2,
+  type LucideIcon
+} from "lucide-react";
 import type { ReactNode } from "react";
-import { Link, NavLink } from "react-router";
+import { Link, NavLink } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ProjectIcon } from "@/components/shared/project-icon";
@@ -17,7 +26,11 @@ const spaceTabs = (space: Pick<KnowledgeSpaceDetail, "id">, ui: SpaceUi): Tab[] 
   ...(ui.canViewAudit ? [{ to: `/k/${space.id}/audit`, label: "Nhật ký", icon: History }] : []),
   ...(ui.canViewTrash ? [{ to: `/k/${space.id}/trash`, label: "Thùng rác", icon: Trash2 }] : []),
   // Managers edit; everyone else sees the space information and its members read-only.
-  { to: `/k/${space.id}/settings`, label: ui.canManage ? "Cài đặt" : "Thông tin kho", icon: Settings2 }
+  {
+    to: `/k/${space.id}/settings`,
+    label: ui.canManage ? "Cài đặt" : "Thông tin kho",
+    icon: Settings2
+  }
 ];
 
 export const SpaceHeader = ({

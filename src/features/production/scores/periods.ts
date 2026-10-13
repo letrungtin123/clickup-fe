@@ -4,7 +4,8 @@ import { closeDayOfPeriod, type KpiCloseDays } from "@/contracts/production-scor
 /**
  * KPI period helpers (PLAN §6, SPEC Phase 3 §2): a period "YYYY-MM" runs from the day after the
  * previous period's close day through this period's close day, so with close day 25 the period 2026-06
- * is 26/05/2026 – 25/06/2026. The close day can change from a given period (settings.kpiCloseDays): the
+ * is 26/05/2026 – 25/06/2026; with 31 = "Cuối tháng" (PD-032) it is the calendar month (01/02 – 28/02).
+ * The close day can change from a given period (settings.kpiCloseDays): the
  * day ↔ period maths is the contract's kpiPeriodOfDay / kpiPeriodRange / closeDayOfPeriod, fed with
  * `closeDaysOf(me.settings)`. Pure functions, unit tested.
  */

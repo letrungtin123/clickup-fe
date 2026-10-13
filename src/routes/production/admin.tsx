@@ -1,5 +1,5 @@
 import { ChartNoAxesCombined, ChevronLeft, LayoutDashboard, Pin, ScanSearch } from "lucide-react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState, ErrorState } from "@/components/shared/states";

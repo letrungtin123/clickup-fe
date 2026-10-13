@@ -1,6 +1,6 @@
 import { ArrowLeft, ChevronRight, Hash, Link2, MoreHorizontal, Trash2, X } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ColorDot } from "@/components/shared/color-dot";
 import { ErrorState } from "@/components/shared/states";
@@ -58,7 +58,11 @@ export const TaskDetailPanel = ({ taskId, mode, onClose }: TaskDetailPanelProps)
           <div className="h-full overflow-y-auto">
             <ErrorState
               error={task.error}
-              title={isApiError(task.error) && task.error.status === 404 ? "Không tìm thấy công việc" : undefined}
+              title={
+                isApiError(task.error) && task.error.status === 404
+                  ? "Không tìm thấy công việc"
+                  : undefined
+              }
               onRetry={() => void task.refetch()}
               retrying={task.isFetching}
             />
@@ -89,7 +93,9 @@ const PanelHeader = ({
 }) => {
   const { openTask } = useTaskPanel();
   const remove = useDeleteTask();
-  const listHref = task ? `/p/${task.project.id}/l/${task.list.id}?${TASK_PANEL_PARAM}=${task.id}` : "#";
+  const listHref = task
+    ? `/p/${task.project.id}/l/${task.list.id}?${TASK_PANEL_PARAM}=${task.id}`
+    : "#";
 
   return (
     <div className="flex h-12 shrink-0 items-center gap-1.5 border-b px-3">
@@ -98,7 +104,10 @@ const PanelHeader = ({
           <ArrowLeft />
         </Button>
       ) : null}
-      <nav aria-label="Vị trí công việc" className="flex min-w-0 flex-1 items-center gap-1 text-xs text-foreground-muted">
+      <nav
+        aria-label="Vị trí công việc"
+        className="flex min-w-0 flex-1 items-center gap-1 text-xs text-foreground-muted"
+      >
         {task ? (
           <>
             <ColorDot color={task.project.color} />
@@ -167,7 +176,9 @@ const PanelHeader = ({
             <TooltipContent>Sao chép liên kết</TooltipContent>
           </Tooltip>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Thao tác khác" />}>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label="Thao tác khác" />}
+            >
               <MoreHorizontal />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
@@ -175,7 +186,9 @@ const PanelHeader = ({
                 <Hash />
                 Sao chép mã {task.key}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => copyText(taskUrl(task), "Đã sao chép liên kết công việc")}>
+              <DropdownMenuItem
+                onClick={() => copyText(taskUrl(task), "Đã sao chép liên kết công việc")}
+              >
                 <Link2 />
                 Sao chép liên kết
               </DropdownMenuItem>
@@ -200,7 +213,11 @@ const PanelHeader = ({
       ) : null}
       {mode === "fullscreen" ? null : (
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Đóng chi tiết" />}>
+          <TooltipTrigger
+            render={
+              <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Đóng chi tiết" />
+            }
+          >
             <X />
           </TooltipTrigger>
           <TooltipContent>

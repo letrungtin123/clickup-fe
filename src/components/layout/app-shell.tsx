@@ -2,7 +2,8 @@ import { cn } from "cn";
 import { Menu, MessagesSquare, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Suspense, useEffect } from "react";
-import { Link, Outlet, useLocation, useMatch } from "react-router";
+import { Outlet, useLocation, useMatch } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -128,7 +129,9 @@ export const AppShell = () => {
             className="w-[86vw] max-w-[20rem] gap-0 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
           >
             <SheetTitle className="sr-only">Điều hướng</SheetTitle>
-            <SheetDescription className="sr-only">Dự án, tri thức, kênh và cài đặt</SheetDescription>
+            <SheetDescription className="sr-only">
+              Dự án, tri thức, kênh và cài đặt
+            </SheetDescription>
             <Sidebar variant="full" onNavigate={closeOverlay} />
           </SheetContent>
         </Sheet>

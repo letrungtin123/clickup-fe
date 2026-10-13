@@ -220,7 +220,8 @@ export const TaskDateControl = ({ config, onChange }: SettingsProps) => {
     return scores ? (
       <p className="flex items-start gap-1.5 self-end pb-2 text-xs text-foreground-muted">
         <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-        Điểm được tính theo ngày ghi điểm (ngày task xong hoặc được QC kiểm xong).
+        Điểm được tính theo ngày ghi điểm (ngày dòng công việc Done lần đầu; dòng Checking ghi điểm
+        QC).
       </p>
     ) : null;
   }

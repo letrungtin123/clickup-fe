@@ -10,6 +10,7 @@ import { useMemo } from "react";
 
 import type {
   CustomField,
+  JobScopes,
   Process,
   ProductionMember,
   ProductionRole,
@@ -25,6 +26,8 @@ import {
   type ClientInput,
   type CreateUserInput,
   type CustomFieldInput,
+  type JobStatusCreateInput,
+  type JobStatusUpdateInput,
   type NotificationPreferencesInput,
   type ProcessInput,
   type ProjectInput,
@@ -38,6 +41,7 @@ import {
   type UpdateMemberInput
 } from "./api";
 import { productionKeys } from "./keys";
+import { kpiKeys, scoreKeys } from "./scores/keys";
 import { visibleNavEntries } from "./nav";
 import type { NotificationPreferences } from "./types";
 import { hasAnyRole } from "./roles";
@@ -64,6 +68,8 @@ export const useProductionMe = () =>
     retry: retryUnlessClientError
   });
 
+const noJobScopes: JobScopes = { view: "none", create: "none", update: "none", delete: "none" };
+
 /** UX gate derived from /production/me. The API enforces every rule again. */
 export const useProductionAccess = () => {
   const me = useProductionMe();
@@ -74,6 +80,11 @@ export const useProductionAccess = () => {
       roles,
       isMember: roles.length > 0,
       isAdmin: data?.isAdmin ?? false,
+      /**
+       * My scopes in the job permission matrix (PD-036): view (job menu / list), create ("Tạo job" needs all;
+       * "Nhập công việc" own or all — all also picks the assignee), update / delete. All "none" until loaded.
+       */
+      jobScopes: data?.jobPermissions ?? noJobScopes,
       /** Holds any of `required` (ADMIN always). */
       can: (...required: ProductionRole[]) => roles.length > 0 && hasAnyRole(roles, required)
     };
@@ -88,9 +99,10 @@ export const useProductionNavEntries = () => {
   const me = useProductionMe();
   const { roles, isAdmin } = useProductionAccess();
   const scoresPublic = me.data?.settings.scoresPublic ?? true;
+  const jobView = me.data?.jobPermissions.view;
   return useMemo(
-    () => visibleNavEntries(roles, { scoresPublic: scoresPublic || isAdmin }),
-    [roles, isAdmin, scoresPublic]
+    () => visibleNavEntries(roles, { scoresPublic: scoresPublic || isAdmin, jobView }),
+    [roles, isAdmin, scoresPublic, jobView]
   );
 };
 
@@ -172,6 +184,15 @@ export const useWorkflow = (enabled = true) =>
   useQuery({
     queryKey: productionKeys.workflow(),
     queryFn: ({ signal }) => productionApi.workflow(signal),
+    enabled
+  });
+
+/** Manual job status catalog (PD-038), in position order: chips, filters, pickers and its settings page. */
+export const useJobStatuses = (enabled = true) =>
+  useQuery({
+    queryKey: productionKeys.jobStatuses(),
+    queryFn: ({ signal }) => productionApi.jobStatuses(signal),
+    staleTime: 5 * 60_000,
     enabled
   });
 
@@ -297,6 +318,12 @@ export const useProcessMutations = () => {
       ({ id, input }: { id: string; input: Partial<ProcessInput> }) =>
         productionApi.updateProcess(id, input),
       related
+    ),
+    /** DELETE answers the remaining list (409 PROCESS_IN_USE when anything refers to it). */
+    remove: useCollectionMutation(
+      productionKeys.processes(),
+      (id: string) => productionApi.deleteProcess(id),
+      related
     )
   };
 };
@@ -311,6 +338,46 @@ export const useShiftMutations = () => ({
       productionApi.updateShift(id, input)
   )
 });
+
+/**
+ * "Cấu hình → Trạng thái job" (PD-038, ADMIN): every write answers the whole catalog. Jobs show the status by name and
+ * colour, and a delete moves jobs to the replacement: job lists, details, the job picker and led jobs refresh.
+ */
+export const useJobStatusMutations = () => {
+  const related = [
+    productionKeys.jobs(),
+    productionKeys.jobAll(),
+    productionKeys.jobOptions(),
+    productionKeys.timeline("jobs"),
+    ["production", "led-jobs"] as const
+  ];
+  return {
+    create: useCollectionMutation(
+      productionKeys.jobStatuses(),
+      (input: JobStatusCreateInput) => productionApi.createJobStatus(input),
+      related
+    ),
+    update: useCollectionMutation(
+      productionKeys.jobStatuses(),
+      ({ id, input }: { id: string; input: JobStatusUpdateInput }) =>
+        productionApi.updateJobStatus(id, input),
+      related
+    ),
+    /** The ids of every status in the new order. */
+    reorder: useCollectionMutation(
+      productionKeys.jobStatuses(),
+      (ids: string[]) => productionApi.reorderJobStatuses(ids),
+      related
+    ),
+    /** `replacementId`: where the status' jobs go (required while jobs use it). */
+    remove: useCollectionMutation(
+      productionKeys.jobStatuses(),
+      ({ id, replacementId }: { id: string; replacementId: string | null }) =>
+        productionApi.deleteJobStatus(id, replacementId),
+      related
+    )
+  };
+};
 
 export const useTagMutations = () => ({
   create: useCollectionMutation(productionKeys.tags(), (input: TagInput) =>
@@ -581,6 +648,9 @@ export const useUpdateSettings = () => {
     onSuccess: (settings) => {
       client.setQueryData(productionKeys.settings(), settings);
       void client.invalidateQueries({ queryKey: productionKeys.me() });
+      // Provisional KPI figures and forecasts follow the close day, leave proration and the Khoán policy.
+      void client.invalidateQueries({ queryKey: kpiKeys.all() });
+      void client.invalidateQueries({ queryKey: scoreKeys.all() });
     }
   });
 };

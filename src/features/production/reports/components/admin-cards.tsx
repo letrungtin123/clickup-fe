@@ -12,7 +12,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/shared/states";
@@ -239,11 +239,13 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
                 >
                   <span aria-hidden="true" className="h-7 w-1 shrink-0 rounded-full bg-danger" />
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">{item.job.code}</span>
+                    <span className="truncate text-sm font-medium" title={item.job.code}>
+                      {item.job.code}
+                    </span>
                     <span className="flex min-w-0 items-center gap-1 text-xs text-foreground-muted">
-                      <UserAvatar user={item.leader} size="xs" />
+                      {item.leader ? <UserAvatar user={item.leader} size="xs" /> : null}
                       <span className="truncate">
-                        {item.projectCode} · {item.leader.displayName}
+                        {item.projectCode} · {item.leader?.displayName ?? "Chưa có leader"}
                       </span>
                     </span>
                   </span>

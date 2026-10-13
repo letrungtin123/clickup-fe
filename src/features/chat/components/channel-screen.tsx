@@ -2,7 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "motion/react";
 import { ArrowLeft, Hash, Lock, SearchX, ShieldOff, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { UserAvatar } from "@/components/shared/user-avatar";

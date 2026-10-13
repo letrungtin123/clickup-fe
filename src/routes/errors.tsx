@@ -1,5 +1,6 @@
 import { Compass, Home, RefreshCw } from "lucide-react";
-import { isRouteErrorResponse, Link, useRouteError } from "react-router";
+import { isRouteErrorResponse, useRouteError } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";

@@ -7,7 +7,8 @@ import {
   ShieldAlert
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation, useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";

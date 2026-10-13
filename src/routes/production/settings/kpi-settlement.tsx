@@ -42,7 +42,12 @@ export const ProductionKpiSettlementRoute = () => {
   return (
     <SettingsPage wide className="max-w-[min(100%,80rem)]">
       <PageIntro slug="kpi-settlement" />
-      <SettlementRunPanel currentPeriod={currentPeriod} closeDays={closeDays} onDone={setFocus} />
+      <SettlementRunPanel
+        currentPeriod={currentPeriod}
+        closeDays={closeDays}
+        khoanPolicy={settings?.khoanPayPolicy ?? "ALWAYS"}
+        onDone={setFocus}
+      />
       <div ref={reportRef} id={kpiReportAnchor} className="scroll-mt-4">
         <KpiReportPanel key={focus} currentPeriod={currentPeriod} focusPeriod={focus} />
       </div>

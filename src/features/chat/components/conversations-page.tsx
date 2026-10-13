@@ -1,7 +1,7 @@
 import { cn } from "cn";
 import { Compass, MessageSquarePlus, MessagesSquare, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -59,12 +59,22 @@ export const ConversationsPage = () => {
         actions={
           <>
             {/* Phones show the icons only: the labels stay available to screen readers. */}
-            <Button variant="outline" size="sm" aria-label="Duyệt kênh" onClick={() => openDialog("browse-channels")}>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Duyệt kênh"
+              onClick={() => openDialog("browse-channels")}
+            >
               <Compass />
               <span className="hidden sm:inline">Duyệt kênh</span>
             </Button>
             {can(P.ChannelCreate) ? (
-              <Button variant="outline" size="sm" aria-label="Tạo kênh" onClick={() => openDialog("create-channel")}>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Tạo kênh"
+                onClick={() => openDialog("create-channel")}
+              >
                 <Plus />
                 <span className="hidden sm:inline">Tạo kênh</span>
               </Button>

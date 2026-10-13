@@ -9,6 +9,8 @@ import {
   CreditRuleHistorySchema,
   CreditVersionResultSchema,
   CustomFieldCollectionSchema,
+  DeleteJobStatusResultSchema,
+  JobStatusCollectionSchema,
   NotificationPreferencesSchema,
   ProcessCollectionSchema,
   ProductionMeSchema,
@@ -19,9 +21,11 @@ import {
   StatusWorkflowSchema,
   TagCollectionSchema,
   TeamCollectionSchema,
+  type CreateJobStatusRequestSchema,
   type CreditImportRequestSchema,
   type ReplaceTransitionsRequestSchema,
   type SetCreditRuleRequestSchema,
+  type UpdateJobStatusRequestSchema,
   type UpdateNotificationPreferencesRequestSchema,
   type UpdateProductionMemberRequestSchema,
   type UpdateProductionSettingsRequestSchema,
@@ -66,6 +70,8 @@ export type TransitionsInput = z.input<typeof ReplaceTransitionsRequestSchema>;
 export type CustomFieldInput = z.input<typeof UpsertCustomFieldRequestSchema>;
 export type TagInput = z.input<typeof UpsertTagRequestSchema>;
 export type SettingsInput = z.input<typeof UpdateProductionSettingsRequestSchema>;
+export type JobStatusCreateInput = z.input<typeof CreateJobStatusRequestSchema>;
+export type JobStatusUpdateInput = z.input<typeof UpdateJobStatusRequestSchema>;
 export type NotificationPreferencesInput = z.input<
   typeof UpdateNotificationPreferencesRequestSchema
 >;
@@ -131,6 +137,9 @@ export const productionApi = {
     api.post("/production/processes", ProcessCollectionSchema, input),
   updateProcess: (id: string, input: Partial<ProcessInput>) =>
     api.patch(apiPath`/production/processes/${id}`, ProcessCollectionSchema, input),
+  /** Removes a never-used process (409 PROCESS_IN_USE once tasks, rates or scores refer to it). */
+  deleteProcess: (id: string) =>
+    api.delete(apiPath`/production/processes/${id}`, ProcessCollectionSchema),
 
   shifts: (signal?: AbortSignal) =>
     api.get("/production/shifts", ShiftCollectionSchema, { signal }),
@@ -180,6 +189,21 @@ export const productionApi = {
   createTag: (input: TagInput) => api.post("/production/tags", TagCollectionSchema, input),
   updateTag: (id: string, input: Partial<TagInput>) =>
     api.patch(apiPath`/production/tags/${id}`, TagCollectionSchema, input),
+
+  /** Manual job statuses (PD-038): read by every member; the writes are ADMIN only and answer the whole catalog. */
+  jobStatuses: (signal?: AbortSignal) =>
+    api.get("/production/job-statuses", JobStatusCollectionSchema, { signal }),
+  createJobStatus: (input: JobStatusCreateInput) =>
+    api.post("/production/job-statuses", JobStatusCollectionSchema, input),
+  updateJobStatus: (id: string, input: JobStatusUpdateInput) =>
+    api.patch(apiPath`/production/job-statuses/${id}`, JobStatusCollectionSchema, input),
+  reorderJobStatuses: (ids: string[]) =>
+    api.put("/production/job-statuses/order", JobStatusCollectionSchema, { ids }),
+  /** `replacementId` is required while jobs use the status (409 JOB_STATUS_IN_USE otherwise). */
+  deleteJobStatus: (id: string, replacementId: string | null) =>
+    api.delete(apiPath`/production/job-statuses/${id}`, DeleteJobStatusResultSchema, undefined, {
+      query: { replacementId: replacementId ?? undefined }
+    }),
 
   settings: (signal?: AbortSignal) =>
     api.get("/production/settings", ProductionSettingsSchema, { signal }),

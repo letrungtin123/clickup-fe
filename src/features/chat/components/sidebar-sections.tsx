@@ -10,7 +10,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { memo, useMemo, useState } from "react";
-import { NavLink } from "react-router";
+import { NavLink } from "@/components/shared/router-link";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import {

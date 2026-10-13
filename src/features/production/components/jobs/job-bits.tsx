@@ -1,9 +1,9 @@
 import { cn } from "cn";
-import { AlarmClock, MessageSquareWarning, RotateCcw, Sparkles } from "lucide-react";
+import { AlarmClock, CircleCheck, MessageSquareWarning, RotateCcw, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
-import type { ProductionStatusRef, TaskKind } from "@/contracts/production-jobs";
+import type { JobStatusRef, ProductionStatusRef, TaskKind } from "@/contracts/production-jobs";
 import type { UserRef } from "@/contracts/work";
 import { toneClass } from "@/lib/colors";
 
@@ -40,6 +40,38 @@ export const StatusChip = ({
       Chưa chia
     </span>
   );
+
+/**
+ * A job's manual status (PD-038) as a coloured chip: always one line — a long name ends in "…" with the full name as
+ * the tooltip — so table columns and card rows keep their width. Closed statuses ("đóng") show a check instead of the
+ * dot. Tones come from the shared palette (readable in light and dark mode).
+ */
+export const JobStatusChip = ({
+  status,
+  className,
+  size = "md"
+}: {
+  status: Pick<JobStatusRef, "name" | "color" | "isClosed">;
+  className?: string;
+  size?: "sm" | "md";
+}) => (
+  <span
+    title={status.isClosed ? `${status.name} (đã đóng)` : status.name}
+    className={cn(
+      toneClass(status.color),
+      "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full bg-(--tone-soft) font-medium whitespace-nowrap text-(--tone-text)",
+      size === "md" ? "h-6 px-2.5 text-xs" : "h-5 px-2 text-[11px]",
+      className
+    )}
+  >
+    {status.isClosed ? (
+      <CircleCheck aria-hidden="true" className="size-3 shrink-0" />
+    ) : (
+      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-(--tone)" />
+    )}
+    <span className="min-w-0 truncate">{status.name}</span>
+  </span>
+);
 
 const kindLabels: Record<Exclude<TaskKind, "NORMAL">, string> = {
   FB_WRONG: "FB sai",

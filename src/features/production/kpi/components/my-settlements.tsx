@@ -5,6 +5,7 @@ import { useState } from "react";
 import { SegmentedControl } from "@/components/shared/radio-controls";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { KhoanPayPolicy } from "@/contracts/production-catalog";
 import type { KpiSettlement } from "@/contracts/production-scores";
 
 import { formatCredit, formatMoney, formatNumber } from "../../format";
@@ -13,6 +14,7 @@ import { ExportButton } from "../../scores/components/export-button";
 import { Panel } from "../../scores/components/kit";
 import { formatDayRange, periodLabel, rollupLabel, shiftPeriod } from "../../scores/periods";
 import { useKpiReport, useKpiSettlements } from "../hooks";
+import { khoanPolicyMeta, kpiTotalHint, settlementKhoanSentence } from "../khoan-policy";
 import { statusOfRollup } from "../report";
 import { KpiFiguresTable, type KpiFiguresRow } from "./kpi-figures-table";
 
@@ -31,14 +33,17 @@ const dateTime = new Intl.DateTimeFormat("vi-VN", {
 /**
  * "Kết quả chốt" on /production/scores: the caller's latest settled period (Phase 6 §1–§2) and
  * their KPI report for the last 12 periods with quarter/year rollups. ADMIN gets everyone from the
- * API; only the caller's own rows are shown here.
+ * API; only the caller's own rows are shown here. `khoanPolicy` (settings, PD-033) words the hints;
+ * a settled period is explained with the policy of its own run.
  */
 export const MySettlements = ({
   userId,
-  currentPeriod
+  currentPeriod,
+  khoanPolicy
 }: {
   userId: string;
   currentPeriod: string;
+  khoanPolicy: KhoanPayPolicy;
 }) => {
   const [view, setView] = useState<View>("MONTH");
   const latest = useKpiSettlements(null);
@@ -104,14 +109,18 @@ export const MySettlements = ({
             size="sm"
             icon={CalendarCheck2}
             title="Chưa có kỳ nào được chốt"
-            description={`Ngày chốt KPI hằng tháng, hệ thống quyết định tiền Khoán được nhận hay quy về điểm. Kỳ gần nhất (${periodLabel(latest.data.period)}) chưa có kết quả cho bạn.`}
+            description={`${
+              khoanPolicy === "ALWAYS"
+                ? "Ngày chốt KPI hằng tháng, hệ thống tính KPI và chốt tiền Khoán (luôn được trả)."
+                : "Ngày chốt KPI hằng tháng, hệ thống quyết định tiền Khoán được nhận hay quy về điểm."
+            } Kỳ gần nhất (${periodLabel(latest.data.period)}) chưa có kết quả cho bạn.`}
           />
         </Panel>
       )}
 
       <Panel
         title="KPI 12 kỳ gần nhất"
-        description="Tổng = điểm chính thức + điểm Khoán quy đổi khi không đạt KPI. Kỳ chưa chốt là số tạm tính; quý và năm tính đủ cả kỳ."
+        description={`${kpiTotalHint(khoanPolicy)} Kỳ chưa chốt là số tạm tính; quý và năm tính đủ cả kỳ.`}
         actions={
           <>
             <SegmentedControl<View>
@@ -196,7 +205,8 @@ const LatestSettlement = ({ settlement }: { settlement: KpiSettlement }) => {
           </div>
         </div>
         <p className="text-xs text-foreground-muted">
-          Chốt lúc {dateTime.format(new Date(settlement.runAt))}
+          Chốt lúc {dateTime.format(new Date(settlement.runAt))} ·{" "}
+          {khoanPolicyMeta[settlement.khoanPolicy].short}
         </p>
       </div>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -216,11 +226,7 @@ const LatestSettlement = ({ settlement }: { settlement: KpiSettlement }) => {
         />
       </dl>
       <p className="text-xs text-foreground-muted">
-        {settlement.met
-          ? "Đủ KPI nên điểm Khoán được trả tiền và không cộng vào KPI."
-          : converted
-            ? `Thiếu KPI nên ${formatCredit(settlement.khoanPointsConverted)} điểm Khoán được quy về điểm KPI (tổng ${formatCredit(settlement.totalPoints)}); tiền Khoán = 0.`
-            : "Thiếu KPI; kỳ này không có điểm Khoán để quy đổi."}
+        {settlementKhoanSentence(settlement)}
         {settlement.leaveDays > 0
           ? ` Nghỉ được duyệt: ${formatNumber(settlement.leaveDays)} ngày.`
           : ""}

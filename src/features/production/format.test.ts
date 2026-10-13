@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   closeDayChange,
+  closeDayLabel,
+  closeDaySchedule,
   dateToDay,
   dayInRange,
   dayToDate,
@@ -15,6 +17,7 @@ import {
   formatNumber,
   formatPercent,
   kpiPeriod,
+  normalizeCloseDay,
   parseCreditInput,
   parseDecimalInput,
   parseMoneyInput,
@@ -161,8 +164,69 @@ describe("kpiPeriod", () => {
     });
   });
 
-  it("clamps the close day to 1–28", () => {
-    expect(kpiPeriod("2026-03-01", 31)?.end).toBe("2026-03-28");
+  it("31 = “Cuối tháng”: the calendar month (February 28/29, 30-day months)", () => {
+    expect(kpiPeriod("2026-03-01", 31)).toEqual({
+      period: "2026-03",
+      start: "2026-03-01",
+      end: "2026-03-31",
+      daysLeft: 31
+    });
+    expect(kpiPeriod("2026-02-28", 31)).toEqual({
+      period: "2026-02",
+      start: "2026-02-01",
+      end: "2026-02-28",
+      daysLeft: 1
+    });
+    expect(kpiPeriod("2028-02-10", 31)).toMatchObject({ start: "2028-02-01", end: "2028-02-29" });
+    expect(kpiPeriod("2026-04-30", 31)).toMatchObject({
+      period: "2026-04",
+      end: "2026-04-30",
+      daysLeft: 1
+    });
+    expect(kpiPeriod("2026-12-31", 31)).toMatchObject({ period: "2026-12", start: "2026-12-01" });
+  });
+
+  it("25 → 31 and 31 → 25 changes keep periods contiguous", () => {
+    const toEnd = [
+      { fromPeriod: null, closeDay: 25 },
+      { fromPeriod: "2026-10", closeDay: 31 }
+    ];
+    expect(kpiPeriod("2026-09-26", toEnd)).toMatchObject({
+      period: "2026-10",
+      start: "2026-09-26",
+      end: "2026-10-31"
+    });
+    expect(kpiPeriod("2026-11-01", toEnd)).toMatchObject({
+      period: "2026-11",
+      start: "2026-11-01",
+      end: "2026-11-30"
+    });
+    const back = [
+      { fromPeriod: null, closeDay: 31 },
+      { fromPeriod: "2026-11", closeDay: 25 }
+    ];
+    expect(kpiPeriod("2026-10-31", back)).toMatchObject({
+      period: "2026-10",
+      start: "2026-10-01",
+      end: "2026-10-31"
+    });
+    expect(kpiPeriod("2026-11-01", back)).toMatchObject({
+      period: "2026-11",
+      start: "2026-11-01",
+      end: "2026-11-25"
+    });
+    expect(kpiPeriod("2026-11-26", back)).toMatchObject({
+      period: "2026-12",
+      start: "2026-11-26",
+      end: "2026-12-25"
+    });
+  });
+
+  it("normalizes a single close day to 1–28 or 31", () => {
+    expect([0, 1, 28, 29, 30, 31, 45, 12.7].map(normalizeCloseDay)).toEqual([
+      1, 1, 28, 31, 31, 31, 31, 12
+    ]);
+    expect(kpiPeriod("2026-03-01", 30)?.end).toBe("2026-03-31");
     expect(kpiPeriod("2026-03-01", 0)).toEqual({
       period: "2026-03",
       start: "2026-02-02",
@@ -210,6 +274,29 @@ describe("closeDayChange", () => {
     expect(plan?.current).toMatchObject({ start: "2026-09-26", end: "2026-10-25" });
     expect(closeDayChange("2026-10-11", base, 25)?.changes).toBe(false);
     expect(formatKpiPeriod("2026-11")).toBe("11/2026");
+  });
+
+  it("“Cuối tháng” (31) from the next period: it runs from the old close day + 1 to the month's end", () => {
+    expect(closeDayChange("2026-10-11", base, 31)).toMatchObject({
+      inForce: 25,
+      next: "2026-11",
+      changes: true,
+      nextRange: { from: "2026-10-26", to: "2026-11-30" }
+    });
+    const endOfMonth = [{ fromPeriod: null, closeDay: 31 }];
+    expect(closeDayChange("2026-10-11", endOfMonth, 25)).toMatchObject({
+      inForce: 31,
+      current: { start: "2026-10-01", end: "2026-10-31" },
+      nextRange: { from: "2026-11-01", to: "2026-11-25" }
+    });
+    expect(closeDayChange("2026-10-11", endOfMonth, 31)?.changes).toBe(false);
+  });
+
+  it("labels the close day, “cuối tháng” for 31", () => {
+    expect(closeDayLabel(25)).toBe("ngày 25");
+    expect(closeDayLabel(31)).toBe("cuối tháng");
+    expect(closeDaySchedule(1)).toBe("ngày 1 hằng tháng");
+    expect(closeDaySchedule(31)).toBe("ngày cuối mỗi tháng");
   });
 
   it("knows a scheduled change and that saving the day in force cancels it", () => {

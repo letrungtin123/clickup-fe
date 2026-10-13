@@ -2,46 +2,64 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import { Archive, Briefcase } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { CustomField } from "@/contracts/production-catalog";
-import type { JobSummary } from "@/contracts/production-jobs";
+import type { JobPersonShare, JobSummary } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { formatInteger } from "../../format";
 import { useTags } from "../../hooks";
-import { formatDateTime, jobProgress } from "../../jobs-model";
+import { formatWorkDay, jobProgress, shortName } from "../../jobs-model";
 import type { Tag } from "../../types";
 import { CustomFieldValue } from "../custom-field-input";
 import { CustomFieldChips } from "../list-filters";
 import { TagChips } from "../tag-picker";
-import { FeedbackBadge, LateBadge, MiniBar, Person, StatusChip } from "./job-bits";
+import { FeedbackBadge, JobStatusChip, LateBadge, MiniBar } from "./job-bits";
+import { JobPeopleStack } from "./job-people";
 
 const ROW_HEIGHT = 60;
-/**
- * The table is as wide as its container but never narrower than the sum of the minimums (69.75rem
- * plus 7.5rem per custom-field column): a 1440px screen with the sidebar open shows every built-in
- * column, Tag included; custom fields marked "hiện trong bảng" follow Tag, and narrower screens
- * scroll sideways with the job column pinned.
- */
-const baseColumns = [
-  "minmax(13.5rem,2fr)",
-  "minmax(8.5rem,1fr)",
-  "8rem",
-  "8.5rem",
-  "5rem",
-  "5.25rem",
-  "5.25rem",
-  "5.25rem",
-  "3.5rem",
-  "minmax(7rem,1fr)"
-];
-const BASE_MIN_REM = 69.75;
 const FIELD_MIN_REM = 7.5;
+
+/** The person of the per-person view ("Mọi nhân viên", PD-034): their part of each job is shown. */
+export type ListPerson = { id: string; displayName: string };
+
+/**
+ * Table columns as [track, minimum rem]. The table is as wide as its container but never narrower
+ * than the minimums (plus 7.5rem per custom-field column); narrower screens scroll sideways with the
+ * job column pinned. Gói công việc (PD-035), "Người làm" (avatars, at most 4 + "+N"), Ngày giao and the manual job status (PD-038) come first.
+ * Per-person view: "Công đoạn" (the person's processes) replaces "Người làm", and the image columns
+ * become the person's own: Giao · Xong · Đã kiểm (the job's "Tổng tấm" is not theirs, so it goes).
+ */
+const tableColumns = (perPerson: boolean): [string, number][] => [
+  ["minmax(13.5rem,2fr)", 13.5],
+  perPerson ? ["minmax(10rem,1.5fr)", 10] : ["7.5rem", 7.5],
+  ["8rem", 8],
+  // Trạng thái: fixed, so rows never shift; the default names ("Đang giao client") fit, longer ones end in "…".
+  ["9rem", 9],
+  ...(perPerson
+    ? Array.from({ length: 3 }, (): [string, number] => ["5.75rem", 5.75])
+    : ([
+        ["5rem", 5],
+        ["5.25rem", 5.25],
+        ["5.25rem", 5.25],
+        ["5.25rem", 5.25]
+      ] as [string, number][])),
+  ["3.5rem", 3.5],
+  ["minmax(7rem,1fr)", 7]
+];
+
+const noShare: JobPersonShare = {
+  processes: [],
+  taskCount: 0,
+  qtyAssigned: 0,
+  qtyDone: 0,
+  qtyChecked: 0
+};
 
 type JobsListProps = {
   jobs: JobSummary[];
@@ -54,6 +72,8 @@ type JobsListProps = {
   timeZone: string;
   /** Active JOB custom fields; the `showInTable` ones become columns (chips on phone cards). */
   fields?: readonly CustomField[] | undefined;
+  /** Per-person view: the rows' `personShare` belongs to this person. */
+  person?: ListPerson | null | undefined;
   filtering: boolean;
   empty: React.ReactNode;
 };
@@ -93,6 +113,8 @@ const ListSkeleton = ({ cards }: { cards: boolean }) => (
   </div>
 );
 
+const ratio = (value: number, total: number) => (total > 0 ? (value / total) * 100 : 0);
+
 const Qty = ({
   value,
   total,
@@ -104,9 +126,25 @@ const Qty = ({
 }) => (
   <span className="flex flex-col gap-1">
     <span className="text-[13px] tabular-nums">{formatInteger(value)}</span>
-    <MiniBar value={total > 0 ? (value / total) * 100 : 0} tone={tone} />
+    <MiniBar value={ratio(value, total)} tone={tone} />
   </span>
 );
+
+/** Header of a per-person column: the label, then "của {tên}" so the numbers read as the person's. */
+const PersonHeader = ({ label, person }: { label: string; person: ListPerson }) => (
+  <span
+    role="columnheader"
+    className="flex min-w-0 flex-col justify-center px-3 leading-tight"
+    title={`${label} của ${person.displayName}`}
+  >
+    <span className="truncate whitespace-nowrap">{label}</span>
+    <span className="truncate text-[10px] font-semibold text-brand-text">
+      của {shortName(person.displayName)}
+    </span>
+  </span>
+);
+
+const processText = (share: JobPersonShare) => share.processes.join(", ");
 
 const JobTable = ({
   jobs,
@@ -115,14 +153,17 @@ const JobTable = ({
   fetchNextPage,
   timeZone,
   tags,
+  person = null,
   fields = []
 }: JobsListProps & { tags: Tag[] }) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const columns = fields.filter((field) => field.showInTable);
-  const template = [...baseColumns, ...columns.map(() => `minmax(${FIELD_MIN_REM}rem,1fr)`)].join(
-    " "
-  );
-  const minWidth = `${BASE_MIN_REM + columns.length * FIELD_MIN_REM}rem`;
+  const base = tableColumns(person !== null);
+  const template = [
+    ...base.map(([track]) => track),
+    ...columns.map(() => `minmax(${FIELD_MIN_REM}rem,1fr)`)
+  ].join(" ");
+  const minRem = base.reduce((sum, [, min]) => sum + min, 0) + columns.length * FIELD_MIN_REM;
   // eslint-disable-next-line react-hooks/incompatible-library -- the virtualizer instance is read during render on purpose
   const virtualizer = useVirtualizer({
     count: jobs.length,
@@ -152,7 +193,7 @@ const JobTable = ({
       element.removeEventListener("scroll", update);
       observer.disconnect();
     };
-  }, [columns.length]);
+  }, [columns.length, minRem]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -163,9 +204,9 @@ const JobTable = ({
       >
         <div
           role="table"
-          aria-label="Danh sách job"
+          aria-label={person ? `Danh sách job của ${person.displayName}` : "Danh sách job"}
           aria-rowcount={jobs.length + 1}
-          style={{ minWidth }}
+          style={{ minWidth: `${minRem}rem` }}
         >
           <div
             role="row"
@@ -175,29 +216,43 @@ const JobTable = ({
               role="columnheader"
               className="sticky left-0 z-10 flex h-full items-center bg-surface px-4 shadow-[1px_0_0_var(--border)]"
             >
-              Job
+              Gói công việc
             </span>
-            <span role="columnheader" className="px-3">
-              Leader
-            </span>
-            <span role="columnheader" className="px-3">
-              Deadline
+            {person ? (
+              <PersonHeader label="Công đoạn" person={person} />
+            ) : (
+              <span role="columnheader" className="px-3 whitespace-nowrap">
+                Người làm
+              </span>
+            )}
+            <span role="columnheader" className="px-3 whitespace-nowrap">
+              Ngày giao
             </span>
             <span role="columnheader" className="px-3">
               Trạng thái
             </span>
-            <span role="columnheader" className="px-3 text-right whitespace-nowrap">
-              Tổng tấm
-            </span>
-            <span role="columnheader" className="px-3">
-              Đã giao
-            </span>
-            <span role="columnheader" className="px-3">
-              Đã xong
-            </span>
-            <span role="columnheader" className="px-3">
-              Đã kiểm
-            </span>
+            {person ? (
+              <>
+                <PersonHeader label="Giao" person={person} />
+                <PersonHeader label="Xong" person={person} />
+                <PersonHeader label="Đã kiểm" person={person} />
+              </>
+            ) : (
+              <>
+                <span role="columnheader" className="px-3 text-right whitespace-nowrap">
+                  Tổng tấm
+                </span>
+                <span role="columnheader" className="px-3">
+                  Đã giao
+                </span>
+                <span role="columnheader" className="px-3">
+                  Đã xong
+                </span>
+                <span role="columnheader" className="px-3">
+                  Đã kiểm
+                </span>
+              </>
+            )}
             <span role="columnheader" className="px-3" title="Feedback đang mở">
               FB
             </span>
@@ -220,6 +275,7 @@ const JobTable = ({
               const job = jobs[virtualRow.index];
               if (!job) return null;
               const late = job.lateTaskCount > 0;
+              const share = job.personShare ?? noShare;
               return (
                 <Link
                   key={virtualRow.key}
@@ -243,43 +299,74 @@ const JobTable = ({
                           aria-label="Đã lưu trữ"
                         />
                       ) : null}
-                      <span className="truncate font-medium">{job.code}</span>
+                      <span className="truncate font-medium" title={job.code}>
+                        {job.code}
+                      </span>
                     </span>
-                    <span className="truncate text-xs text-foreground-muted">
+                    <span
+                      className="truncate text-xs text-foreground-muted"
+                      title={job.name ? `${job.project.code} · ${job.name}` : job.project.code}
+                    >
                       <span className="font-mono">{job.project.code}</span>
                       {job.name ? ` · ${job.name}` : ""}
                     </span>
                   </span>
-                  <span role="cell" className="min-w-0 px-3">
-                    <Person user={job.leader} size="xs" />
-                  </span>
+                  {person ? (
+                    <span role="cell" className="min-w-0 px-3">
+                      <span className="line-clamp-2 leading-snug" title={processText(share)}>
+                        {processText(share) || "—"}
+                      </span>
+                    </span>
+                  ) : (
+                    <span role="cell" className="flex min-w-0 px-2.5">
+                      <JobPeopleStack people={job.people} />
+                    </span>
+                  )}
                   <span role="cell" className="flex flex-col gap-0.5 px-3">
                     <span className={cn("tabular-nums", late && "font-medium text-danger")}>
-                      {formatDateTime(job.deadline, timeZone)}
+                      {formatWorkDay(job.deadline, timeZone)}
                     </span>
                     {late ? (
                       <LateBadge label={`${job.lateTaskCount} trễ`} className="self-start" />
                     ) : null}
                   </span>
-                  <span role="cell" className="min-w-0 px-3">
-                    <StatusChip status={job.status} size="sm" />
+                  <span role="cell" className="flex min-w-0 items-center px-3">
+                    {/* The manual status (PD-038); one line, a long name ends in "…" (tooltip). */}
+                    <JobStatusChip status={job.jobStatus} size="sm" />
                   </span>
-                  <span role="cell" className="px-3 text-right tabular-nums">
-                    {formatInteger(job.totalImages)}
-                  </span>
-                  <span role="cell" className="px-3">
-                    <Qty
-                      value={job.qtyAssigned}
-                      total={job.totalImages}
-                      tone={jobProgress(job).overAllocated ? "warning" : "muted"}
-                    />
-                  </span>
-                  <span role="cell" className="px-3">
-                    <Qty value={job.qtyDone} total={job.totalImages} tone="brand" />
-                  </span>
-                  <span role="cell" className="px-3">
-                    <Qty value={job.qtyChecked} total={job.totalImages} tone="success" />
-                  </span>
+                  {person ? (
+                    <>
+                      <span role="cell" className="px-3">
+                        {/* Bar: their share of the job's images. */}
+                        <Qty value={share.qtyAssigned} total={job.totalImages} tone="muted" />
+                      </span>
+                      <span role="cell" className="px-3">
+                        <Qty value={share.qtyDone} total={share.qtyAssigned} tone="brand" />
+                      </span>
+                      <span role="cell" className="px-3">
+                        <Qty value={share.qtyChecked} total={share.qtyAssigned} tone="success" />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span role="cell" className="px-3 text-right tabular-nums">
+                        {formatInteger(job.totalImages)}
+                      </span>
+                      <span role="cell" className="px-3">
+                        <Qty
+                          value={job.qtyAssigned}
+                          total={job.totalImages}
+                          tone={jobProgress(job).overAllocated ? "warning" : "muted"}
+                        />
+                      </span>
+                      <span role="cell" className="px-3">
+                        <Qty value={job.qtyDone} total={job.totalImages} tone="brand" />
+                      </span>
+                      <span role="cell" className="px-3">
+                        <Qty value={job.qtyChecked} total={job.totalImages} tone="success" />
+                      </span>
+                    </>
+                  )}
                   <span role="cell" className="px-3">
                     <FeedbackBadge count={job.openFeedbackCount} />
                   </span>
@@ -317,6 +404,30 @@ const JobTable = ({
   );
 };
 
+/** One "label number / bar" cell of a phone card. */
+const CardQty = ({
+  label,
+  value,
+  of,
+  percent,
+  tone = "brand"
+}: {
+  label: string;
+  value: number;
+  /** "Giao 80/100": the job's total images. */
+  of?: number | undefined;
+  percent: number;
+  tone?: "brand" | "success" | "muted" | "warning";
+}) => (
+  <span className="flex min-w-0 flex-col gap-1">
+    <span className="truncate text-foreground-muted">
+      {label} <b className="font-semibold text-foreground tabular-nums">{formatInteger(value)}</b>
+      {of !== undefined ? `/${formatInteger(of)}` : ""}
+    </span>
+    <MiniBar value={percent} tone={tone} />
+  </span>
+);
+
 const JobCards = ({
   jobs,
   hasNextPage,
@@ -324,6 +435,7 @@ const JobCards = ({
   fetchNextPage,
   timeZone,
   tags,
+  person = null,
   fields = []
 }: JobsListProps & { tags: Tag[] }) => (
   <div className="flex flex-col gap-2.5">
@@ -331,6 +443,7 @@ const JobCards = ({
       {jobs.map((job) => {
         const late = job.lateTaskCount > 0;
         const progress = jobProgress(job);
+        const share = job.personShare ?? noShare;
         return (
           <li key={job.id}>
             <Link
@@ -342,55 +455,86 @@ const JobCards = ({
             >
               <span className="flex items-start gap-2">
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-sm font-semibold">{job.code}</span>
-                  <span className="truncate text-xs text-foreground-muted">
+                  <span
+                    className="line-clamp-2 text-sm font-semibold [overflow-wrap:anywhere]"
+                    title={job.code}
+                  >
+                    {job.code}
+                  </span>
+                  <span
+                    className="truncate text-xs text-foreground-muted"
+                    title={job.name ? `${job.project.code} · ${job.name}` : job.project.code}
+                  >
                     <span className="font-mono">{job.project.code}</span>
                     {job.name ? ` · ${job.name}` : ""}
                   </span>
                 </span>
-                <StatusChip status={job.status} size="sm" className="shrink-0" />
+                {/* At most half the row, so the package name keeps its room. */}
+                <JobStatusChip status={job.jobStatus} size="sm" className="max-w-[50%] shrink-0" />
               </span>
+              {/* Ngày giao always fills this line, so the leader is left to the job page. */}
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-muted">
-                <Person user={job.leader} size="xs" className="max-w-[50%]" />
                 <span className={cn("tabular-nums", late && "font-medium text-danger")}>
-                  {formatDateTime(job.deadline, timeZone)}
+                  Giao {formatWorkDay(job.deadline, timeZone)}
                 </span>
                 {late ? <LateBadge label={`${job.lateTaskCount} trễ`} /> : null}
                 <FeedbackBadge count={job.openFeedbackCount} />
               </span>
-              <span className="grid grid-cols-3 gap-3 text-xs">
-                <span className="flex flex-col gap-1">
-                  <span className="text-foreground-muted">
-                    Giao{" "}
-                    <b className="font-semibold text-foreground tabular-nums">
-                      {formatInteger(job.qtyAssigned)}
-                    </b>
-                    /{formatInteger(job.totalImages)}
+              {person ? (
+                <span className="flex flex-col gap-2 rounded-lg bg-brand-soft px-2.5 py-2 text-xs">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
+                    <span className="font-semibold text-brand-text">
+                      Phần của {shortName(person.displayName)}
+                    </span>
+                    <span className="text-foreground-muted">
+                      {" · "}
+                      {processText(share) || "—"}
+                    </span>
                   </span>
-                  <MiniBar
-                    value={progress.assigned}
-                    tone={progress.overAllocated ? "warning" : "muted"}
-                  />
-                </span>
-                <span className="flex flex-col gap-1">
-                  <span className="text-foreground-muted">
-                    Xong{" "}
-                    <b className="font-semibold text-foreground tabular-nums">
-                      {formatInteger(job.qtyDone)}
-                    </b>
+                  <span className="grid grid-cols-3 gap-3">
+                    <CardQty
+                      label="Giao"
+                      value={share.qtyAssigned}
+                      of={job.totalImages}
+                      percent={ratio(share.qtyAssigned, job.totalImages)}
+                      tone="muted"
+                    />
+                    <CardQty
+                      label="Xong"
+                      value={share.qtyDone}
+                      percent={ratio(share.qtyDone, share.qtyAssigned)}
+                    />
+                    <CardQty
+                      label="Đã kiểm"
+                      value={share.qtyChecked}
+                      percent={ratio(share.qtyChecked, share.qtyAssigned)}
+                      tone="success"
+                    />
                   </span>
-                  <MiniBar value={progress.done} />
                 </span>
-                <span className="flex flex-col gap-1">
-                  <span className="text-foreground-muted">
-                    Đã kiểm{" "}
-                    <b className="font-semibold text-foreground tabular-nums">
-                      {formatInteger(job.qtyChecked)}
-                    </b>
+              ) : (
+                <>
+                  {job.people.workers.length > 0 ? (
+                    <JobPeopleStack people={job.people} showCount className="-my-1 self-start" />
+                  ) : null}
+                  <span className="grid grid-cols-3 gap-3 text-xs">
+                    <CardQty
+                      label="Giao"
+                      value={job.qtyAssigned}
+                      of={job.totalImages}
+                      percent={progress.assigned}
+                      tone={progress.overAllocated ? "warning" : "muted"}
+                    />
+                    <CardQty label="Xong" value={job.qtyDone} percent={progress.done} />
+                    <CardQty
+                      label="Đã kiểm"
+                      value={job.qtyChecked}
+                      percent={progress.checked}
+                      tone="success"
+                    />
                   </span>
-                  <MiniBar value={progress.checked} tone="success" />
-                </span>
-              </span>
+                </>
+              )}
               <CustomFieldChips fields={fields} values={job.customValues} />
               {job.tagIds.length > 0 ? <TagChips tags={tags} tagIds={job.tagIds} max={4} /> : null}
             </Link>
@@ -437,7 +581,7 @@ export const JobsEmpty = ({
     <EmptyState
       icon={Briefcase}
       title="Chưa có job"
-      description="Tạo job cho từng gói ảnh của khách; Leader sẽ chia task cho nhân viên."
+      description="Mỗi job là một gói công việc của dự án. Tạo job, hoặc “Nhập công việc” để thêm dòng work log — gói mới tự thành job."
       action={
         onCreate ? (
           <Button size="sm" onClick={onCreate}>

@@ -1,5 +1,6 @@
 import { ChartColumnBig, ChevronLeft, EyeOff, Trophy, UsersRound } from "lucide-react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState, ErrorState } from "@/components/shared/states";

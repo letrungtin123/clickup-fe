@@ -15,7 +15,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ColorDot } from "@/components/shared/color-dot";
 import { ProjectIcon } from "@/components/shared/project-icon";
@@ -148,7 +149,11 @@ export const SearchPage = () => {
             type="search"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={knowledgeVisible ? "Tìm công việc, tri thức, tin nhắn, dự án, mọi người…" : "Tìm công việc, tin nhắn, dự án, danh sách, mọi người…"}
+            placeholder={
+              knowledgeVisible
+                ? "Tìm công việc, tri thức, tin nhắn, dự án, mọi người…"
+                : "Tìm công việc, tin nhắn, dự án, danh sách, mọi người…"
+            }
             aria-label="Từ khóa tìm kiếm"
             className="h-11 w-full rounded-xl border bg-surface pr-10 pl-10 text-[15px] shadow-xs outline-none placeholder:text-foreground-subtle focus-visible:border-brand/50 focus-visible:ring-3 focus-visible:ring-ring/30"
           />
@@ -423,7 +428,12 @@ const ResultRow = ({ item, q }: { item: SearchItem; q: string }) => {
             <BookOpenText className="size-4" aria-hidden="true" />
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className={cn("line-clamp-2 text-sm font-medium break-words sm:line-clamp-1", retired && "text-foreground-muted")}>
+            <span
+              className={cn(
+                "line-clamp-2 text-sm font-medium break-words sm:line-clamp-1",
+                retired && "text-foreground-muted"
+              )}
+            >
               <Highlight text={item.title} query={q} />
             </span>
             {item.hit.summary ? (
@@ -435,10 +445,20 @@ const ResultRow = ({ item, q }: { item: SearchItem; q: string }) => {
               <span className="truncate">{item.hit.spaceName}</span>
               <ImportanceBadge importance={item.hit.importance} size="xs" />
               {/* Phones hide the status column: a retired item must still say so. */}
-              {retired ? <KnowledgeStatusChip status={item.hit.status} size="xs" className="max-w-32 sm:hidden" /> : null}
+              {retired ? (
+                <KnowledgeStatusChip
+                  status={item.hit.status}
+                  size="xs"
+                  className="max-w-32 sm:hidden"
+                />
+              ) : null}
             </span>
           </span>
-          <KnowledgeStatusChip status={item.hit.status} size="xs" className="max-w-32 max-sm:hidden" />
+          <KnowledgeStatusChip
+            status={item.hit.status}
+            size="xs"
+            className="max-w-32 max-sm:hidden"
+          />
         </Link>
       );
     }

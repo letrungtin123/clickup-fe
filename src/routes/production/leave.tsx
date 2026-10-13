@@ -1,6 +1,7 @@
 import { CalendarPlus, ChevronLeft, ChevronRight, Inbox, ListChecks } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -60,7 +61,8 @@ export const ProductionLeaveRoute = () => {
   const monthParam = params.get("month");
   const month = monthParam && monthPattern.test(monthParam) ? monthParam : monthOfDay(today);
   const tabParam = params.get("tab");
-  const tab: Tab = tabParam === "mine" ? "mine" : tabParam === "pending" && canDecide ? "pending" : "calendar";
+  const tab: Tab =
+    tabParam === "mine" ? "mine" : tabParam === "pending" && canDecide ? "pending" : "calendar";
   const teamParam = params.get("team");
   const teamId = teamParam && uuidPattern.test(teamParam) ? teamParam : null;
 
@@ -284,13 +286,26 @@ const CalendarTab = ({
     <>
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="icon" aria-label="Tháng trước" onClick={() => onMonth(shiftMonth(month, -1))}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Tháng trước"
+            onClick={() => onMonth(shiftMonth(month, -1))}
+          >
             <ChevronLeft />
           </Button>
-          <span className="min-w-28 text-center text-sm font-semibold tabular-nums" aria-live="polite">
+          <span
+            className="min-w-28 text-center text-sm font-semibold tabular-nums"
+            aria-live="polite"
+          >
             {monthLabel(month)}
           </span>
-          <Button variant="outline" size="icon" aria-label="Tháng sau" onClick={() => onMonth(shiftMonth(month, 1))}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Tháng sau"
+            onClick={() => onMonth(shiftMonth(month, 1))}
+          >
             <ChevronRight />
           </Button>
           {month !== monthOfDay(today) ? (
@@ -318,8 +333,16 @@ const CalendarTab = ({
           ) : (
             <span className="flex flex-wrap items-center gap-2">
               {todayEntries.map((entry) => (
-                <span key={entry.request.id} className="inline-flex items-center gap-1.5 text-[13px]">
-                  <LeaveAvatar user={entry.request.user} part={entry.part} status={entry.request.status} size="sm" />
+                <span
+                  key={entry.request.id}
+                  className="inline-flex items-center gap-1.5 text-[13px]"
+                >
+                  <LeaveAvatar
+                    user={entry.request.user}
+                    part={entry.part}
+                    status={entry.request.status}
+                    size="sm"
+                  />
                   {entry.request.user.displayName}
                 </span>
               ))}
@@ -333,7 +356,11 @@ const CalendarTab = ({
         <Skeleton className="h-[30rem] rounded-xl" />
       ) : calendar.isError ? (
         <Panel>
-          <ErrorState error={calendar.error} onRetry={() => void calendar.refetch()} retrying={calendar.isFetching} />
+          <ErrorState
+            error={calendar.error}
+            onRetry={() => void calendar.refetch()}
+            retrying={calendar.isFetching}
+          />
         </Panel>
       ) : mobile ? (
         <Panel bodyClassName="overflow-hidden rounded-xl">
@@ -372,7 +399,11 @@ const Legend = () => (
       <span aria-hidden="true" className="size-2.5 rounded-full ring-2 ring-success/60" /> Đã duyệt
     </span>
     <span className="flex items-center gap-1">
-      <span aria-hidden="true" className="size-2.5 rounded-full outline-2 outline-warning outline-dashed" /> Chờ duyệt
+      <span
+        aria-hidden="true"
+        className="size-2.5 rounded-full outline-2 outline-warning outline-dashed"
+      />{" "}
+      Chờ duyệt
     </span>
     <span>S = buổi sáng · C = buổi chiều</span>
   </span>
@@ -428,11 +459,19 @@ const MineTab = ({
     <>
       <Panel title="Sắp tới và đang nghỉ" description="Hủy được khi đơn chưa bắt đầu.">
         {upcoming.length === 0 ? (
-          <p className="px-4 py-6 text-center text-[13px] text-foreground-muted">Không có đơn sắp tới.</p>
+          <p className="px-4 py-6 text-center text-[13px] text-foreground-muted">
+            Không có đơn sắp tới.
+          </p>
         ) : (
           <ul className="flex flex-col divide-y">
             {upcoming.map((request) => (
-              <LeaveRequestRow key={request.id} request={request} showUser={false} onDecide={onDecide} onCancel={onCancel} />
+              <LeaveRequestRow
+                key={request.id}
+                request={request}
+                showUser={false}
+                onDecide={onDecide}
+                onCancel={onCancel}
+              />
             ))}
           </ul>
         )}
@@ -441,7 +480,13 @@ const MineTab = ({
         <Panel title="Đã qua">
           <ul className="flex flex-col divide-y">
             {past.map((request) => (
-              <LeaveRequestRow key={request.id} request={request} showUser={false} onDecide={onDecide} onCancel={onCancel} />
+              <LeaveRequestRow
+                key={request.id}
+                request={request}
+                showUser={false}
+                onDecide={onDecide}
+                onCancel={onCancel}
+              />
             ))}
           </ul>
         </Panel>

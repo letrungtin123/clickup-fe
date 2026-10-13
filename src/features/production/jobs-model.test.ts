@@ -11,13 +11,25 @@ import {
   describeTaskLog,
   emptyJobFilters,
   expectedEarnings,
+  dueDayToIso,
   formatDateTime,
+  formatWorkDay,
+  isoToDay,
+  lineOptionalNumbers,
+  receivedDayToIso,
   insertMention,
   isoToZoned,
   jobFiltersFromSearch,
   jobFiltersToSearch,
+  jobPeopleStack,
   jobProgress,
+  jobStatusFilterGroups,
+  listPersonOf,
+  sameIdSet,
+  sanitizeJobStatusIds,
+  shortName,
   jobQueryFromFilters,
+  toggleJobStatusId,
   mentionAt,
   maxDeclaredDoneQty,
   mentionedIds,
@@ -28,6 +40,12 @@ import {
   relativeDeadline,
   splitTransitions,
   taskLineProblems,
+  isWebLink,
+  optionalDetailsSummary,
+  unitPriceLabel,
+  WORK_LINK_MAX,
+  workLinkProblem,
+  workLinkValue,
   zonedToIso,
   type Segment
 } from "./jobs-model";
@@ -130,7 +148,6 @@ describe("progress and allocation", () => {
 
 describe("task lines", () => {
   const context = {
-    callerId: id(1),
     roles: new Map([
       [id(1), ["LEADER", "QC"] as const],
       [id(2), ["STAFF"] as const],
@@ -145,7 +162,7 @@ describe("task lines", () => {
     expect(taskLineProblems(line, context)).toEqual({});
   });
 
-  it("mirrors the API's people and catalog rules", () => {
+  it("mirrors the API's people and catalog rules (QC optional, PD-035)", () => {
     expect(taskLineProblems({ ...line, assigneeId: id(4) }, context).assignee).toBe(
       "Cần vai trò Nhân viên hoặc Leader."
     );
@@ -153,14 +170,12 @@ describe("task lines", () => {
     expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: id(1) }, context).qc).toBe(
       "QC phải khác người làm."
     );
-    expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: null }, context).qc).toBe(
-      "Tự giao cho mình thì cần QC là người khác."
-    );
-    expect(taskLineProblems({ ...line, processId: id(90) }, context).process).toBe(
-      "Quy trình QC không giao như task."
-    );
-    expect(taskLineProblems({ ...line, qty: "0" }, context).qty).toBe("Số tấm nguyên ≥ 1.");
-    expect(taskLineProblems({ ...line, qty: "2.5" }, context).qty).toBe("Số tấm nguyên ≥ 1.");
+    // Entering a line for oneself needs no QC any more.
+    expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: null }, context)).toEqual({});
+    // A person the caller cannot list (STAFF entering their own line) is left to the API.
+    expect(taskLineProblems({ ...line, assigneeId: id(9), qcId: null }, context)).toEqual({});
+    expect(taskLineProblems({ ...line, qty: "0" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
+    expect(taskLineProblems({ ...line, qty: "2.5" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
     expect(
       Object.keys(
         taskLineProblems(
@@ -169,6 +184,126 @@ describe("task lines", () => {
         )
       )
     ).toEqual(["assignee", "process", "shift", "qty"]);
+  });
+
+  it("a Checking line (PD-037) is done by a QC person (or Leader) and has no QC of its own", () => {
+    const checking = { ...line, processId: id(90), assigneeId: id(3), qcId: null };
+    expect(taskLineProblems(checking, context)).toEqual({});
+    expect(taskLineProblems({ ...checking, assigneeId: id(1) }, context)).toEqual({});
+    expect(taskLineProblems({ ...checking, assigneeId: id(2) }, context).assignee).toBe(
+      "Dòng Checking cần người có vai trò QC (hoặc Leader)."
+    );
+    expect(taskLineProblems({ ...checking, qcId: id(1) }, context).qc).toBe(
+      "Dòng Checking không có QC riêng."
+    );
+  });
+
+  it("checks the work-log days and the optional numbers", () => {
+    const dated = {
+      ...line,
+      receivedDay: "2026-10-12",
+      dueDay: "2026-10-14",
+      errorQty: "",
+      otHours: ""
+    };
+    expect(taskLineProblems(dated, context)).toEqual({});
+    expect(taskLineProblems({ ...dated, receivedDay: null }, context).received).toBe(
+      "Chọn ngày nhận."
+    );
+    expect(taskLineProblems({ ...dated, dueDay: "2026-10-11" }, context).due).toBe(
+      "Ngày giao phải từ ngày nhận trở đi."
+    );
+    expect(taskLineProblems({ ...dated, errorQty: "-1" }, context).errorQty).toBe("Số nguyên ≥ 0.");
+    expect(taskLineProblems({ ...dated, otHours: "1,5" }, context)).toEqual({});
+    expect(taskLineProblems({ ...dated, otHours: "1,25" }, context).otHours).toBe(
+      "Từ 0,1 đến 24 giờ."
+    );
+    expect(taskLineProblems({ ...dated, otHours: "25" }, context).otHours).toBe(
+      "Từ 0,1 đến 24 giờ."
+    );
+    expect(lineOptionalNumbers({ errorQty: "3", otHours: "1,5" })).toEqual({
+      errorQty: 3,
+      otHours: 1.5
+    });
+    expect(lineOptionalNumbers({ errorQty: " ", otHours: "" })).toEqual({
+      errorQty: null,
+      otHours: null
+    });
+  });
+
+  it("Link chia việc (PD-040): any single-line text up to 2,000 characters; web links are told apart", () => {
+    for (const value of [
+      "",
+      "Y:\\Client\\2026\\Batch 1",
+      "\\\\server\\share\\Lô 7",
+      "https://x.example/f"
+    ]) {
+      expect(taskLineProblems({ ...line, workLink: value }, context)).toEqual({});
+    }
+    expect(taskLineProblems({ ...line, workLink: "a\tb" }, context).workLink).toBe(
+      "Không được chứa ký tự điều khiển (tab, xuống dòng)."
+    );
+    expect(workLinkProblem(`  ${"x".repeat(WORK_LINK_MAX)}  `)).toBeUndefined();
+    expect(workLinkProblem("x".repeat(WORK_LINK_MAX + 1))).toBe("Tối đa 2.000 ký tự.");
+    expect(workLinkValue("  Y:\\A  ")).toBe("Y:\\A");
+    expect(workLinkValue("   ")).toBeNull();
+    expect(isWebLink("https://drive.example.com/f/1")).toBe(true);
+    expect(isWebLink(" HTTP://intranet/x")).toBe(true);
+    expect(isWebLink("Y:\\Client\\Batch 1")).toBe(false);
+    expect(isWebLink("\\\\server\\share")).toBe(false);
+    expect(isWebLink("javascript:alert(1)")).toBe(false);
+    expect(isWebLink("www.example.com")).toBe(false);
+  });
+
+  it("summarises the filled optional details of a collapsed line, in form order", () => {
+    expect(optionalDetailsSummary({})).toBe("");
+    expect(optionalDetailsSummary({ errorQty: " ", otHours: "", workLink: "  ", note: "" })).toBe(
+      ""
+    );
+    expect(
+      optionalDetailsSummary(
+        { qcName: "QC C", errorQty: "3", otHours: "1,5", workLink: "Y:\\A", note: "x" },
+        ["Độ khó: Khó", "2 tag"]
+      )
+    ).toBe("QC: QC C · 3 hình lỗi · OT 1,5 giờ · Link · Ghi chú · Độ khó: Khó · 2 tag");
+    expect(optionalDetailsSummary({ qcName: "QC C", workLink: "https://x", note: "y" })).toBe(
+      "QC: QC C · Link · Ghi chú"
+    );
+  });
+
+  it("labels the unit price of a line; money only on a Khoán shift with a price", () => {
+    const rule = { creditPerImage: 5.5, moneyPerImage: 2000 };
+    expect(unitPriceLabel(null, "POINTS")).toBeNull();
+    expect(unitPriceLabel(rule, "POINTS")).toBe("5,5 điểm/tấm");
+    expect(unitPriceLabel({ creditPerImage: 2, moneyPerImage: null }, "MONEY_IF_KPI")).toBe(
+      "2 điểm/tấm"
+    );
+    expect(unitPriceLabel(rule, "MONEY_IF_KPI")?.replace(/\s/g, " ")).toBe(
+      "5,5 điểm/tấm · 2.000 ₫/tấm"
+    );
+  });
+});
+
+describe("work-log days (PD-035)", () => {
+  it("Ngày nhận is the start of the day and Ngày giao its end, in the organization timezone", () => {
+    expect(receivedDayToIso("2026-10-12", "Asia/Ho_Chi_Minh")).toBe("2026-10-11T17:00:00.000Z");
+    expect(dueDayToIso("2026-10-12", "Asia/Ho_Chi_Minh")).toBe("2026-10-12T16:59:00.000Z");
+    expect(isoToDay("2026-10-12T16:59:00.000Z", "Asia/Ho_Chi_Minh")).toBe("2026-10-12");
+    expect(
+      formatWorkDay(
+        "2026-10-12T16:59:00.000Z",
+        "Asia/Ho_Chi_Minh",
+        new Date("2026-10-13T00:00:00Z")
+      )
+    ).toBe("12/10");
+    expect(
+      formatWorkDay(
+        "2025-10-12T16:59:00.000Z",
+        "Asia/Ho_Chi_Minh",
+        new Date("2026-10-13T00:00:00Z")
+      )
+    ).toBe("12/10/2025");
+    expect(formatWorkDay(null, "Asia/Ho_Chi_Minh")).toBe("—");
   });
 });
 
@@ -216,7 +351,9 @@ describe("transitions", () => {
         ],
         canEdit: false,
         canAssign: false,
-        canEditQty: false
+        canChangeAssignee: false,
+        canEditQty: false,
+        canDelete: false
       }
     };
     const actions = qcActions(task, statuses);
@@ -268,6 +405,55 @@ describe("job filters", () => {
     expect(activeFilterCount(filters)).toBe(3);
   });
 
+  it("keeps the staff member (assignee or QC) in the URL and sends it as personId", () => {
+    const filters = { ...emptyJobFilters, leaderId: id(7), personId: id(8) };
+    const params = jobFiltersToSearch(filters);
+    expect(params.toString()).toBe(`leader=${id(7)}&person=${id(8)}`);
+    expect(jobFiltersFromSearch(params)).toEqual(filters);
+    expect(jobFiltersFromSearch(new URLSearchParams("person=nope")).personId).toBeNull();
+    expect(activeFilterCount(filters)).toBe(2);
+    expect(jobQueryFromFilters(filters, VN)).toMatchObject({ leaderId: id(7), personId: id(8) });
+    expect(jobQueryFromFilters(emptyJobFilters, VN).personId).toBeUndefined();
+  });
+
+  it("per-person view: whose numbers the loaded page holds, and the short name", () => {
+    const worker = (n: number, displayName: string) => ({
+      user: { id: id(n), displayName, email: null, avatarUrl: null },
+      qty: 10,
+      taskCount: 1
+    });
+    const jobs = [{ people: { workers: [worker(8, "Row Name")], qc: [] } }];
+    const totals = (n: number) => ({
+      personTotals: {
+        personId: id(n),
+        jobCount: 1,
+        taskCount: 1,
+        qtyAssigned: 10,
+        qtyDone: 10,
+        qtyChecked: 0
+      }
+    });
+    const members = (personId: string) => (personId === id(9) ? "Member Name" : undefined);
+    expect(listPersonOf(totals(9), jobs, members)).toEqual({
+      id: id(9),
+      displayName: "Member Name"
+    });
+    // Not a current member (left the company): the name comes from the rows.
+    expect(listPersonOf(totals(8), jobs, members)?.displayName).toBe("Row Name");
+    expect(listPersonOf(totals(7), [], members)?.displayName).toBe("Nhân viên");
+    expect(listPersonOf({ personTotals: null }, jobs, members)).toBeNull();
+    expect(listPersonOf(undefined, jobs, members)).toBeNull();
+    expect(shortName("Bùi Thị Hoa")).toBe("Hoa");
+    expect(shortName("  Minh  ")).toBe("Minh");
+  });
+
+  it("stacks at most 4 people, then +N", () => {
+    expect(jobPeopleStack([1, 2, 3])).toEqual({ shown: [1, 2, 3], hidden: 0 });
+    expect(jobPeopleStack([1, 2, 3, 4])).toEqual({ shown: [1, 2, 3, 4], hidden: 0 });
+    expect(jobPeopleStack([1, 2, 3, 4, 5, 6])).toEqual({ shown: [1, 2, 3, 4], hidden: 2 });
+    expect(jobPeopleStack([])).toEqual({ shown: [], hidden: 0 });
+  });
+
   it("carries several tags and custom-field filters (old single-tag links still work)", () => {
     const old = jobFiltersFromSearch(new URLSearchParams(`tag=${id(60)}`));
     expect(old.custom.tagIds).toEqual([id(60)]);
@@ -287,6 +473,66 @@ describe("job filters", () => {
       tagId: [id(60), id(61)],
       "cf.uu_tien": ["gap", "__empty__"]
     });
+  });
+
+  it("filters by manual job statuses (PD-038): repeated in the URL, counted once, sent as jobStatusId", () => {
+    const filters = { ...emptyJobFilters, jobStatusIds: [id(72), id(70)], late: true };
+    const params = jobFiltersToSearch(filters);
+    expect(params.getAll("jobStatus")).toEqual([id(72), id(70)]);
+    expect(params.toString()).toBe(`jobStatus=${id(72)}&jobStatus=${id(70)}&late=1`);
+    expect(jobFiltersFromSearch(params)).toEqual(filters);
+    expect(activeFilterCount(filters)).toBe(2);
+    // Any of them, sorted (one cache entry per choice) and repeated by queryPath.
+    expect(jobQueryFromFilters(filters, VN).jobStatusId).toEqual([id(70), id(72)]);
+    expect(jobQueryFromFilters(emptyJobFilters, VN).jobStatusId).toBeUndefined();
+    expect(jobQueryFromFilters(filters, VN)).not.toHaveProperty("statusId");
+  });
+
+  it("keeps only valid, distinct job status ids and ignores the old derived `status` parameter", () => {
+    const parsed = jobFiltersFromSearch(
+      new URLSearchParams(
+        `status=${id(1)}&jobStatus=nope&jobStatus=${id(70)}&jobStatus=${id(70)}&jobStatus=&jobStatus=${id(71)}`
+      )
+    );
+    expect(parsed.jobStatusIds).toEqual([id(70), id(71)]);
+    expect(parsed).not.toHaveProperty("statusId");
+    expect(jobFiltersFromSearch(new URLSearchParams(`status=${id(1)}`))).toEqual(emptyJobFilters);
+    expect(activeFilterCount(emptyJobFilters)).toBe(0);
+    // At most the catalog limit (50) from a crafted link.
+    const many = new URLSearchParams(
+      Array.from({ length: 60 }, (_, index) => `jobStatus=${id(100 + index)}`).join("&")
+    );
+    expect(jobFiltersFromSearch(many).jobStatusIds).toHaveLength(50);
+  });
+
+  it("drops deleted job statuses once the catalog is known", () => {
+    const ids = [id(70), id(79)];
+    expect(sanitizeJobStatusIds(ids, undefined)).toEqual(ids);
+    expect(sanitizeJobStatusIds(ids, new Set([id(70), id(71)]))).toEqual([id(70)]);
+    expect(sanitizeJobStatusIds(ids, new Set())).toEqual([]);
+  });
+
+  it("groups the status filter (open first, closed last) and keeps choices in catalog order", () => {
+    const catalog = [
+      { id: id(70), isClosed: false },
+      { id: id(75), isClosed: true },
+      { id: id(71), isClosed: false }
+    ];
+    const groups = jobStatusFilterGroups(catalog);
+    expect(groups.openIds).toEqual([id(70), id(71)]);
+    expect(groups.closedIds).toEqual([id(75)]);
+    expect([...groups.open, ...groups.closed].map((status) => status.id)).toEqual([
+      id(70),
+      id(71),
+      id(75)
+    ]);
+    expect(toggleJobStatusId([id(75)], id(70), catalog)).toEqual([id(70), id(75)]);
+    expect(toggleJobStatusId([id(70), id(75)], id(70), catalog)).toEqual([id(75)]);
+    // A status missing from the catalog (still loading) goes last.
+    expect(toggleJobStatusId([id(99)], id(71), catalog)).toEqual([id(71), id(99)]);
+    expect(sameIdSet([id(71), id(70)], groups.openIds)).toBe(true);
+    expect(sameIdSet([id(70)], groups.openIds)).toBe(false);
+    expect(sameIdSet([], [])).toBe(true);
   });
 
   it("turns the day range into [from, to+1) instants in the organization timezone", () => {
@@ -382,7 +628,23 @@ describe("timeline sentences", () => {
           names
         )
       )
-    ).toBe("sửa #7: số tấm giao 5 tấm → 6 tấm; quy trình quy trình khác → Retouch");
+    ).toBe("sửa #7: số lượng 5 tấm → 6 tấm; quy trình quy trình khác → Retouch");
+  });
+
+  it("names Link chia việc changes without printing the path (PD-040)", () => {
+    const sentence = (from: unknown, to: unknown) =>
+      text(describeTaskLog(log("FIELD", { workLink: from }, { workLink: to }), names));
+    expect(sentence(null, "Y:\\Client\\Batch 1")).toBe("sửa #7: thêm link chia việc");
+    expect(sentence("https://drive.example.com/f/1", null)).toBe("sửa #7: xóa link chia việc");
+    expect(sentence("Y:\\A", "Y:\\B")).toBe("sửa #7: đổi link chia việc");
+    expect(
+      text(
+        describeTaskLog(
+          log("FIELD", { errorQty: null, workLink: null }, { errorQty: 2, workLink: "Y:\\A" }),
+          names
+        )
+      )
+    ).toBe("sửa #7: hình lỗi — → 2; thêm link chia việc");
   });
 
   const orderField = {
@@ -443,7 +705,7 @@ describe("timeline sentences", () => {
       richNames
     );
     expect(text(segments)).toBe(
-      "đã sửa job: deadline 12/10 17:00 → 13/10 12:00; Leader Leader A → Leader B; " +
+      "đã sửa job: ngày giao 12/10 17:00 → 13/10 12:00; Leader Leader A → Leader B; " +
         "Mã đơn hàng ĐH1 → ĐH2; thêm tag Gấp; bỏ tag VIP; tổng tấm 100 → 1.200"
     );
     expect(
@@ -472,6 +734,32 @@ describe("timeline sentences", () => {
         )
       )
     ).toBe("đã sửa job: thêm link ảnh; tên job — → “Lô 2”");
+  });
+
+  it("describes manual job status changes (PD-038), also when an Admin deleted the status", () => {
+    const from = { jobStatusId: id(70), jobStatusName: "Mới nhận", jobStatusColor: "slate" };
+    const to = { jobStatusId: id(71), jobStatusName: "Đang làm", jobStatusColor: "blue" };
+    expect(
+      text(
+        describeTaskLog(
+          { action: "JOB", taskNumber: null, fromValue: from, toValue: to },
+          richNames
+        )
+      )
+    ).toBe("đã đổi trạng thái job: Mới nhận → Đang làm");
+    expect(
+      text(
+        describeTaskLog(
+          {
+            action: "JOB",
+            taskNumber: null,
+            fromValue: from,
+            toValue: { ...to, statusDeleted: true }
+          },
+          richNames
+        )
+      )
+    ).toBe("đã xoá trạng thái Mới nhận, job chuyển sang Đang làm");
   });
 
   it("describes task tag and custom-field edits", () => {

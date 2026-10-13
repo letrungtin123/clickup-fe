@@ -45,10 +45,10 @@ const payModeLabels: Record<PayMode, string> = {
 const payModeHelp: Record<PayMode, string> = {
   POINTS: "Chỉ ghi điểm và cộng vào KPI tháng (ca chính thức, OT).",
   MONEY_IF_KPI:
-    "Hiện song song điểm và tiền tạm tính; ngày chốt KPI quyết định nhận tiền (đủ KPI) hay quy về điểm."
+    "Hiện song song điểm và tiền tạm tính; khi chốt KPI, tiền được trả theo chính sách Khoán ở Cài đặt chung (luôn trả, hoặc chỉ khi đạt KPI)."
 };
 
-/** Work shifts and how they pay (PLAN §5): points, or money if the monthly KPI is met. */
+/** Work shifts and how they pay (PLAN §5): points, or Khoán money (paid per settings.khoanPayPolicy, PD-033). */
 export const ProductionShiftsRoute = () => {
   const shifts = useShifts();
   const mutations = useShiftMutations();
@@ -158,7 +158,7 @@ export const ProductionShiftsRoute = () => {
             size="sm"
             icon={CalendarClock}
             title="Chưa có ca làm"
-            description="Thêm ca chính thức, OT (tính điểm) và ca khoán (tiền nếu đạt KPI)."
+            description="Thêm ca chính thức, OT (tính điểm) và ca khoán (có tiền, trả theo chính sách Khoán)."
             action={
               <Button size="sm" onClick={() => setDialog({ shift: null })}>
                 <Plus />

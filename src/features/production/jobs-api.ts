@@ -2,18 +2,23 @@ import type { z } from "zod";
 
 import {
   CreateTasksResultSchema,
+  DeleteJobResultSchema,
+  DeleteTaskResultSchema,
   JobChatResultSchema,
   JobDetailSchema,
+  JobOptionsSchema,
   JobPageSchema,
   JobTransitionResultSchema,
   ProductionCommentSchema,
   ProductionTaskPageSchema,
   ProductionTaskSchema,
   ProductionTimelinePageSchema,
+  WorkEntryResultSchema,
   type AssignTaskRequestSchema,
   type CreateFeedbackRequestSchema,
   type CreateJobRequestSchema,
   type CreateTaskLineSchema,
+  type CreateWorkEntryRequestSchema,
   type ReassignFeedbackRequestSchema,
   type TransitionTaskRequestSchema,
   type UpdateJobRequestSchema,
@@ -40,10 +45,18 @@ export type TransitionInput = z.input<typeof TransitionTaskRequestSchema>;
 export type QtyInput = z.input<typeof UpdateTaskQtyRequestSchema>;
 export type AssignInput = z.input<typeof AssignTaskRequestSchema>;
 export type UpdateTaskInput = z.input<typeof UpdateProductionTaskRequestSchema>;
+export type WorkEntryInput = z.input<typeof CreateWorkEntryRequestSchema>;
 export type TimelineEntity = "jobs" | "tasks";
 export type MyTasksRole = "assignee" | "qc" | "all";
 
 export type JobListQuery = Record<string, QueryValue>;
+/** GET /production/jobs/options: project required; search text and manual statuses optional. */
+export type JobOptionsInput = {
+  projectId: string;
+  q?: string | undefined;
+  statusIds?: readonly string[] | undefined;
+  limit?: number | undefined;
+};
 
 export const jobsApi = {
   /** Arrays (tag ids, custom-field values) repeat their parameter: queryPath. */
@@ -56,6 +69,29 @@ export const jobsApi = {
   create: (input: CreateJobInput) => api.post("/production/jobs", JobDetailSchema, input),
   update: (jobId: string, input: UpdateJobInput) =>
     api.patch(apiPath`/production/jobs/${jobId}`, JobDetailSchema, input),
+  /** Deletes the job and all its lines (PD-036): points reversed, kept for audit. */
+  remove: (jobId: string) => api.delete(apiPath`/production/jobs/${jobId}`, DeleteJobResultSchema),
+  /** The manual job status (PD-038); answers the job (with its capabilities). */
+  changeStatus: (jobId: string, statusId: string) =>
+    api.patch(apiPath`/production/jobs/${jobId}/status`, JobDetailSchema, { statusId }),
+  /**
+   * "Gói công việc" picker of "Nhập công việc" (PD-038): jobs of the project (closed ones too), open statuses first,
+   * then Ngày giao. Minimal fields; `truncated` = more match (type to narrow).
+   */
+  jobOptions: (query: JobOptionsInput, signal?: AbortSignal) =>
+    api.get(
+      queryPath("/production/jobs/options", {
+        projectId: query.projectId,
+        q: query.q?.trim() || undefined,
+        statusIds: query.statusIds && query.statusIds.length > 0 ? [...query.statusIds] : undefined,
+        limit: query.limit ?? 50
+      }),
+      JobOptionsSchema,
+      { signal }
+    ),
+  /** "Nhập công việc" (PD-035): one work-log row into an existing job (PD-038: it never creates one). */
+  createWorkEntry: (input: WorkEntryInput) =>
+    api.post("/production/work-entries", WorkEntryResultSchema, input),
   createTasks: (jobId: string, tasks: TaskLineInput[]) =>
     api.post(apiPath`/production/jobs/${jobId}/tasks`, CreateTasksResultSchema, { tasks }),
   transition: (jobId: string, toStatusId: string) =>
@@ -107,6 +143,9 @@ export const jobsApi = {
     api.post(apiPath`/production/tasks/${taskId}/qty`, ProductionTaskSchema, input),
   assign: (taskId: string, input: AssignInput) =>
     api.post(apiPath`/production/tasks/${taskId}/assign`, ProductionTaskSchema, input),
+  /** Deletes one line (PD-036): its points are reversed, it is kept for audit. */
+  removeTask: (taskId: string) =>
+    api.delete(apiPath`/production/tasks/${taskId}`, DeleteTaskResultSchema),
 
   timeline: (
     entity: TimelineEntity,

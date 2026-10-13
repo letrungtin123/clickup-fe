@@ -4,7 +4,7 @@
  * Pure functions — unit tested in format.test.ts.
  */
 
-import type { KpiCloseDayVersion } from "@/contracts/production-catalog";
+import { kpiCloseDayEndOfMonth, type KpiCloseDayVersion } from "@/contracts/production-catalog";
 import {
   closeDayOfPeriod,
   kpiPeriodOfDay,
@@ -197,16 +197,30 @@ export const shiftKpiPeriod = (period: string, months: number) => {
 export const formatKpiPeriod = (period: string) => `${period.slice(5, 7)}/${period.slice(0, 4)}`;
 
 /**
+ * A close day the API accepts: 1–28, or 31 = "Cuối tháng" (PD-032); anything above 28 means the end of the
+ * month, anything below 1 the 1st.
+ */
+export const normalizeCloseDay = (day: number) =>
+  day > 28 ? kpiCloseDayEndOfMonth : Math.min(Math.max(1, Math.trunc(day)), 28);
+
+/** "ngày 25", or "cuối tháng" for the close day 31 (PD-032): "Kỳ KPI chốt {label}". */
+export const closeDayLabel = (day: number) =>
+  day === kpiCloseDayEndOfMonth ? "cuối tháng" : `ngày ${day}`;
+
+/** "ngày 25 hằng tháng", or "ngày cuối mỗi tháng" for the close day 31. */
+export const closeDaySchedule = (day: number) =>
+  day === kpiCloseDayEndOfMonth ? "ngày cuối mỗi tháng" : `ngày ${day} hằng tháng`;
+
+/**
  * KPI period containing `today` (PLAN §6): from the day after the close day of the previous period
  * through this period's close day. `closeDays` is settings.kpiCloseDays (a changed close day applies
- * from the next period, G15) or one day for every period (clamped to 1–28). Uses the shared contract
- * helpers (production-scores kpiPeriodOfDay / kpiPeriodRange). `daysLeft` counts today, like the API
- * forecast (BUG-PR-24): 1 on the close day itself.
+ * from the next period, G15) or one day for every period (normalizeCloseDay: 1–28 or 31 = the month's
+ * last day). Uses the shared contract helpers (production-scores kpiPeriodOfDay / kpiPeriodRange).
+ * `daysLeft` counts today, like the API forecast (BUG-PR-24): 1 on the close day itself.
  */
 export const kpiPeriod = (today: string, closeDays: KpiCloseDays) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || !dayToDate(today)) return null;
-  const days =
-    typeof closeDays === "number" ? Math.min(Math.max(1, Math.trunc(closeDays)), 28) : closeDays;
+  const days = typeof closeDays === "number" ? normalizeCloseDay(closeDays) : closeDays;
   const period = kpiPeriodOfDay(today, days);
   const { from, to } = kpiPeriodRange(period, days);
   return { period, start: from, end: to, daysLeft: dayIndex(to) - dayIndex(today) + 1 };

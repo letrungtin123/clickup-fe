@@ -2,7 +2,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Archive, Globe, Lock, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
+import { Link } from "@/components/shared/router-link";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/shared/page-header";

@@ -50,6 +50,10 @@ const productionSettingsPages: Record<string, NonNullable<RouteObject["lazy"]>> 
   whitelist: async () => ({
     Component: (await import("@/routes/production/settings/whitelist")).ProductionWhitelistRoute
   }),
+  "job-permissions": async () => ({
+    Component: (await import("@/routes/production/settings/job-permissions"))
+      .ProductionJobPermissionsRoute
+  }),
   clients: async () => ({
     Component: (await import("@/routes/production/clients")).ProductionClientsSettingsRoute
   }),
@@ -67,6 +71,10 @@ const productionSettingsPages: Record<string, NonNullable<RouteObject["lazy"]>> 
   }),
   workflow: async () => ({
     Component: (await import("@/routes/production/settings/workflow")).ProductionWorkflowRoute
+  }),
+  "job-statuses": async () => ({
+    Component: (await import("@/routes/production/settings/job-statuses"))
+      .ProductionJobStatusesRoute
   }),
   "custom-fields": async () => ({
     Component: (await import("@/routes/production/settings/custom-fields"))

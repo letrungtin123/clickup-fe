@@ -2,7 +2,7 @@ import { cn } from "cn";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, ChartNoAxesCombined, Eye, Undo2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 import { toast } from "sonner";
 
 import { UserAvatar } from "@/components/shared/user-avatar";

@@ -16,37 +16,42 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import type { CustomValues } from "@/contracts/production-catalog";
-import type { JobDetail } from "@/contracts/production-jobs";
+import { jobCodeMaxLength, type JobDetail } from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
 
 import { fieldsFor, toCustomValuesPayload, validateCustomValues } from "../../custom-fields";
-import { addDays, todayIn } from "../../format";
+import { formatInteger, todayIn } from "../../format";
 import { productionErrorMessage } from "../../errors";
 import {
   useCustomFields,
+  useJobStatuses,
   useProductionAccess,
   useProductionMe,
   useProductionProjects,
   useTags
 } from "../../hooks";
 import { useCreateJob, useUpdateJob } from "../../jobs-hooks";
-import { zonedToIso } from "../../jobs-model";
+import { dueDayToIso, isoToDay, receivedDayToIso } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { CustomFieldsForm } from "../custom-field-input";
+import { DateField } from "../date-field";
 import { FormAlert } from "../settings-kit";
 import { TagPicker } from "../tag-picker";
-import { DateTimeField } from "./date-time-field";
+import { JobStatusSelect } from "./job-status-menu";
 import { OptionSelect, PersonSelect } from "./pickers";
 
 type Errors = Partial<
-  Record<"project" | "code" | "leader" | "deadline" | "total" | "link", string>
+  Record<"project" | "code" | "received" | "deadline" | "total" | "link", string>
 >;
 
 /**
- * Create / edit a job (SPEC Phase 2): project, code, name, Leader (defaults to me when I am a Leader),
- * deadline (organization timezone), total images, drive link, JOB custom fields and tags. Only
- * Account / Admin change the Leader of an existing job.
+ * Create / edit a job (PD-035): Dự án, Gói công việc (the work package typed by the user — the job's code), Ngày nhận
+ * and Ngày giao (days in the organization timezone; Ngày giao is the job deadline and the default of its lines), an
+ * optional Leader (defaults to me when I am a Leader; without one every Leader leads the job), an optional Tổng tấm
+ * (left empty it follows the sum of the lines), drive link, JOB custom fields and tags. The leader of an existing job
+ * changes only with the "update: all" permission (capabilities.canChangeLeader, PD-036). Creating also picks the manual
+ * "Trạng thái" (PD-038, default the first status); an existing job changes it from its header menu instead.
  */
 export const JobFormDialog = ({
   open,
@@ -66,28 +71,31 @@ export const JobFormDialog = ({
   const projects = useProductionProjects();
   const fields = useCustomFields();
   const tags = useTags();
-  const people = useProductionPeople(job ? [job.leader] : []);
+  // "Trạng thái" is only picked when creating (an existing job changes it from its header menu).
+  const jobStatuses = useJobStatuses(open && !job);
+  const people = useProductionPeople(job?.leader ? [job.leader] : []);
   const create = useCreateJob();
   const update = useUpdateJob(job?.id ?? "");
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const today = todayIn(timeZone);
   const iAmLeader = access.roles.includes("LEADER");
-  const canChooseLeader = job ? access.can("ACCOUNT") : true;
+  const canChooseLeader = job ? job.capabilities.canChangeLeader : true;
 
+  const initialReceived = job ? isoToDay(job.receivedAt, timeZone) : today;
+  const initialDue = job ? isoToDay(job.deadline, timeZone) : today;
   const [projectId, setProjectId] = useState<string | null>(job?.project.id ?? null);
   const [code, setCode] = useState(job?.code ?? "");
-  const [name, setName] = useState(job?.name ?? "");
   const [leaderId, setLeaderId] = useState<string | null>(
-    job?.leader.id ?? (iAmLeader ? session.user.id : null)
+    job ? (job.leader?.id ?? null) : iAmLeader ? session.user.id : null
   );
-  const [deadline, setDeadline] = useState<string | null>(
-    job?.deadline ?? zonedToIso(addDays(today, 1), "17:00", timeZone)
-  );
-  const [total, setTotal] = useState(job ? String(job.totalImages) : "");
+  const [received, setReceived] = useState<string | null>(initialReceived);
+  const [due, setDue] = useState<string | null>(initialDue);
+  const [total, setTotal] = useState(job?.totalImagesManual ? String(job.totalImages) : "");
   const [link, setLink] = useState(job?.driveLink ?? "");
   const [values, setValues] = useState<CustomValues>(job?.customValues ?? {});
   const [valuesTouched, setValuesTouched] = useState(false);
   const [tagIds, setTagIds] = useState<string[]>(job?.tagIds ?? []);
+  const [statusId, setStatusId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -102,27 +110,27 @@ export const JobFormDialog = ({
     }));
   const leaders = people.withRole("LEADER");
   const leaderChoices =
-    job && !leaders.some((person) => person.id === job.leader.id)
+    job?.leader && !leaders.some((person) => person.id === job.leader?.id)
       ? [job.leader, ...leaders]
       : leaders;
+  const statusChoices = jobStatuses.data?.items ?? [];
+  // Untouched: the first status by position, as the API defaults ("Mới nhận").
+  const chosenStatusId = statusId ?? statusChoices[0]?.id ?? null;
   const pending = create.isPending || update.isPending;
-  // Warn (never block) when a new or changed deadline is already over (BUG-PR-26). The dialog is
-  // re-keyed on every open, so "now" is when it opened.
-  const [openedAt] = useState(() => Date.now());
-  const deadlineInPast =
-    deadline !== null &&
-    deadline !== (job?.deadline ?? null) &&
-    new Date(deadline).getTime() < openedAt;
+  // Warn (never block) when a new or changed Ngày giao is already over (BUG-PR-26).
+  const dueInPast = due !== null && due !== initialDue && due < today;
 
   const submit = () => {
     const problems: Errors = {};
     if (!projectId) problems.project = "Chọn dự án.";
-    if (!code.trim()) problems.code = "Nhập mã job.";
-    if (!leaderId) problems.leader = "Chọn Leader phụ trách.";
-    if (!deadline) problems.deadline = "Chọn ngày và giờ.";
-    const totalValue = Number(total);
-    if (!/^\d+$/.test(total.trim()) || totalValue < 1 || totalValue > 1_000_000)
-      problems.total = "Số tấm nguyên ≥ 1.";
+    if (!code.trim()) problems.code = "Nhập gói công việc.";
+    if (!received) problems.received = "Chọn ngày nhận.";
+    if (!due) problems.deadline = "Chọn ngày giao.";
+    else if (received && due < received) problems.deadline = "Ngày giao phải từ ngày nhận trở đi.";
+    const totalText = total.trim();
+    const totalValue = totalText === "" ? null : Number(totalText);
+    if (totalValue !== null && (!/^\d+$/.test(totalText) || totalValue > 1_000_000))
+      problems.total = "Số tấm nguyên ≥ 0, hoặc để trống để tự tính.";
     if (link.trim() && !/^https?:\/\//i.test(link.trim()))
       problems.link = "Link phải bắt đầu bằng http:// hoặc https://";
     const custom = validateCustomValues(jobFields, values, { enforceRequired: !job });
@@ -132,31 +140,35 @@ export const JobFormDialog = ({
       Object.keys(problems).length > 0 ||
       Object.keys(custom).length > 0 ||
       !projectId ||
-      !deadline ||
-      !leaderId
+      !received ||
+      !due
     )
       return;
+    const receivedAt = receivedDayToIso(received, timeZone);
+    const deadline = dueDayToIso(due, timeZone);
+    if (!receivedAt || !deadline) return;
 
-    const common = {
-      code: code.trim(),
-      name: name.trim() || null,
-      deadline,
-      totalImages: totalValue,
-      driveLink: link.trim() || null,
-      ...(tagIds.join() !== (job?.tagIds ?? []).join() ? { tagIds } : {})
-    };
     const onError = (failure: unknown) => setFormError(productionErrorMessage(failure));
     if (job) {
+      const totalChanged = job.totalImagesManual
+        ? totalValue !== job.totalImages
+        : totalValue !== null;
       update.mutate(
         {
-          ...common,
+          ...(code.trim() !== job.code ? { code: code.trim() } : {}),
           ...(projectId !== job.project.id ? { projectId } : {}),
-          ...(canChooseLeader && leaderId !== job.leader.id ? { leaderId } : {}),
+          // Days the user did not change keep their stored time.
+          ...(received !== initialReceived ? { receivedAt } : {}),
+          ...(due !== initialDue ? { deadline } : {}),
+          ...(totalChanged ? { totalImages: totalValue } : {}),
+          ...((link.trim() || null) !== job.driveLink ? { driveLink: link.trim() || null } : {}),
+          ...(canChooseLeader && leaderId !== (job.leader?.id ?? null) ? { leaderId } : {}),
+          ...(tagIds.join() !== job.tagIds.join() ? { tagIds } : {}),
           ...(valuesTouched ? { customValues: toCustomValuesPayload(jobFields, values) } : {})
         },
         {
           onSuccess: (saved) => {
-            toast.success(`Đã lưu job ${saved.code}`);
+            toast.success(`Đã lưu gói ${saved.code}`);
             onSaved?.(saved);
             onClose();
           },
@@ -165,7 +177,19 @@ export const JobFormDialog = ({
       );
     } else {
       create.mutate(
-        { ...common, projectId, leaderId, customValues: toCustomValuesPayload(jobFields, values) },
+        {
+          projectId,
+          code: code.trim(),
+          receivedAt,
+          deadline,
+          leaderId,
+          totalImages: totalValue,
+          driveLink: link.trim() || null,
+          // Catalog not loaded (or failed): the API applies the default status.
+          ...(chosenStatusId ? { jobStatusId: chosenStatusId } : {}),
+          ...(tagIds.length > 0 ? { tagIds } : {}),
+          customValues: toCustomValuesPayload(jobFields, values)
+        },
         {
           onSuccess: (saved) => {
             toast.success(`Đã tạo job ${saved.code}`);
@@ -195,9 +219,12 @@ export const JobFormDialog = ({
           }}
         >
           <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
-            <DialogTitle>{job ? `Sửa job ${job.code}` : "Tạo job"}</DialogTitle>
+            <DialogTitle className="[overflow-wrap:anywhere]">
+              {job ? `Sửa job ${job.code}` : "Tạo job"}
+            </DialogTitle>
             <DialogDescription>
-              Một job là một gói ảnh của dự án; Leader phụ trách chia task cho nhân viên.
+              Một job là một gói công việc của dự án (như trong file work log); các dòng công việc
+              được chia sau.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
@@ -213,107 +240,146 @@ export const JobFormDialog = ({
               />
               {errors.project ? <FieldError>{errors.project}</FieldError> : null}
             </Field>
+            <Field data-invalid={Boolean(errors.code)}>
+              <FieldLabel htmlFor={`${ids}-code`}>Gói công việc</FieldLabel>
+              <Input
+                id={`${ids}-code`}
+                autoFocus={!job}
+                value={code}
+                maxLength={jobCodeMaxLength}
+                placeholder="Thư mục ảnh hoặc tên batch, ví dụ: 2026-10/Batch 1"
+                aria-invalid={Boolean(errors.code)}
+                onChange={(event) => setCode(event.target.value)}
+              />
+              {errors.code ? (
+                <FieldError>{errors.code}</FieldError>
+              ) : (
+                <FieldDescription className="text-xs">
+                  Folder hình, hỏi leader nếu không rõ. Mỗi gói chỉ có một job trong dự án.
+                </FieldDescription>
+              )}
+            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={Boolean(errors.code)}>
-                <FieldLabel htmlFor={`${ids}-code`}>Mã job</FieldLabel>
-                <Input
-                  id={`${ids}-code`}
-                  autoFocus={!job}
-                  value={code}
-                  maxLength={160}
-                  placeholder="Ví dụ: VD JO0001_Batch 1"
-                  aria-invalid={Boolean(errors.code)}
-                  onChange={(event) => setCode(event.target.value)}
+              <Field data-invalid={Boolean(errors.received)}>
+                <FieldLabel htmlFor={`${ids}-received`}>Ngày nhận</FieldLabel>
+                <DateField
+                  id={`${ids}-received`}
+                  value={received}
+                  onChange={setReceived}
+                  today={today}
+                  aria-invalid={Boolean(errors.received)}
                 />
-                {errors.code ? <FieldError>{errors.code}</FieldError> : null}
+                {errors.received ? <FieldError>{errors.received}</FieldError> : null}
               </Field>
-              <Field>
-                <FieldLabel htmlFor={`${ids}-name`}>
-                  Tên <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
-                </FieldLabel>
-                <Input
-                  id={`${ids}-name`}
-                  value={name}
-                  maxLength={300}
-                  onChange={(event) => setName(event.target.value)}
+              <Field data-invalid={Boolean(errors.deadline)}>
+                <FieldLabel htmlFor={`${ids}-due`}>Ngày giao</FieldLabel>
+                <DateField
+                  id={`${ids}-due`}
+                  value={due}
+                  onChange={setDue}
+                  today={today}
+                  aria-invalid={Boolean(errors.deadline)}
                 />
+                {errors.deadline ? (
+                  <FieldError>{errors.deadline}</FieldError>
+                ) : dueInPast ? (
+                  <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
+                    <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                    Ngày giao đã qua — dòng chưa xong sẽ bị tính trễ ngay.
+                  </p>
+                ) : (
+                  <FieldDescription className="text-xs">
+                    Mặc định cho ngày nhận / ngày giao của các dòng.
+                  </FieldDescription>
+                )}
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={Boolean(errors.leader)}>
-                <FieldLabel htmlFor={`${ids}-leader`}>Leader phụ trách</FieldLabel>
+              <Field>
+                <FieldLabel htmlFor={`${ids}-leader`}>
+                  Leader phụ trách{" "}
+                  <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+                </FieldLabel>
                 <PersonSelect
                   id={`${ids}-leader`}
                   people={leaderChoices}
                   value={leaderId}
                   onChange={setLeaderId}
-                  placeholder={people.canList ? "Chọn Leader" : "Bạn"}
+                  noneLabel="Chưa có leader"
                   disabled={!canChooseLeader || !people.canList}
-                  invalid={Boolean(errors.leader)}
                 />
-                {errors.leader ? (
-                  <FieldError>{errors.leader}</FieldError>
-                ) : job && !canChooseLeader ? (
-                  <FieldDescription className="text-xs">
-                    Chỉ Account hoặc Quản trị đổi được Leader.
-                  </FieldDescription>
-                ) : null}
+                <FieldDescription className="text-xs">
+                  {job && !canChooseLeader
+                    ? "Bạn không có quyền đổi Leader của job."
+                    : "Chưa có leader: mọi Leader đều quản lý được job."}
+                </FieldDescription>
               </Field>
               <Field data-invalid={Boolean(errors.total)}>
-                <FieldLabel htmlFor={`${ids}-total`}>Tổng số tấm</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-total`}>
+                  Tổng tấm <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+                </FieldLabel>
                 <Input
                   id={`${ids}-total`}
                   inputMode="numeric"
                   value={total}
+                  placeholder={
+                    job && !job.totalImagesManual
+                      ? `Tự tính: ${formatInteger(job.totalImages)}`
+                      : "Tự tính theo các dòng"
+                  }
                   aria-invalid={Boolean(errors.total)}
                   onChange={(event) => setTotal(event.target.value)}
                   className="tabular-nums"
                 />
-                {errors.total ? <FieldError>{errors.total}</FieldError> : null}
+                {errors.total ? (
+                  <FieldError>{errors.total}</FieldError>
+                ) : (
+                  <FieldDescription className="text-xs">
+                    Để trống: bằng tổng số lượng các dòng, tự cập nhật.
+                  </FieldDescription>
+                )}
               </Field>
             </div>
-            <Field data-invalid={Boolean(errors.deadline)}>
-              <FieldLabel htmlFor={`${ids}-deadline`}>Deadline giao khách</FieldLabel>
-              <DateTimeField
-                id={`${ids}-deadline`}
-                value={deadline}
-                onChange={setDeadline}
-                timeZone={timeZone}
-                today={today}
-                invalid={Boolean(errors.deadline)}
-                aria-label="Deadline"
-              />
-              {errors.deadline ? (
-                <FieldError>{errors.deadline}</FieldError>
-              ) : deadlineInPast ? (
-                <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
-                  <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                  Deadline này đã qua — task chia từ job sẽ bị tính trễ ngay. Vẫn lưu được nếu bạn
-                  chắc chắn.
-                </p>
-              ) : (
-                <FieldDescription className="text-xs">
-                  Deadline mặc định của task = deadline job − buffer QC của dự án ({timeZone}).
-                </FieldDescription>
+            <div className={cn("grid gap-4", !job && "sm:grid-cols-2")}>
+              {job ? null : (
+                <Field>
+                  <FieldLabel htmlFor={`${ids}-status`}>
+                    Trạng thái{" "}
+                    <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+                  </FieldLabel>
+                  <JobStatusSelect
+                    id={`${ids}-status`}
+                    statuses={statusChoices}
+                    value={chosenStatusId}
+                    onChange={setStatusId}
+                    placeholder={jobStatuses.isPending ? "Đang tải…" : "Trạng thái mặc định"}
+                    disabled={statusChoices.length === 0}
+                  />
+                  <FieldDescription className="text-xs">
+                    {jobStatuses.isError
+                      ? "Không tải được danh sách: job nhận trạng thái mặc định."
+                      : "Đổi sau ở trang job."}
+                  </FieldDescription>
+                </Field>
               )}
-            </Field>
-            <Field data-invalid={Boolean(errors.link)}>
-              <FieldLabel htmlFor={`${ids}-link`}>
-                Link thư mục ảnh{" "}
-                <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
-              </FieldLabel>
-              <Input
-                id={`${ids}-link`}
-                type="url"
-                inputMode="url"
-                value={link}
-                maxLength={2000}
-                placeholder="https://…"
-                aria-invalid={Boolean(errors.link)}
-                onChange={(event) => setLink(event.target.value)}
-              />
-              {errors.link ? <FieldError>{errors.link}</FieldError> : null}
-            </Field>
+              <Field data-invalid={Boolean(errors.link)}>
+                <FieldLabel htmlFor={`${ids}-link`}>
+                  Link thư mục ảnh{" "}
+                  <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+                </FieldLabel>
+                <Input
+                  id={`${ids}-link`}
+                  type="url"
+                  inputMode="url"
+                  value={link}
+                  maxLength={2000}
+                  placeholder="https://…"
+                  aria-invalid={Boolean(errors.link)}
+                  onChange={(event) => setLink(event.target.value)}
+                />
+                {errors.link ? <FieldError>{errors.link}</FieldError> : null}
+              </Field>
+            </div>
             <Field>
               <FieldLabel>Tag</FieldLabel>
               <TagPicker

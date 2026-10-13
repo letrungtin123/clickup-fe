@@ -1,7 +1,7 @@
 import { cn } from "cn";
 import { BadgeCheck, ChevronsDown, CornerDownRight, ListX, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { SegmentedControl } from "@/components/shared/radio-controls";
 import { EmptyState, LoadMoreError } from "@/components/shared/states";
@@ -80,7 +80,9 @@ export const EntriesList = ({
       { value: "adjust", label: "Điều chỉnh" }
     ] as const
   )
-    .filter((option) => option.value === "all" || option.value === filter || counts[option.value] > 0)
+    .filter(
+      (option) => option.value === "all" || option.value === filter || counts[option.value] > 0
+    )
     .map((option) => ({ value: option.value, label: `${option.label} (${counts[option.value]})` }));
 
   if (entries.length === 0) {
@@ -89,7 +91,7 @@ export const EntriesList = ({
         size="sm"
         icon={ListX}
         title="Chưa có điểm trong kỳ này"
-        description="Điểm được ghi ngay khi bạn chuyển task sang trạng thái xong, hoặc khi QC kiểm xong."
+        description="Điểm được ghi ngay khi dòng công việc của bạn chuyển sang Done — dòng Checking ghi điểm QC."
       />
     );
   }
@@ -268,7 +270,10 @@ const EntryRow = ({ entry }: { entry: ScoreEntry }) => {
             </Link>
             <Tags entry={entry} />
           </span>
-          <span className="max-w-56 truncate text-xs text-foreground-muted" title={entry.task.jobCode}>
+          <span
+            className="max-w-56 truncate text-xs text-foreground-muted"
+            title={entry.task.jobCode}
+          >
             {adjustment ? "Điều chỉnh số lượng · " : ""}
             {entry.task.jobCode}
           </span>
@@ -293,9 +298,7 @@ const EntryRow = ({ entry }: { entry: ScoreEntry }) => {
           </span>
         ) : null}
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums">
-        {qtyText(entry)}
-      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums">{qtyText(entry)}</td>
       <td className="px-3 py-2.5 text-right text-foreground-muted tabular-nums">
         {formatCredit(entry.unitCredits)}
       </td>
@@ -331,8 +334,9 @@ const EntryCard = ({ entry }: { entry: ScoreEntry }) => {
         </span>
         <span className="truncate text-xs text-foreground-muted">
           {adjustment ? "Điều chỉnh số lượng · " : ""}
-          <span className="font-mono font-semibold text-foreground">{entry.project.code}</span> ·{" "}
-          {entry.process?.name ?? "—"} · {entry.shift.name}
+          <span className="font-mono font-semibold text-foreground">
+            {entry.project.code}
+          </span> · {entry.process?.name ?? "—"} · {entry.shift.name}
           {showKhoanMark(entry) ? " (Khoán)" : ""}
         </span>
         <span className="text-xs text-foreground-muted tabular-nums">

@@ -41,7 +41,9 @@ export const ProductionTaskSheet = () => {
           Thông tin, chuyển trạng thái và bình luận của task.
         </SheetDescription>
         <div className="pt-12">
-          {taskId ? <TaskDetailView taskId={taskId} variant="sheet" onOpenTask={open} /> : null}
+          {taskId ? (
+            <TaskDetailView taskId={taskId} variant="sheet" onOpenTask={open} onDeleted={close} />
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>

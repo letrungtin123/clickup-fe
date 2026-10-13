@@ -1,7 +1,8 @@
 import { cn } from "cn";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router";
+import { Navigate, Outlet, useLocation } from "react-router";
+import { Link, NavLink } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { RequireProductionRole } from "@/features/production/components/production-gate";

@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { ArrowLeft, Bell, BellOff, ChevronDown, AtSign, Info, LogIn, Users } from "lucide-react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { AvatarGroup } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";

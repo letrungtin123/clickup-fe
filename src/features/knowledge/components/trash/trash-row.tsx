@@ -1,12 +1,16 @@
 import { cn } from "cn";
 import { ArchiveRestore, Folder, Hourglass, Info, Trash2 } from "lucide-react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { knowledgeLimits, type KnowledgeCategory, type KnowledgeTrashedItem } from "@/contracts/knowledge";
+import {
+  knowledgeLimits,
+  type KnowledgeCategory,
+  type KnowledgeTrashedItem
+} from "@/contracts/knowledge";
 import { fullDateTime, relativeTime } from "@/features/tasks/time";
 
 import { ImportanceBadge } from "../badges";
@@ -54,7 +58,10 @@ export const TrashRow = ({
           <p className="line-clamp-1 text-[13px] text-foreground-muted">{item.summary}</p>
         ) : null}
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground-muted">
-          <span className="inline-flex min-w-0 items-center gap-1" title="Chuyên mục cũ: khôi phục sẽ đưa mục về đây">
+          <span
+            className="inline-flex min-w-0 items-center gap-1"
+            title="Chuyên mục cũ: khôi phục sẽ đưa mục về đây"
+          >
             <Folder className="size-3.5 shrink-0 text-foreground-subtle" aria-hidden="true" />
             <span className="truncate">{category ?? "Chuyên mục đã xoá"}</span>
           </span>
@@ -68,7 +75,11 @@ export const TrashRow = ({
                 <span className="max-w-40 truncate">{item.deletedBy.displayName}</span>
               </>
             ) : null}
-            <time dateTime={item.deletedAt} title={fullDateTime(item.deletedAt)} className="shrink-0">
+            <time
+              dateTime={item.deletedAt}
+              title={fullDateTime(item.deletedAt)}
+              className="shrink-0"
+            >
               đã xoá {relativeTime(item.deletedAt)}
             </time>
           </span>
@@ -78,7 +89,10 @@ export const TrashRow = ({
           <time
             dateTime={item.purgeAt}
             title={`Tự xoá vĩnh viễn lúc ${fullDateTime(item.purgeAt)}`}
-            className={cn("inline-flex items-center gap-1", countdown.urgent && "font-medium text-danger")}
+            className={cn(
+              "inline-flex items-center gap-1",
+              countdown.urgent && "font-medium text-danger"
+            )}
           >
             <Hourglass className="size-3.5 shrink-0" aria-hidden="true" />
             {countdown.label}
@@ -106,7 +120,10 @@ export const TrashRow = ({
         ) : null}
         {/* Only case today: approval step on and the item was published (members cannot restore it). */}
         {!canRestore && !canPurge ? (
-          <span className="text-xs text-foreground-subtle" title="Kho bật bước duyệt: mục đã ban hành chỉ Quản lý kho khôi phục được.">
+          <span
+            className="text-xs text-foreground-subtle"
+            title="Kho bật bước duyệt: mục đã ban hành chỉ Quản lý kho khôi phục được."
+          >
             Chỉ Quản lý kho khôi phục được
           </span>
         ) : null}
@@ -123,8 +140,8 @@ export const TrashRetentionNote = ({ canPurge }: { canPurge: boolean }) => (
   >
     <Info className="mt-0.5 size-4 shrink-0 text-brand-text" aria-hidden="true" />
     <p>
-      Mục trong thùng rác được giữ {knowledgeLimits.trashRetentionDays} ngày rồi tự xoá vĩnh viễn. Khôi phục đưa mục
-      về đúng chuyên mục cũ.{" "}
+      Mục trong thùng rác được giữ {knowledgeLimits.trashRetentionDays} ngày rồi tự xoá vĩnh viễn.
+      Khôi phục đưa mục về đúng chuyên mục cũ.{" "}
       {canPurge
         ? "Nhật ký của mục vẫn được giữ sau khi xoá vĩnh viễn."
         : "Chỉ Quản lý kho có quyền xoá tri thức mới xoá vĩnh viễn được."}

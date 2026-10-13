@@ -135,6 +135,10 @@ export const planChangeInvalidations = (client: QueryClient, change: PendingChan
   } else {
     for (const [key, data] of lists) if (pagesContain(data, change.jobIds)) add(key);
   }
+  // The "Nhập công việc" job picker shows each job's manual status (PD-038) and lists new jobs.
+  if (change.kinds.has("job") && isCached(client, productionKeys.jobOptions(), false)) {
+    add(productionKeys.jobOptions(), false);
+  }
 
   // My tasks and the QC queue: refetch when they hold a changed task. A task hint they do not hold
   // may be a new assignment: mark stale and refresh later (throttled) while on screen.
@@ -297,7 +301,10 @@ export const patchQcQueue = (
   return { ...data, items };
 };
 
-/** Job list rows refreshed from a job the API returned (detail fields dropped). */
+/**
+ * Job list rows refreshed from a job the API returned (detail fields dropped). A row of the per-person
+ * view keeps its person share: the detail never carries one.
+ */
 export const patchJobInPages = (
   data: InfiniteData<JobPage> | undefined,
   job: JobSummary | JobDetail
@@ -308,7 +315,9 @@ export const patchJobInPages = (
     ...data,
     pages: data.pages.map((page) => ({
       ...page,
-      items: page.items.map((item) => (item.id === summary.id ? summary : item))
+      items: page.items.map((item) =>
+        item.id === summary.id ? { ...summary, personShare: item.personShare } : item
+      )
     }))
   };
 };

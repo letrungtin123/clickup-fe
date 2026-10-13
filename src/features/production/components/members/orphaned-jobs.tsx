@@ -9,8 +9,8 @@ import {
   X
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
-import { Link } from "react-router";
+import { useState } from "react";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,9 @@ import {
 import type { ProductionMember } from "@/contracts/production-catalog";
 import type { LedJob } from "@/contracts/users-admin";
 
-import { useLedJobs, useProductionMe, useWorkflow } from "../../hooks";
+import { useLedJobs, useProductionMe } from "../../hooks";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
-import { StatusChip } from "../jobs/job-bits";
+import { JobStatusChip } from "../jobs/job-bits";
 import { InfoNote, RowsSkeleton } from "../settings-kit";
 import { formatLedDeadline, jobsLedByHref, orphanTitle, type OrphanNotice } from "./member-admin";
 
@@ -39,15 +39,6 @@ import { formatLedDeadline, jobsLedByHref, orphanTitle, type OrphanNotice } from
 
 const FALLBACK_TIMEZONE = "Asia/Ho_Chi_Minh";
 
-/** Status colours come from the workflow (the job payload only names the status). */
-const useStatusColors = () => {
-  const workflow = useWorkflow();
-  return useMemo(
-    () => new Map((workflow.data?.statuses ?? []).map((status) => [status.code, status.color])),
-    [workflow.data]
-  );
-};
-
 export const LedJobList = ({
   jobs,
   className
@@ -56,7 +47,6 @@ export const LedJobList = ({
   className?: string;
 }) => {
   const me = useProductionMe();
-  const colors = useStatusColors();
   const timeZone = me.data?.settings.timezone ?? FALLBACK_TIMEZONE;
   // "Trễ hạn" against the moment the list appeared (render stays pure).
   const [now] = useState(() => Date.now());
@@ -91,18 +81,7 @@ export const LedJobList = ({
                     {late ? " · trễ hạn" : null}
                   </span>
                   <span className="tabular-nums">{job.taskCount} task</span>
-                  <StatusChip
-                    size="sm"
-                    className="h-5 max-w-40 px-2 text-[11px]"
-                    status={
-                      job.statusName
-                        ? {
-                            name: job.statusName,
-                            color: colors.get(job.statusCode ?? "") ?? "gray"
-                          }
-                        : null
-                    }
-                  />
+                  <JobStatusChip size="sm" status={job.jobStatus} className="max-w-40" />
                 </span>
               </span>
               <ChevronRight

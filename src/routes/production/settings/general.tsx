@@ -1,7 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { cn } from "cn";
 import { AnimatePresence, motion } from "motion/react";
 import { Globe2, Info, Save, Undo2 } from "lucide-react";
-import { useId, type ReactNode } from "react";
+import { Fragment, useId, type ReactNode } from "react";
 import { Controller, useForm, useWatch, type Control, type FieldPath } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -9,10 +10,24 @@ import { z } from "zod";
 import { ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import type { ProductionSettings } from "@/contracts/production-catalog";
+import {
+  isKpiCloseDay,
+  kpiCloseDayEndOfMonth,
+  KhoanPayPolicySchema,
+  type KhoanPayPolicy,
+  type ProductionSettings
+} from "@/contracts/production-catalog";
 import {
   FormAlert,
   InfoNote,
@@ -21,8 +36,24 @@ import {
   SettingsSection
 } from "@/features/production/components/settings-kit";
 import { productionErrorMessage } from "@/features/production/errors";
-import { closeDayChange, formatDay, formatKpiPeriod, todayIn } from "@/features/production/format";
+import {
+  closeDayChange,
+  closeDayLabel,
+  formatDay,
+  formatKpiPeriod,
+  todayIn
+} from "@/features/production/format";
 import { useProductionSettings, useUpdateSettings } from "@/features/production/hooks";
+import { khoanPolicyMeta, khoanPolicyOptions } from "@/features/production/kpi/khoan-policy";
+
+/** Close days offered: 1–28 (every month has them), then 31 = "Cuối tháng" (PD-032). */
+const closeDayItems = [
+  ...Array.from({ length: 28 }, (_, index) => ({
+    value: String(index + 1),
+    label: `Ngày ${index + 1}`
+  })),
+  { value: String(kpiCloseDayEndOfMonth), label: "Cuối tháng" }
+];
 
 const intIn = (min: number, max: number, message: string) =>
   z
@@ -47,10 +78,13 @@ const kpiMessage =
   "Nhập số điểm từ 0 đến 1.000.000, không dấu chấm ngăn cách (vd 2610 hoặc 2610,5).";
 
 const formSchema = z.object({
-  kpiCloseDay: intIn(1, 28, "Chọn ngày từ 1 đến 28."),
+  kpiCloseDay: z
+    .string()
+    .refine((value) => isKpiCloseDay(Number(value)), "Chọn ngày từ 1 đến 28 hoặc Cuối tháng."),
   kpiDefaultMember: decimalIn(0, 1_000_000, kpiMessage),
   kpiDefaultLeader: decimalIn(0, 1_000_000, kpiMessage),
   kpiProrateLeave: z.boolean(),
+  khoanPayPolicy: KhoanPayPolicySchema,
   scoresPublic: z.boolean(),
   moneyPublic: z.boolean(),
   dueSoonHours: intIn(1, 72, "Từ 1 đến 72 giờ."),
@@ -64,6 +98,7 @@ const toForm = (settings: ProductionSettings): FormValues => ({
   kpiDefaultMember: String(settings.kpiDefaultMember),
   kpiDefaultLeader: String(settings.kpiDefaultLeader),
   kpiProrateLeave: settings.kpiProrateLeave,
+  khoanPayPolicy: settings.khoanPayPolicy,
   scoresPublic: settings.scoresPublic,
   moneyPublic: settings.moneyPublic,
   dueSoonHours: String(settings.dueSoonHours),
@@ -104,10 +139,9 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
   });
   const closeDay = Number(useWatch({ control, name: "kpiCloseDay" })) || settings.kpiCloseDay;
   // G15: a new close day applies from the next period; the current period keeps its dates.
-  const plan =
-    closeDay >= 1 && closeDay <= 28
-      ? closeDayChange(todayIn(settings.timezone), settings.kpiCloseDays, closeDay)
-      : null;
+  const plan = isKpiCloseDay(closeDay)
+    ? closeDayChange(todayIn(settings.timezone), settings.kpiCloseDays, closeDay)
+    : null;
   const dirty = formState.isDirty;
 
   const onSubmit = handleSubmit((values) =>
@@ -117,6 +151,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
         kpiDefaultMember: toNumber(values.kpiDefaultMember),
         kpiDefaultLeader: toNumber(values.kpiDefaultLeader),
         kpiProrateLeave: values.kpiProrateLeave,
+        khoanPayPolicy: values.khoanPayPolicy,
         scoresPublic: values.scoresPublic,
         moneyPublic: values.moneyPublic,
         dueSoonHours: Number(values.dueSoonHours),
@@ -126,13 +161,17 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
       {
         onSuccess: (saved) => {
           reset(toForm(saved));
+          const notes = [
+            plan?.changes && Number(values.kpiCloseDay) !== plan.inForce
+              ? `Chốt ${closeDayLabel(Number(values.kpiCloseDay))} áp dụng từ kỳ ${formatKpiPeriod(plan.next)}.`
+              : null,
+            values.khoanPayPolicy !== settings.khoanPayPolicy
+              ? `Tiền Khoán: “${khoanPolicyMeta[values.khoanPayPolicy].label}” — áp dụng cho lần chốt tiếp theo.`
+              : null
+          ].filter((note): note is string => note !== null);
           toast.success(
             "Đã lưu cài đặt sản xuất",
-            plan?.changes && Number(values.kpiCloseDay) !== plan.inForce
-              ? {
-                  description: `Ngày chốt ${values.kpiCloseDay} áp dụng từ kỳ ${formatKpiPeriod(plan.next)}.`
-                }
-              : undefined
+            notes.length > 0 ? { description: notes.join(" ") } : undefined
           );
         },
         onError: (error) => setError("root", { message: productionErrorMessage(error) })
@@ -141,12 +180,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
   );
 
   const numberField = (
-    name:
-      | "kpiCloseDay"
-      | "kpiDefaultMember"
-      | "kpiDefaultLeader"
-      | "dueSoonHours"
-      | "anomalyFailPercent",
+    name: "kpiDefaultMember" | "kpiDefaultLeader" | "dueSoonHours" | "anomalyFailPercent",
     label: string,
     hint: ReactNode,
     suffix: string
@@ -185,12 +219,51 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
         description="Áp dụng cho chốt KPI hằng tháng và dự báo trên bảng điểm."
       >
         <div className="divide-y">
-          {numberField(
-            "kpiCloseDay",
-            "Ngày chốt KPI",
-            <CloseDayHint plan={plan} closeDay={closeDay} />,
-            "hằng tháng"
-          )}
+          <SettingRow
+            labelId={`${ids}-kpiCloseDay`}
+            label="Ngày chốt KPI"
+            hint={<CloseDayHint plan={plan} closeDay={closeDay} />}
+            error={formState.errors.kpiCloseDay?.message}
+            control={
+              <Controller
+                control={control}
+                name="kpiCloseDay"
+                render={({ field }) => (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      items={closeDayItems}
+                      value={field.value}
+                      onValueChange={(next: string | null) => {
+                        if (next) field.onChange(next);
+                      }}
+                    >
+                      <SelectTrigger
+                        aria-labelledby={`${ids}-kpiCloseDay`}
+                        aria-invalid={Boolean(formState.errors.kpiCloseDay)}
+                        onBlur={field.onBlur}
+                        className="w-28"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {closeDayItems.map((item) => (
+                          <Fragment key={item.value}>
+                            {item.value === String(kpiCloseDayEndOfMonth) ? (
+                              <SelectSeparator />
+                            ) : null}
+                            <SelectItem value={item.value}>{item.label}</SelectItem>
+                          </Fragment>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="w-16 text-xs whitespace-nowrap text-foreground-muted">
+                      {closeDay === kpiCloseDayEndOfMonth ? "" : "hằng tháng"}
+                    </span>
+                  </div>
+                )}
+              />
+            }
+          />
           {numberField(
             "kpiDefaultMember",
             "KPI mặc định – Nhân viên",
@@ -208,6 +281,18 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
             name="kpiProrateLeave"
             label="Tính KPI theo ngày nghỉ"
             hint="Giảm chỉ tiêu tháng theo số ngày nghỉ đã được duyệt."
+          />
+          <Controller
+            control={control}
+            name="khoanPayPolicy"
+            render={({ field }) => (
+              <KhoanPolicyRow
+                labelId={`${ids}-khoanPayPolicy`}
+                value={field.value}
+                onChange={field.onChange}
+                saved={settings.khoanPayPolicy}
+              />
+            )}
           />
         </div>
       </SettingsSection>
@@ -312,16 +397,21 @@ const CloseDayHint = ({
   closeDay: number;
 }) => {
   if (!plan) {
-    return <>Kỳ tính từ ngày sau ngày chốt tháng trước đến hết ngày chốt tháng này.</>;
+    return (
+      <>
+        Kỳ tính từ ngày sau ngày chốt tháng trước đến hết ngày chốt tháng này; “Cuối tháng” = đúng
+        tháng dương lịch.
+      </>
+    );
   }
-  const current = `Kỳ hiện tại ${formatKpiPeriod(plan.current.period)}: ${formatDay(plan.current.start)} – ${formatDay(plan.current.end)} (chốt ngày ${plan.inForce}).`;
+  const current = `Kỳ hiện tại ${formatKpiPeriod(plan.current.period)}: ${formatDay(plan.current.start)} – ${formatDay(plan.current.end)} (chốt ${closeDayLabel(plan.inForce)}).`;
   if (plan.changes) {
     return (
       <>
         {current}{" "}
         <span className="font-medium text-brand-text">
           {closeDay === plan.inForce
-            ? `Lưu sẽ bỏ lịch đổi sang ngày ${plan.scheduled}; kỳ ${formatKpiPeriod(plan.next)} vẫn chốt ngày ${plan.inForce}.`
+            ? `Lưu sẽ bỏ lịch đổi sang ${closeDayLabel(plan.scheduled)}; kỳ ${formatKpiPeriod(plan.next)} vẫn chốt ${closeDayLabel(plan.inForce)}.`
             : `Áp dụng từ kỳ ${formatKpiPeriod(plan.next)} (${formatDay(plan.nextRange.from)} – ${formatDay(plan.nextRange.to)}); kỳ hiện tại giữ nguyên.`}
         </span>
       </>
@@ -330,7 +420,7 @@ const CloseDayHint = ({
   if (plan.scheduled !== plan.inForce) {
     return (
       <>
-        {current} Đã hẹn chốt ngày {plan.scheduled} từ kỳ {formatKpiPeriod(plan.next)} (
+        {current} Đã hẹn chốt {closeDayLabel(plan.scheduled)} từ kỳ {formatKpiPeriod(plan.next)} (
         {formatDay(plan.nextRange.from)} – {formatDay(plan.nextRange.to)}).
       </>
     );
@@ -338,19 +428,94 @@ const CloseDayHint = ({
   return (
     <>
       {current} Đổi ngày chốt sẽ áp dụng từ kỳ sau; kỳ đang chạy giữ nguyên ngày bắt đầu và kết
-      thúc.
+      thúc. “Cuối tháng” = mỗi kỳ đúng một tháng dương lịch.
     </>
   );
 };
 
+/**
+ * Khoán pay policy (PD-033): two option cards with a one-line explanation each, stacked on phones.
+ * The setting applies to the next settlement run (automatic or re-run) and to provisional figures.
+ */
+const KhoanPolicyRow = ({
+  labelId,
+  value,
+  onChange,
+  saved
+}: {
+  labelId: string;
+  value: KhoanPayPolicy;
+  onChange: (value: KhoanPayPolicy) => void;
+  saved: KhoanPayPolicy;
+}) => (
+  <div className="flex flex-col gap-2.5 px-4 py-3.5 md:px-5">
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span id={labelId} className="text-[13px] font-medium">
+        Tiền Khoán khi chốt KPI
+      </span>
+      <p className="text-xs leading-relaxed text-foreground-muted">
+        Đạt KPI = điểm chính thức (gồm OT và QC) ≥ chỉ tiêu. Áp dụng cho lần chốt tiếp theo; kỳ đã
+        chốt giữ kết quả cho tới khi chạy chốt lại.
+        {value !== saved ? (
+          <span className="font-medium text-brand-text"> Lưu để đổi chính sách.</span>
+        ) : null}
+      </p>
+    </div>
+    <div role="radiogroup" aria-labelledby={labelId} className="grid gap-2 sm:grid-cols-2">
+      {khoanPolicyOptions.map((policy) => {
+        const checked = value === policy;
+        return (
+          <button
+            key={policy}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            onClick={() => onChange(policy)}
+            className={cn(
+              "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
+              checked ? "border-brand/50 bg-brand-soft" : "hover:bg-surface-hover"
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+                checked ? "border-brand bg-brand" : "border-input bg-surface"
+              )}
+            >
+              {checked ? <span className="size-1.5 rounded-full bg-brand-foreground" /> : null}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] font-medium">
+                {khoanPolicyMeta[policy].label}
+                {policy === "ALWAYS" ? (
+                  <span className="rounded bg-muted px-1.5 py-px text-[11px] font-normal text-foreground-muted">
+                    Mặc định
+                  </span>
+                ) : null}
+              </span>
+              <span className="text-xs leading-relaxed text-foreground-muted">
+                {khoanPolicyMeta[policy].description}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
 const SettingRow = ({
   htmlFor,
+  labelId,
   label,
   hint,
   error,
   control
 }: {
   htmlFor?: string;
+  /** For controls that are not form elements (Select): they point at the label with aria-labelledby. */
+  labelId?: string;
   label: string;
   hint: ReactNode;
   error?: string | undefined;
@@ -358,9 +523,15 @@ const SettingRow = ({
 }) => (
   <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-6 md:px-5">
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <label htmlFor={htmlFor} className="text-[13px] font-medium">
-        {label}
-      </label>
+      {labelId ? (
+        <span id={labelId} className="text-[13px] font-medium">
+          {label}
+        </span>
+      ) : (
+        <label htmlFor={htmlFor} className="text-[13px] font-medium">
+          {label}
+        </label>
+      )}
       <p className="text-xs leading-relaxed text-foreground-muted">{hint}</p>
       {error ? (
         <p role="alert" className="text-xs text-danger">

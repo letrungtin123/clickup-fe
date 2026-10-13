@@ -1,6 +1,6 @@
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";

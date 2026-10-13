@@ -82,7 +82,8 @@ export const TransitionDialog = ({
         problems.qty = `Tối đa ${formatInteger(maxDone)} tấm cho ${formatInteger(task.qtyAssigned)} tấm được giao. Nếu thực tế làm nhiều hơn, hãy báo Leader của job sửa số lượng sau khi Done.`;
       else extras.qtyDone = value;
     }
-    if (asks?.otHours) {
+    // PD-035: Giờ OT is optional, also on the OT shift; left empty, the line keeps its own value.
+    if (asks?.otHours && ot.trim() !== "") {
       const value = Number(ot.replace(",", "."));
       if (
         !Number.isFinite(value) ||
@@ -187,7 +188,9 @@ export const TransitionDialog = ({
           ) : null}
           {asks?.otHours ? (
             <Field data-invalid={Boolean(errors.ot)}>
-              <FieldLabel htmlFor={`${ids}-ot`}>Số giờ OT</FieldLabel>
+              <FieldLabel htmlFor={`${ids}-ot`}>
+                Số giờ OT <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+              </FieldLabel>
               <Input
                 id={`${ids}-ot`}
                 inputMode="decimal"

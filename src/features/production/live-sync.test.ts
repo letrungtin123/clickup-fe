@@ -61,6 +61,7 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
   shift: { id: id(4), name: "Ca ngày", payMode: "POINTS", requiresOtHours: false },
   qtyAssigned: 10,
   qtyDone: null,
+  errorQty: null,
   otHours: null,
   assignedAt: "2026-10-01T01:00:00.000Z",
   deadline: "2026-10-12T10:00:00.000Z",
@@ -71,6 +72,7 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
   parentTaskId: null,
   feedbackId: null,
   note: null,
+  workLink: null,
   isLate: false,
   jobArchived: false,
   qcFailCount: 0,
@@ -80,7 +82,14 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
   lastQcFail: null,
   createdAt: "2026-10-01T01:00:00.000Z",
   updatedAt: "2026-10-01T01:00:00.000Z",
-  capabilities: { transitions: [], canEdit: false, canAssign: false, canEditQty: false },
+  capabilities: {
+    transitions: [],
+    canEdit: false,
+    canAssign: false,
+    canChangeAssignee: false,
+    canEditQty: false,
+    canDelete: false
+  },
   ...extra
 });
 
@@ -91,10 +100,13 @@ const makeJob = (n: number, extra: Partial<JobSummary> = {}): JobSummary => ({
   name: null,
   project: { id: id(2), code: "P", name: "Dự án", clientName: null },
   leader: user(OTHER),
+  receivedAt: "2026-10-10T10:00:00.000Z",
   deadline: "2026-10-12T10:00:00.000Z",
   totalImages: 100,
+  totalImagesManual: true,
   driveLink: null,
   channelId: null,
+  jobStatus: { id: id(90), name: "Mới nhận", color: "slate", isClosed: false },
   status: null,
   qtyAssigned: 0,
   qtyDone: 0,
@@ -102,6 +114,8 @@ const makeJob = (n: number, extra: Partial<JobSummary> = {}): JobSummary => ({
   taskCount: 0,
   lateTaskCount: 0,
   openFeedbackCount: 0,
+  people: { workers: [], qc: [] },
+  personShare: null,
   customValues: {},
   tagIds: [],
   createdBy: null,
@@ -110,7 +124,11 @@ const makeJob = (n: number, extra: Partial<JobSummary> = {}): JobSummary => ({
   ...extra
 });
 
-const pageOf = <T>(items: T[]) => ({ items, pageInfo: { hasMore: false, nextCursor: null } });
+const pageOf = <T>(items: T[]) => ({
+  items,
+  pageInfo: { hasMore: false, nextCursor: null },
+  personTotals: null
+});
 const infinite = <T>(items: T[]) => ({ pages: [pageOf(items)], pageParams: [undefined] });
 
 const change = (events: { jobId: string; taskIds?: string[]; kind: ChangeKind }[]) => {
@@ -362,8 +380,12 @@ describe("patching own writes", () => {
       feedbacks: [],
       capabilities: {
         canEdit: true,
+        canChangeLeader: true,
         canSplit: true,
+        splitOwnOnly: false,
+        canDelete: true,
         canFeedback: false,
+        canChangeStatus: true,
         canCloseFeedback: false,
         canArchive: false,
         bulkActions: []
@@ -375,5 +397,19 @@ describe("patching own writes", () => {
     expect(row && "tasks" in row).toBe(false);
     expect(patched?.pages[0]?.items[1]).toBe(data.pages[0]?.items[1]);
     expect(patchJobInPages(data, makeJob(3))).toBe(data);
+  });
+
+  it("keeps the person share of a per-person row (the detail has none)", () => {
+    const personShare = {
+      processes: ["Clipping"],
+      taskCount: 1,
+      qtyAssigned: 20,
+      qtyDone: 20,
+      qtyChecked: 5
+    };
+    const data = infinite([makeJob(1, { personShare })]);
+    const patched = patchJobInPages(data, makeJob(1, { qtyDone: 40 }));
+    expect(patched?.pages[0]?.items[0]?.qtyDone).toBe(40);
+    expect(patched?.pages[0]?.items[0]?.personShare).toEqual(personShare);
   });
 });

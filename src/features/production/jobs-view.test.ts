@@ -63,6 +63,22 @@ describe("finished jobs (BUG-PR-26)", () => {
         now
       )?.label
     ).toBe("còn 7 giờ");
+    // PD-038: a job set to a closed manual status ("Đã giao khách") has no countdown either.
+    const closed = { id: id(40), name: "Đã giao khách", color: "green" as const, isClosed: true };
+    expect(
+      jobDeadlineCountdown(
+        { ...job, status: status(1, "PROCESSING"), jobStatus: closed },
+        statuses,
+        now
+      )
+    ).toBeNull();
+    expect(
+      jobDeadlineCountdown(
+        { ...job, status: status(1, "PROCESSING"), jobStatus: { ...closed, isClosed: false } },
+        statuses,
+        now
+      )?.label
+    ).toBe("còn 7 giờ");
   });
 });
 

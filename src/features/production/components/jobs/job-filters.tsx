@@ -14,8 +14,9 @@ import { Switch } from "@/components/ui/switch";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import type { CustomField } from "@/contracts/production-catalog";
+import { noLeaderFilter } from "@/contracts/production-jobs";
 
-import { useProductionProjects, useWorkflow } from "../../hooks";
+import { useProductionProjects } from "../../hooks";
 import { activeFilterCount, emptyJobFilters, type JobFilters } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
 import type { Tag } from "../../types";
@@ -23,12 +24,14 @@ import { touchTargets } from "../../ui";
 import { DateField } from "../date-field";
 import { ListFilterBar, ListFilterSections } from "../list-filters";
 import { SearchField } from "../settings-kit";
-import { OptionSelect } from "./pickers";
+import { JobStatusFilter } from "./job-status-filter";
+import { OptionSelect, PersonFilterPicker } from "./pickers";
 
 /**
- * Job list filters (URL state): search, project, status, leader, deadline range, "có task trễ",
- * archived, tags (any of them) and JOB custom fields. Inline on tablet/desktop (tags and custom
- * fields as chips + "Trường & tag"); a bottom sheet on phones.
+ * Job list filters (URL state): search, project, manual job statuses (any of them, PD-038), leader, staff member (searchable; their
+ * jobs as assignee, with their numbers — PD-034), deadline range, "có task trễ", archived, tags (any of them) and JOB custom
+ * fields. Inline on tablet/desktop (tags and custom fields as chips + "Trường & tag"); a bottom
+ * sheet on phones.
  */
 export const JobFiltersBar = ({
   filters,
@@ -171,7 +174,6 @@ const FilterControls = ({
   stacked?: boolean;
 }) => {
   const projects = useProductionProjects();
-  const workflow = useWorkflow();
   const people = useProductionPeople();
   const set = (patch: Partial<JobFilters>) => onChange({ ...filters, ...patch });
   const width = stacked ? "w-full" : "w-40";
@@ -193,29 +195,39 @@ const FilterControls = ({
           className={width}
         />
       </Labeled>
-      <Labeled label="Trạng thái" stacked={stacked}>
-        <OptionSelect
-          options={(workflow.data?.statuses ?? [])
-            .filter((status) => status.active)
-            .map((status) => ({ id: status.id, label: status.name }))}
-          value={filters.statusId}
-          onChange={(statusId) => set({ statusId })}
-          placeholder="Trạng thái"
-          noneLabel="Mọi trạng thái"
-          aria-label="Lọc theo trạng thái"
+      <Labeled label="Trạng thái (khớp bất kỳ)" stacked={stacked}>
+        <JobStatusFilter
+          value={filters.jobStatusIds}
+          onChange={(jobStatusIds) => set({ jobStatusIds })}
+          stacked={stacked}
           className={width}
         />
       </Labeled>
       <Labeled label="Leader" stacked={stacked}>
         <OptionSelect
-          options={people
-            .withRole("LEADER")
-            .map((person) => ({ id: person.id, label: person.displayName }))}
+          options={[
+            // Jobs without a leader (PD-035): every Leader leads them.
+            { id: noLeaderFilter, label: "Chưa có leader" },
+            ...people
+              .withRole("LEADER")
+              .map((person) => ({ id: person.id, label: person.displayName }))
+          ]}
           value={filters.leaderId}
           onChange={(leaderId) => set({ leaderId })}
           placeholder="Leader"
           noneLabel="Mọi Leader"
           aria-label="Lọc theo Leader"
+          className={width}
+        />
+      </Labeled>
+      <Labeled label="Nhân viên (xem phần việc)" stacked={stacked}>
+        <PersonFilterPicker
+          // Anyone who can be given a task (PD-034): the list becomes their jobs and their numbers.
+          people={people.withRole("STAFF", "LEADER")}
+          value={filters.personId}
+          onChange={(personId) => set({ personId })}
+          noneLabel="Mọi nhân viên"
+          aria-label="Xem phần việc của một nhân viên"
           className={width}
         />
       </Labeled>

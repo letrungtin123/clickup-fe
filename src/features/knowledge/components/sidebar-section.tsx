@@ -1,10 +1,24 @@
 import { cn } from "cn";
-import { Archive, BookPlus, Ellipsis, History, Library, Lock, Settings2, Trash2 } from "lucide-react";
+import {
+  Archive,
+  BookPlus,
+  Ellipsis,
+  History,
+  Library,
+  Lock,
+  Settings2,
+  Trash2
+} from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
-import { Link, useMatch, useNavigate } from "react-router";
+import { useMatch, useNavigate } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ProjectIcon } from "@/components/shared/project-icon";
-import { ActionsContextMenu, ActionsDropdown, type RowAction } from "@/components/shared/row-actions";
+import {
+  ActionsContextMenu,
+  ActionsDropdown,
+  type RowAction
+} from "@/components/shared/row-actions";
 import { ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +32,11 @@ import { canCreateSpace } from "../model/access";
  * Sidebar › "Tri thức" (PD-031 §09): spaces in two groups, Công khai and Riêng tư (lock icon), like the
  * project tree. Rendered only for people holding `knowledge.view` (the caller checks).
  */
-export const KnowledgeSidebarSection = ({ onNavigate }: { onNavigate?: (() => void) | undefined }) => {
+export const KnowledgeSidebarSection = ({
+  onNavigate
+}: {
+  onNavigate?: (() => void) | undefined;
+}) => {
   const spaces = useKnowledgeSpaces();
   const permissions = useKnowledgePermissions();
   const setNewSpaceOpen = useUiStore((state) => state.setNewSpaceOpen);
@@ -28,7 +46,11 @@ export const KnowledgeSidebarSection = ({ onNavigate }: { onNavigate?: (() => vo
 
   if (spaces.isPending) {
     return (
-      <div className="flex flex-col gap-1 px-2 py-1" aria-busy="true" aria-label="Đang tải kho tri thức">
+      <div
+        className="flex flex-col gap-1 px-2 py-1"
+        aria-busy="true"
+        aria-label="Đang tải kho tri thức"
+      >
         {[64, 48].map((width) => (
           <div key={width} className="flex h-8 items-center gap-2 px-2">
             <Skeleton className="size-5 rounded-[5px]" />
@@ -39,13 +61,28 @@ export const KnowledgeSidebarSection = ({ onNavigate }: { onNavigate?: (() => vo
     );
   }
   if (spaces.isError) {
-    return <ErrorState size="sm" error={spaces.error} onRetry={() => void spaces.refetch()} retrying={spaces.isFetching} />;
+    return (
+      <ErrorState
+        size="sm"
+        error={spaces.error}
+        onRetry={() => void spaces.refetch()}
+        retrying={spaces.isFetching}
+      />
+    );
   }
 
   const items = spaces.data.items.filter((space) => space.archivedAt === null);
   const groups = [
-    { key: "public", label: "Công khai", spaces: items.filter((space) => space.visibility === "public") },
-    { key: "private", label: "Riêng tư", spaces: items.filter((space) => space.visibility === "private") }
+    {
+      key: "public",
+      label: "Công khai",
+      spaces: items.filter((space) => space.visibility === "public")
+    },
+    {
+      key: "private",
+      label: "Riêng tư",
+      spaces: items.filter((space) => space.visibility === "private")
+    }
   ].filter((group) => group.spaces.length > 0);
 
   if (groups.length === 0) {
@@ -62,29 +99,44 @@ export const KnowledgeSidebarSection = ({ onNavigate }: { onNavigate?: (() => vo
     );
   }
 
-  const tabStop = activeId && items.some((space) => space.id === activeId) ? activeId : items[0]?.id;
+  const tabStop =
+    activeId && items.some((space) => space.id === activeId) ? activeId : items[0]?.id;
 
   return (
     <div className="flex flex-col gap-1.5 px-2">
-      <SpaceLink to="/k" label="Tất cả kho" icon={<Library aria-hidden="true" />} active={homeMatch !== null} onNavigate={onNavigate} />
+      <SpaceLink
+        to="/k"
+        label="Tất cả kho"
+        icon={<Library aria-hidden="true" />}
+        active={homeMatch !== null}
+        onNavigate={onNavigate}
+      />
       <div role="tree" aria-label="Kho tri thức" className="flex flex-col gap-1.5">
-      {groups.map((group) => (
-        <div key={group.key} role="group" aria-label={group.label} className="flex flex-col gap-px">
-          <p aria-hidden="true" className="flex h-6 items-center gap-1 px-2 text-[11px] font-medium text-foreground-subtle">
-            {group.key === "private" ? <Lock className="size-3" /> : null}
-            {group.label}
-          </p>
-          {group.spaces.map((space) => (
-            <SpaceRow
-              key={space.id}
-              space={space}
-              active={space.id === activeId}
-              tabStop={space.id === tabStop}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </div>
-      ))}
+        {groups.map((group) => (
+          <div
+            key={group.key}
+            role="group"
+            aria-label={group.label}
+            className="flex flex-col gap-px"
+          >
+            <p
+              aria-hidden="true"
+              className="flex h-6 items-center gap-1 px-2 text-[11px] font-medium text-foreground-subtle"
+            >
+              {group.key === "private" ? <Lock className="size-3" /> : null}
+              {group.label}
+            </p>
+            {group.spaces.map((space) => (
+              <SpaceRow
+                key={space.id}
+                space={space}
+                active={space.id === activeId}
+                tabStop={space.id === tabStop}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -147,13 +199,27 @@ const SpaceRow = ({
 
   const actions: RowAction[] = [
     ...(space.capabilities.canManage
-      ? [{ key: "settings", label: "Cài đặt kho", icon: Settings2, onSelect: () => go(`${href}/settings`) }]
+      ? [
+          {
+            key: "settings",
+            label: "Cài đặt kho",
+            icon: Settings2,
+            onSelect: () => go(`${href}/settings`)
+          }
+        ]
       : []),
     ...(space.capabilities.canViewAudit
       ? [{ key: "audit", label: "Nhật ký kho", icon: History, onSelect: () => go(`${href}/audit`) }]
       : []),
     ...(space.capabilities.canEdit || space.capabilities.canManage
-      ? [{ key: "trash", label: "Thùng rác của kho", icon: Trash2, onSelect: () => go(`${href}/trash`) }]
+      ? [
+          {
+            key: "trash",
+            label: "Thùng rác của kho",
+            icon: Trash2,
+            onSelect: () => go(`${href}/trash`)
+          }
+        ]
       : [])
   ];
 
@@ -174,7 +240,10 @@ const SpaceRow = ({
     } else if (event.key === "Enter") {
       event.preventDefault();
       go(href);
-    } else if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) && actions.length > 0) {
+    } else if (
+      (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) &&
+      actions.length > 0
+    ) {
       event.preventDefault();
       setMenuOpen(true);
     }
@@ -193,7 +262,8 @@ const SpaceRow = ({
         className={cn(
           "group/row relative flex h-8 items-center gap-2 rounded-md pr-1 pl-2 text-[13px] text-foreground/85 outline-none select-none pointer-coarse:h-10",
           "transition-colors duration-150 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-          active && "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
+          active &&
+            "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
         )}
       >
         <ProjectIcon color={space.color} icon={space.icon} name={space.name} size="sm" />
@@ -205,7 +275,9 @@ const SpaceRow = ({
         >
           {space.name}
         </Link>
-        {space.archivedAt ? <Archive aria-label="Đã lưu trữ" className="size-3 shrink-0 text-foreground-subtle" /> : null}
+        {space.archivedAt ? (
+          <Archive aria-label="Đã lưu trữ" className="size-3 shrink-0 text-foreground-subtle" />
+        ) : null}
         {space.visibility === "private" ? (
           <Lock aria-label="Riêng tư" className="size-3 shrink-0 text-foreground-subtle" />
         ) : null}

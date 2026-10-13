@@ -1,10 +1,10 @@
 import { cn } from "cn";
-import { BadgeCheck, Info, Workflow } from "lucide-react";
+import { Archive, ArchiveRestore, BadgeCheck, Info, Trash2, Workflow } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Process } from "@/contracts/production-catalog";
@@ -35,7 +35,10 @@ const qcConflict = "Chỉ được có một quy trình QC đang dùng. Bỏ QC 
 
 /**
  * Retouch processes shared by every project (SPEC Phase 1). Exactly one active process is the QC
- * process (Checking): its credit is what QC earns per checked image (PD-010).
+ * process (Checking, PD-037): a normal work line done by the QC person, whose points are recorded at
+ * its Done at the project's Checking rate (Khoán points on a Khoán shift). A process nobody has used
+ * yet can be deleted; once tasks, rates or scores refer to it the API answers 409 PROCESS_IN_USE and
+ * it can only be archived.
  */
 export const ProductionProcessesRoute = () => {
   const processes = useProcesses();
@@ -45,6 +48,10 @@ export const ProductionProcessesRoute = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [qcSwitch, setQcSwitch] = useState<{ from: Process; to: Process } | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [deleting, setDeleting] = useState<Process | null>(null);
+  // Keep the wording while the dialog animates out.
+  const [shownDelete, setShownDelete] = useState<Process | null>(null);
+  if (deleting && deleting !== shownDelete) setShownDelete(deleting);
 
   const items = useMemo(() => processes.data?.items ?? [], [processes.data]);
   const active = useMemo(
@@ -103,6 +110,23 @@ export const ProductionProcessesRoute = () => {
     if (set || !cleared) setQcSwitch(null);
   };
 
+  /** Hard delete: only a process nothing refers to; the 409 message says to archive instead. */
+  const confirmDelete = () => {
+    if (!deleting) return;
+    const target = deleting;
+    mutations.remove.mutate(target.id, {
+      onSuccess: () => {
+        setDeleting(null);
+        if (editingId === target.id) setEditingId(null);
+        toast.success(`Đã xoá quy trình ${target.name}`);
+      },
+      onError: (error) => {
+        setDeleting(null);
+        toastProductionError(error);
+      }
+    });
+  };
+
   const row = (process: Process, handle?: ReactNode) => (
     <div
       className={cn("flex items-center gap-2 px-3 py-2 md:px-4", !process.active && "bg-muted/30")}
@@ -152,8 +176,9 @@ export const ProductionProcessesRoute = () => {
             />
             QC
           </TooltipTrigger>
-          <TooltipContent>
-            Điểm của quy trình QC là điểm người QC nhận cho mỗi tấm được kiểm
+          <TooltipContent className="max-w-72">
+            Dòng việc của người QC: điểm ghi khi dòng Done, theo đơn giá của quy trình này trong dự
+            án (ca Khoán: điểm Khoán)
           </TooltipContent>
         </Tooltip>
       ) : (
@@ -163,20 +188,32 @@ export const ProductionProcessesRoute = () => {
         label={process.name}
         active={process.active}
         onEdit={() => setEditingId(process.id)}
-        onToggleActive={() =>
-          void update(
-            process,
-            { active: !process.active },
-            process.active ? `Đã lưu trữ ${process.name}` : `Đã khôi phục ${process.name}`
-          )
-        }
         extra={
-          process.active ? (
-            <DropdownMenuItem onClick={() => setQc(process, !process.isQc)}>
-              <BadgeCheck />
-              {process.isQc ? "Bỏ đánh dấu QC" : "Đặt làm quy trình QC"}
+          <>
+            {process.active ? (
+              <DropdownMenuItem onClick={() => setQc(process, !process.isQc)}>
+                <BadgeCheck />
+                {process.isQc ? "Bỏ đánh dấu QC" : "Đặt làm quy trình QC"}
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() =>
+                void update(
+                  process,
+                  { active: !process.active },
+                  process.active ? `Đã lưu trữ ${process.name}` : `Đã khôi phục ${process.name}`
+                )
+              }
+            >
+              {process.active ? <Archive /> : <ArchiveRestore />}
+              {process.active ? "Lưu trữ" : "Khôi phục"}
             </DropdownMenuItem>
-          ) : null
+            <DropdownMenuItem variant="destructive" onClick={() => setDeleting(process)}>
+              <Trash2 />
+              Xoá
+            </DropdownMenuItem>
+          </>
         }
       />
     </div>
@@ -185,6 +222,11 @@ export const ProductionProcessesRoute = () => {
   return (
     <SettingsPage>
       <PageIntro slug="processes" />
+      <InfoNote icon={BadgeCheck} tone="brand">
+        Quy trình QC (thường là “Checking”) là một dòng việc bình thường do người QC làm: điểm QC
+        được ghi khi dòng Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán
+        thì là điểm Khoán. Luôn có đúng một quy trình đang dùng là QC.
+      </InfoNote>
       <SettingsSection
         title="Danh sách quy trình"
         description="Kéo để sắp xếp thứ tự hiển thị trong bảng đơn giá và form chia task."
@@ -256,8 +298,8 @@ export const ProductionProcessesRoute = () => {
         {!processes.isPending && items.length > 0 && !currentQc ? (
           <div className="border-t p-3">
             <InfoNote icon={Info} tone="warning">
-              Chưa có quy trình QC. Đánh dấu một quy trình (thường là “Checking”) để hệ thống tính
-              điểm QC.
+              Chưa có quy trình QC. Đánh dấu một quy trình (thường là “Checking”) là QC để giao dòng
+              Checking cho người QC và ghi điểm QC khi dòng đó Done.
             </InfoNote>
           </div>
         ) : null}
@@ -271,6 +313,25 @@ export const ProductionProcessesRoute = () => {
         confirmLabel="Chuyển QC"
         pending={switching}
         onConfirm={() => void confirmSwitch()}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && !mutations.remove.isPending && setDeleting(null)}
+        title={`Xoá quy trình ${shownDelete?.name ?? ""}?`}
+        description={
+          <>
+            Chỉ xoá được quy trình chưa từng được dùng (chưa có task, đơn giá hay điểm nào). Nếu đã
+            dùng, hãy Lưu trữ để tắt quy trình mà vẫn giữ lịch sử điểm.
+            {shownDelete?.isQc && shownDelete.active
+              ? " Đây đang là quy trình QC: sau khi xoá, hãy đánh dấu một quy trình khác là QC."
+              : null}
+          </>
+        }
+        confirmLabel="Xoá quy trình"
+        destructive
+        pending={mutations.remove.isPending}
+        onConfirm={confirmDelete}
       />
     </SettingsPage>
   );

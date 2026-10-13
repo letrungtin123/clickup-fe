@@ -87,7 +87,7 @@ describe("navigation by role", () => {
     expect(slugs(["ACCOUNT"])).toEqual(["clients"]);
     expect(slugs(["ADMIN"])).toContain("credit-rules");
     expect(slugs(["ADMIN"])).toEqual(expect.arrayContaining(["kpi", "kpi-settlement"]));
-    expect(slugs(["ADMIN"])).toHaveLength(14);
+    expect(slugs(["ADMIN"])).toHaveLength(16);
   });
 });
 

@@ -1,7 +1,8 @@
 import { cn } from "cn";
 import { ArrowRight, ChevronsDown, History, ListFilter, Quote, ServerCog } from "lucide-react";
 import { useMemo, useState, type MouseEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { LoadMoreError } from "@/components/shared/states";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -48,7 +49,12 @@ export const AuditTable = ({ compact = false, ...props }: LogProps & { compact?:
   const open = useRowOpen();
   return (
     <div className="overflow-x-auto overscroll-x-contain rounded-xl border bg-surface">
-      <table className={cn("w-full table-fixed text-[13px]", compact ? "min-w-[40rem]" : "min-w-[50rem]")}>
+      <table
+        className={cn(
+          "w-full table-fixed text-[13px]",
+          compact ? "min-w-[40rem]" : "min-w-[50rem]"
+        )}
+      >
         <caption className="sr-only">Nhật ký thao tác của kho, mới nhất trước</caption>
         <colgroup>
           {compact ? (
@@ -134,7 +140,11 @@ export const AuditTable = ({ compact = false, ...props }: LogProps & { compact?:
                   />
                 </td>
                 <td className="py-3 pr-4 pl-3">
-                  <AuditDetails entry={entry} resolvers={props.resolvers} versionHref={links.version} />
+                  <AuditDetails
+                    entry={entry}
+                    resolvers={props.resolvers}
+                    versionHref={links.version}
+                  />
                 </td>
               </tr>
             );
@@ -150,7 +160,10 @@ export const AuditTable = ({ compact = false, ...props }: LogProps & { compact?:
 export const AuditCards = (props: LogProps) => {
   const open = useRowOpen();
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border bg-surface" aria-label="Nhật ký thao tác của kho">
+    <ul
+      className="divide-y overflow-hidden rounded-xl border bg-surface"
+      aria-label="Nhật ký thao tác của kho"
+    >
       {props.entries.map((entry) => {
         const links = auditEntryLinks(entry, props.spaceId, props.purged);
         const href = links.version ?? links.item;
@@ -224,7 +237,10 @@ const ActionPill = ({ entry }: { entry: KnowledgeAuditEntry }) => {
         auditToneClass[meta.tone]
       )}
     >
-      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", auditToneDot[meta.tone])} />
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 shrink-0 rounded-full", auditToneDot[meta.tone])}
+      />
       <span className="min-w-0">{meta.label}</span>
     </span>
   );
@@ -236,7 +252,10 @@ const ItemRef = ({
   purged,
   filteredItemId,
   onFilterItem
-}: { entry: KnowledgeAuditEntry; href: string | null } & Pick<LogProps, "purged" | "filteredItemId" | "onFilterItem">) => {
+}: { entry: KnowledgeAuditEntry; href: string | null } & Pick<
+  LogProps,
+  "purged" | "filteredItemId" | "onFilterItem"
+>) => {
   const { itemId } = entry;
   if (!itemId) return <span className="text-foreground-subtle">Kho</span>;
   const title = entry.itemTitle?.trim() || "Mục không tên";
@@ -253,7 +272,9 @@ const ItemRef = ({
       ) : (
         <span className="min-w-0 break-words text-foreground-muted">
           {title}
-          {gone ? <span className="ml-1 text-xs text-foreground-subtle">(đã xoá vĩnh viễn)</span> : null}
+          {gone ? (
+            <span className="ml-1 text-xs text-foreground-subtle">(đã xoá vĩnh viễn)</span>
+          ) : null}
         </span>
       )}
       {filteredItemId !== itemId ? (
@@ -302,13 +323,19 @@ const AuditDetails = ({
       {visible.length > 0 ? (
         <dl className="flex min-w-0 flex-col gap-1">
           {visible.map((change) => (
-            <div key={change.key} className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 leading-5">
+            <div
+              key={change.key}
+              className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 leading-5"
+            >
               <dt className="shrink-0 text-xs text-foreground-muted">{change.label}:</dt>
               <dd className="min-w-0 wrap-break-word">
                 {change.before !== null && change.after !== null ? (
                   <>
                     <span className="text-foreground-muted">{change.before}</span>
-                    <ArrowRight className="mx-1 inline size-3 align-[-1px] text-foreground-subtle" aria-hidden="true" />
+                    <ArrowRight
+                      className="mx-1 inline size-3 align-[-1px] text-foreground-subtle"
+                      aria-hidden="true"
+                    />
                     <span className="sr-only">thành</span>
                     <span className="font-medium text-foreground">{change.after}</span>
                   </>

@@ -2,7 +2,7 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "cn";
 import { CalendarPlus, Coins, Download, FileUp, FolderKanban, Workflow } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";

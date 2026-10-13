@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { Bot, History, UserRound } from "lucide-react";
+import { Bot, HandCoins, History, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -10,6 +10,7 @@ import { formatCredit, formatInteger, formatMoney } from "../../format";
 import { Panel } from "../../scores/components/kit";
 import { formatDayRange, periodLabel } from "../../scores/periods";
 import { useKpiSettlementRuns } from "../hooks";
+import { khoanPolicyMeta } from "../khoan-policy";
 
 // "10:05 06/10/2026": full dates like the rest of the module (dateStyle short gives "6/10/26").
 const dateTime = new Intl.DateTimeFormat("vi-VN", {
@@ -27,7 +28,7 @@ export const SettlementRuns = () => {
   return (
     <Panel
       title="Lịch sử chạy chốt"
-      description="Mỗi lần chạy (tự động hoặc chạy tay) được lưu lại; kết quả hiện hành của kỳ lấy từ lần chạy mới nhất."
+      description="Mỗi lần chạy (tự động hoặc chạy tay) được lưu lại cùng chính sách tiền Khoán đã dùng; kết quả hiện hành của kỳ lấy từ lần chạy mới nhất."
     >
       {runs.isPending ? (
         <div className="flex flex-col gap-2 p-4" aria-hidden="true">
@@ -66,7 +67,9 @@ const RunRow = ({ run }: { run: KpiSettlementRun }) => (
         <span
           className={cn(
             "inline-flex items-center gap-1 rounded px-1.5 py-px text-[11px] font-medium",
-            run.trigger === "AUTO" ? "bg-muted text-foreground-muted" : "bg-brand-soft text-brand-text"
+            run.trigger === "AUTO"
+              ? "bg-muted text-foreground-muted"
+              : "bg-brand-soft text-brand-text"
           )}
         >
           {run.trigger === "AUTO" ? (
@@ -81,8 +84,17 @@ const RunRow = ({ run }: { run: KpiSettlementRun }) => (
             Đang áp dụng
           </span>
         ) : (
-          <span className="rounded bg-muted px-1.5 py-px text-[11px] text-foreground-subtle">Đã thay thế</span>
+          <span className="rounded bg-muted px-1.5 py-px text-[11px] text-foreground-subtle">
+            Đã thay thế
+          </span>
         )}
+        <span
+          className="inline-flex items-center gap-1 rounded border px-1.5 py-px text-[11px] text-foreground-muted"
+          title={khoanPolicyMeta[run.khoanPolicy].description}
+        >
+          <HandCoins className="size-3" aria-hidden="true" />
+          {khoanPolicyMeta[run.khoanPolicy].short}
+        </span>
       </p>
       {run.reason ? (
         <p className="text-xs text-foreground-muted">

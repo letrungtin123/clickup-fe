@@ -71,7 +71,9 @@ const logIcons: Record<TaskLog["action"], LucideIcon> = {
   NOTE: NotebookPen,
   FIELD: Pencil,
   // Job-level edit history (task_id null): deadline, Leader, custom fields, tags…
-  JOB: Briefcase
+  JOB: Briefcase,
+  // A deleted line (PD-036).
+  DELETE: Trash2
 };
 
 const itemTime = (item: TimelineItem) =>

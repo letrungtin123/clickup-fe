@@ -28,11 +28,11 @@ const productionMessages: Record<string, string> = {
   // Fallbacks when the server sends no message (the server-worded set below wins otherwise).
   QTY_DONE_TOO_HIGH:
     "Số tấm hoàn thành vượt mức cho phép. Nếu thực tế làm nhiều hơn, hãy báo Leader của job sửa sau khi Done.",
-  CUSTOM_FIELD_FILTER_INVALID: "Bộ lọc trường tùy chỉnh không còn hợp lệ. Hãy xóa lọc rồi chọn lại.",
+  CUSTOM_FIELD_FILTER_INVALID:
+    "Bộ lọc trường tùy chỉnh không còn hợp lệ. Hãy xóa lọc rồi chọn lại.",
   CUSTOM_FIELDS_FORBIDDEN: "Chỉ Quản trị lọc theo trường tùy chỉnh hoặc tag của thành viên.",
   CUSTOM_FIELDS_INVALID: "Kiểm tra lại các trường tùy chỉnh.",
-  ANOMALY_REVIEW_NOT_OWNER:
-    "Chỉ người đã đánh dấu “Đã xem” (hoặc Quản trị) được bỏ đánh dấu.",
+  ANOMALY_REVIEW_NOT_OWNER: "Chỉ người đã đánh dấu “Đã xem” (hoặc Quản trị) được bỏ đánh dấu.",
   // Production user administration (/production/users, PD-024).
   ORG_ADMIN_PROTECTED: "Tài khoản quản trị tổ chức chỉ superadmin mới thao tác được.",
   SELF_DEACTIVATE_FORBIDDEN: "Bạn không thể tự vô hiệu hóa tài khoản của mình.",
@@ -42,7 +42,8 @@ const productionMessages: Record<string, string> = {
   DEFAULT_ROLE_UNSAFE:
     "Vai trò mặc định “Thành viên” đang có quyền quản trị tổ chức. Nhờ quản trị tổ chức sửa lại.",
   // The server words these two in English: keep production copy.
-  MEMBER_EXISTS: "Email này đã là thành viên. Tìm người đó trong danh sách để gán vai trò sản xuất.",
+  MEMBER_EXISTS:
+    "Email này đã là thành viên. Tìm người đó trong danh sách để gán vai trò sản xuất.",
   ACCOUNT_EXISTS: "Email này đã có tài khoản. Tìm người đó trong danh sách để gán vai trò sản xuất."
 };
 
@@ -104,7 +105,21 @@ const serverWorded = new Set([
   "TAG_NAME_TAKEN",
   "JOB_CODE_TAKEN",
   "KPI_VERSION_EXISTS",
-  "CREDIT_RULE_IN_USE"
+  "CREDIT_RULE_IN_USE",
+  // PD-035 / PD-036 / PD-037: work-log dates, process catalog, job permission matrix, Checking lines.
+  "JOB_DATES_INVALID",
+  "TASK_DATES_INVALID",
+  "PROCESS_IN_USE",
+  "PROCESS_INVALID",
+  "PROJECT_NOT_FOUND",
+  // PD-038: manual job status catalog and the "Nhập công việc" job picker.
+  "JOB_STATUS_NAME_TAKEN",
+  "JOB_STATUS_NOT_FOUND",
+  "JOB_STATUS_LAST",
+  "JOB_STATUS_IN_USE",
+  "JOB_STATUS_REPLACEMENT_INVALID",
+  "JOB_STATUS_LIMIT",
+  "JOB_PROJECT_MISMATCH"
 ]);
 
 /** Production FORBIDDEN answers say who may do it ("Chỉ Leader của job…"); keep that wording. */
@@ -117,7 +132,8 @@ type MessageOptions = {
 };
 
 /** Vietnamese-only letters: a server message without any is an English leftover, not user copy. */
-const looksVietnamese = (message: string) => /[ăâđêôơưàáảãạèéẻẽẹìíỉĩịòóỏõọùúủũụỳýỷỹỵ]/i.test(message);
+const looksVietnamese = (message: string) =>
+  /[ăâđêôơưàáảãạèéẻẽẹìíỉĩịòóỏõọùúủũụỳýỷỹỵ]/i.test(message);
 
 export const productionErrorMessage = (error: unknown, options: MessageOptions = {}) => {
   if (isApiError(error)) {

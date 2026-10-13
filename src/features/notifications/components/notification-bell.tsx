@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
   type ReactNode
 } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -249,7 +249,11 @@ const BellPanel = ({
             description="Giao việc, nhắc tên, bình luận và hạn chót liên quan đến bạn sẽ hiện ở đây."
           />
         ) : (
-          <ul ref={listRef} aria-label={`${items.length} thông báo mới nhất`} className="flex flex-col gap-0.5">
+          <ul
+            ref={listRef}
+            aria-label={`${items.length} thông báo mới nhất`}
+            className="flex flex-col gap-0.5"
+          >
             {items.map((notification) => (
               <li key={notification.id}>
                 <NotificationItem

@@ -70,8 +70,7 @@ describe("orphaned jobs", () => {
       code: `J${index}`,
       name: null,
       deadline: "2026-10-12T03:00:00.000Z",
-      statusCode: null,
-      statusName: null,
+      jobStatus: { id: `${userId}-status`, name: "Đang làm", color: "blue" as const, isClosed: false },
       taskCount: 0
     }))
   });

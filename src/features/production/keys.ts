@@ -7,6 +7,8 @@
  *   ["production", "credit-rules", "matrix", day]            rules effective on `day`
  *   ["production", "credit-rules", "history", project, process]
  *   ["production", "workflow"]                               statuses + transitions
+ *   ["production", "job-statuses"]                           manual job status catalog (PD-038)
+ *   ["production", "job-options", query]                     "Gói công việc" picker of "Nhập công việc"
  *   ["production", "custom-fields"]                          every entity (filtered client-side)
  *   ["production", "settings"]                               admin settings
  *   ["production", "allowed-emails"]                         login whitelist
@@ -42,6 +44,13 @@ export const productionKeys = {
   creditHistory: (projectId: string, processId: string) =>
     ["production", "credit-rules", "history", projectId, processId] as const,
   workflow: () => ["production", "workflow"] as const,
+  /** Manual job status catalog (PD-038). */
+  jobStatuses: () => ["production", "job-statuses"] as const,
+  /** Job picker of "Nhập công việc" (GET /production/jobs/options); without a query: every variant. */
+  jobOptions: (query?: Record<string, unknown>) =>
+    query === undefined
+      ? (["production", "job-options"] as const)
+      : (["production", "job-options", query] as const),
   customFields: () => ["production", "custom-fields"] as const,
   settings: () => ["production", "settings"] as const,
   allowedEmails: () => ["production", "allowed-emails"] as const,

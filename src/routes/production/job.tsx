@@ -10,13 +10,16 @@ import {
   MessageCircleWarning,
   MessageSquare,
   MessagesSquare,
+  ListPlus,
   PencilLine,
   Split,
+  Trash2,
   Undo2,
   XCircle
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 import { toast } from "sonner";
 
 import { ErrorState } from "@/components/shared/states";
@@ -32,6 +35,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { Feedback, JobDetail } from "@/contracts/production-jobs";
+import { useSessionContext } from "@/features/auth/hooks";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { CloseFeedbackDialog } from "@/features/production/components/jobs/close-feedback-dialog";
 import { FeedbackDialog } from "@/features/production/components/jobs/feedback-dialog";
@@ -40,12 +44,13 @@ import {
   FeedbackBadge,
   LateBadge,
   MiniBar,
-  Person,
-  StatusChip
+  Person
 } from "@/features/production/components/jobs/job-bits";
 import { JobFormDialog } from "@/features/production/components/jobs/job-form-dialog";
+import { JobStatusMenu } from "@/features/production/components/jobs/job-status-menu";
 import { JobTasks } from "@/features/production/components/jobs/job-tasks";
 import { SplitTasksDialog } from "@/features/production/components/jobs/split-tasks-dialog";
+import { WorkEntryDialog } from "@/features/production/components/jobs/work-entry-dialog";
 import { ProductionTimeline } from "@/features/production/components/jobs/timeline";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
 import { CustomFieldValue } from "@/features/production/components/custom-field-input";
@@ -54,8 +59,14 @@ import { TagChips } from "@/features/production/components/tag-picker";
 import { fieldsFor, isEmptyValue } from "@/features/production/custom-fields";
 import { productionErrorMessage } from "@/features/production/errors";
 import { formatInteger } from "@/features/production/format";
-import { useCustomFields, useProductionMe, useTags } from "@/features/production/hooks";
 import {
+  useCustomFields,
+  useProductionAccess,
+  useProductionMe,
+  useTags
+} from "@/features/production/hooks";
+import {
+  useDeleteJob,
   useJob,
   useJobTransition,
   useOpenJobChat,
@@ -65,6 +76,7 @@ import {
   assignedNormalQty,
   canSeeJob,
   formatDateTime,
+  formatWorkDay,
   jobDeadlineCountdown,
   jobProgress
 } from "@/features/production/jobs-model";
@@ -74,7 +86,11 @@ import { touchTargets } from "@/features/production/ui";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-/** /production/jobs/:jobId — job header, progress, tasks with their moves, feedback, timeline. */
+/**
+ * /production/jobs/:jobId — the work package (PD-035: Dự án + Gói công việc, Ngày nhận / Ngày giao, optional leader,
+ * Tổng tấm), progress, its lines with their moves, feedback and the timeline. What the caller may change follows the
+ * job permission matrix (job.capabilities, PD-036).
+ */
 export const ProductionJobRoute = () => {
   const { jobId } = useParams();
   const job = useJob(jobId);
@@ -110,7 +126,7 @@ const JobSkeleton = () => (
   </div>
 );
 
-type Dialogs = "split" | "feedback" | "edit" | "archive" | null;
+type Dialogs = "split" | "entry" | "feedback" | "edit" | "archive" | "delete" | null;
 
 const JobPage = ({ job }: { job: JobDetail }) => {
   const me = useProductionMe();
@@ -131,6 +147,16 @@ const JobPage = ({ job }: { job: JobDetail }) => {
   const bulk = useJobTransition(job.id);
   const chat = useOpenJobChat();
   const update = useUpdateJob(job.id);
+  const remove = useDeleteJob(job.id);
+  const access = useProductionAccess();
+  const myId = useSessionContext().user.id;
+  // Mirrors the API: the job's leader (any Leader when it has none, PD-035) or an Admin re-assigns feedback; the
+  // leader, an Account or an Admin creates the job chat.
+  const actsAsLeader = job.leader
+    ? job.leader.id === myId && access.can("LEADER")
+    : access.can("LEADER");
+  const canReassign = actsAsLeader || access.isAdmin;
+  const canCreateChat = actsAsLeader || access.can("ACCOUNT");
   const people = useProductionPeople([
     job.leader,
     job.createdBy,
@@ -145,8 +171,9 @@ const JobPage = ({ job }: { job: JobDetail }) => {
   const [timelineOpen, setTimelineOpen] = useState(false);
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const progress = jobProgress(job);
-  // Over-allocation is about the client's images: feedback redo tasks are extra work, not extra images.
-  const overBy = assignedNormalQty(job.tasks) - job.totalImages;
+  // Over-allocation is about the client's images: feedback redo tasks are extra work, not extra images. An automatic
+  // Tổng tấm follows the lines (PD-035), so only a typed one can be exceeded.
+  const overBy = job.totalImagesManual ? assignedNormalQty(job.tasks) - job.totalImages : 0;
   // An archived job is parked: a countdown ("trễ 8 giờ") means nothing there.
   const deadline = job.archived ? null : jobDeadlineCountdown(job, mover.lookup.statuses);
   const late = job.lateTaskCount > 0;
@@ -166,7 +193,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
   const openFeedbacks = job.feedbacks.filter((feedback) => feedback.status !== "RESOLVED");
   // A feedback waiting to be re-assigned is the Leader's next step: "Giao lại" leads, "Chia task" steps back.
   const awaitingReassign =
-    caps.canSplit && active && openFeedbacks.some((feedback) => feedback.status === "OPEN");
+    canReassign && active && openFeedbacks.some((feedback) => feedback.status === "OPEN");
   // Project name / client often repeat the project code (e.g. "ABC · ABC"): show each part once.
   const subtitle = [job.project.name, job.project.clientName, job.name].filter(
     (part, index, parts): part is string =>
@@ -220,9 +247,14 @@ const JobPage = ({ job }: { job: JobDetail }) => {
               <ChevronLeft className="size-3.5" aria-hidden="true" />
               Job
             </Link>
-            <div className="flex flex-wrap items-start gap-3">
+            {/* Phones: the chips drop under the title. From sm: they sit at the right, centred on the code's first
+                line (the 11px label + gap above it ≈ 1.25rem), and never squeeze the title into a sliver. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <h1 className="text-xl leading-tight font-semibold tracking-[-0.01em] break-words">
+                <span className="text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase">
+                  Gói công việc
+                </span>
+                <h1 className="text-xl leading-tight font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]">
                   {job.code}
                 </h1>
                 <p className="text-[13px] text-foreground-muted">
@@ -230,25 +262,38 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   {subtitle.length > 0 ? ` · ${subtitle.join(" · ")}` : ""}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:mt-5 sm:max-w-[50%] sm:shrink-0 sm:justify-end">
                 {job.archived ? (
-                  <span className="inline-flex h-6 items-center gap-1 rounded-full bg-muted px-2.5 text-xs text-foreground-muted">
+                  <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-muted px-2.5 text-xs whitespace-nowrap text-foreground-muted">
                     <Archive className="size-3.5" aria-hidden="true" />
                     Đã lưu trữ
                   </span>
                 ) : null}
-                <StatusChip status={job.status} />
+                {/* PD-038: the manual status (the line workflow stays on each line below). */}
+                <JobStatusMenu
+                  jobId={job.id}
+                  status={job.jobStatus}
+                  editable={caps.canChangeStatus && active}
+                  align={breakpoint === "mobile" ? "start" : "end"}
+                />
                 <FeedbackBadge count={job.openFeedbackCount} />
               </div>
             </div>
 
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border bg-surface p-3 shadow-xs md:grid-cols-4">
               <Fact label="Leader">
-                <Person user={job.leader} />
+                {job.leader ? (
+                  <Person user={job.leader} />
+                ) : (
+                  <span className="text-foreground-muted">Chưa có leader</span>
+                )}
               </Fact>
-              <Fact label="Deadline">
+              <Fact label="Ngày nhận">
+                <span className="tabular-nums">{formatWorkDay(job.receivedAt, timeZone)}</span>
+              </Fact>
+              <Fact label="Ngày giao">
                 <span className={cn("tabular-nums", late && "font-medium text-danger")}>
-                  {formatDateTime(job.deadline, timeZone, true)}
+                  {formatWorkDay(job.deadline, timeZone)}
                 </span>
                 {deadline || late ? (
                   <span
@@ -257,7 +302,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                       deadline?.late ? "text-danger" : "text-foreground-muted"
                     )}
                   >
-                    {[deadline?.label, late ? `${job.lateTaskCount} task trễ` : null]
+                    {[deadline?.label, late ? `${job.lateTaskCount} dòng trễ` : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
@@ -303,7 +348,12 @@ const JobPage = ({ job }: { job: JobDetail }) => {
               aria-label="Tiến độ"
               className="grid grid-cols-2 gap-3 rounded-xl border bg-surface p-3 shadow-xs sm:grid-cols-4"
             >
-              <ProgressStat label="Tổng tấm" value={job.totalImages} />
+              <ProgressStat
+                label="Tổng tấm"
+                value={job.totalImages}
+                hint={job.totalImagesManual ? undefined : "tự tính"}
+                hintTone="muted"
+              />
               <ProgressStat
                 label="Đã giao"
                 value={job.qtyAssigned}
@@ -336,8 +386,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                     aria-hidden="true"
                   />
                   <span>
-                    Job đã lưu trữ nên chỉ xem được: không chia task, chuyển trạng thái, ghi
-                    feedback hay sửa job.
+                    Job đã lưu trữ nên chỉ xem được: không thêm dòng, chuyển trạng thái, ghi
+                    feedback, sửa hay xoá job.
                     {caps.canArchive ? " Khôi phục job để làm tiếp." : ""}
                   </span>
                 </p>
@@ -357,13 +407,21 @@ const JobPage = ({ job }: { job: JobDetail }) => {
 
             <div className="flex flex-wrap items-center gap-2">
               {caps.canSplit && active ? (
-                <Button
-                  variant={awaitingReassign ? "outline" : "default"}
-                  onClick={() => setDialog("split")}
-                >
-                  <Split />
-                  Chia task
-                </Button>
+                caps.splitOwnOnly ? (
+                  // "create: own" (PD-036): one's own work-log rows, straight into this package.
+                  <Button onClick={() => setDialog("entry")}>
+                    <ListPlus />
+                    Nhập công việc
+                  </Button>
+                ) : (
+                  <Button
+                    variant={awaitingReassign ? "outline" : "default"}
+                    onClick={() => setDialog("split")}
+                  >
+                    <Split />
+                    Chia task
+                  </Button>
+                )
               ) : null}
               {bulkActions.map((action) => (
                 <Button
@@ -382,7 +440,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   Ghi feedback
                 </Button>
               ) : null}
-              {(caps.canEdit && active) || job.channelId ? (
+              {(canCreateChat && active) || job.channelId ? (
                 <Button variant="outline" onClick={openChat} disabled={chat.isPending}>
                   {chat.isPending ? <Spinner /> : <MessagesSquare />}
                   Nhóm chat
@@ -395,7 +453,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                 </Button>
               ) : null}
               {/* Archived: "Khôi phục job" sits in the banner above, so no menu with only that. */}
-              {active && (caps.canEdit || caps.canArchive) ? (
+              {active && (caps.canEdit || caps.canArchive || caps.canDelete) ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={<Button variant="ghost" size="icon" aria-label="Tùy chọn job" />}
@@ -415,6 +473,15 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                         <DropdownMenuItem onClick={() => setDialog("archive")}>
                           <Archive />
                           Lưu trữ job
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
+                    {caps.canDelete ? (
+                      <>
+                        {caps.canEdit || caps.canArchive ? <DropdownMenuSeparator /> : null}
+                        <DropdownMenuItem variant="destructive" onClick={() => setDialog("delete")}>
+                          <Trash2 />
+                          Xoá job
                         </DropdownMenuItem>
                       </>
                     ) : null}
@@ -439,7 +506,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                         <span className="text-xs font-normal text-foreground-muted">
                           {feedback.status === "OPEN"
                             ? "Chờ giao lại"
-                            : `Đang làm lại · ${feedback.taskIds.length} task`}
+                            : `Đang làm lại · ${feedback.taskIds.length} dòng`}
                           {feedback.sourceTaskId
                             ? ` · task gốc #${job.tasks.find((task) => task.id === feedback.sourceTaskId)?.number ?? "?"}`
                             : ""}
@@ -451,9 +518,9 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                         {formatDateTime(feedback.createdAt, timeZone, true)}
                       </p>
                     </div>
-                    {(caps.canSplit && active) || canCloseFeedback ? (
+                    {(canReassign && active) || canCloseFeedback ? (
                       <div className="flex shrink-0 flex-wrap gap-2">
-                        {caps.canSplit && active ? (
+                        {canReassign && active ? (
                           <Button
                             size="sm"
                             variant={feedback.status === "OPEN" ? "default" : "outline"}
@@ -489,7 +556,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
           <section aria-labelledby="job-tasks" className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <h2 id="job-tasks" className="text-sm font-semibold">
-                Task
+                Dòng công việc
               </h2>
               <span className="text-xs text-foreground-muted tabular-nums">{job.tasks.length}</span>
               {late ? <LateBadge label={`${job.lateTaskCount} trễ`} /> : null}
@@ -536,21 +603,39 @@ const JobPage = ({ job }: { job: JobDetail }) => {
 
       {mover.dialog}
       {caps.canSplit ? (
-        <>
-          <SplitTasksDialog
-            key={`split-${dialog === "split"}`}
-            open={dialog === "split"}
-            job={job}
-            onClose={() => setDialog(null)}
-          />
-          <SplitTasksDialog
-            key={`reassign-${reassignFor?.id ?? "none"}`}
-            open={reassignFor !== null}
-            job={job}
-            feedback={reassignFor}
-            onClose={() => setReassignFor(null)}
-          />
-        </>
+        <SplitTasksDialog
+          key={`split-${dialog === "split"}`}
+          open={dialog === "split"}
+          job={job}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      {caps.canSplit && caps.splitOwnOnly ? (
+        <WorkEntryDialog
+          key={`entry-${dialog === "entry"}`}
+          open={dialog === "entry"}
+          // PD-038: the entry starts in this job (and its project).
+          initial={{
+            projectId: job.project.id,
+            job: {
+              id: job.id,
+              code: job.code,
+              projectId: job.project.id,
+              deadline: job.deadline,
+              jobStatus: job.jobStatus
+            }
+          }}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      {canReassign ? (
+        <SplitTasksDialog
+          key={`reassign-${reassignFor?.id ?? "none"}`}
+          open={reassignFor !== null}
+          job={job}
+          feedback={reassignFor}
+          onClose={() => setReassignFor(null)}
+        />
       ) : null}
       {canCloseFeedback ? (
         <CloseFeedbackDialog
@@ -595,6 +680,29 @@ const JobPage = ({ job }: { job: JobDetail }) => {
         }
       />
       <ConfirmDialog
+        open={dialog === "delete"}
+        onOpenChange={(open) => !open && !remove.isPending && setDialog(null)}
+        title={`Xoá job ${job.code}?`}
+        description={`Job và ${job.tasks.length} dòng công việc bị ẩn khỏi mọi danh sách nhưng vẫn giữ trong lịch sử. Điểm / tiền đã ghi cho các dòng được trừ lại bằng dòng điều chỉnh. Gói công việc này có thể được nhập lại sau.`}
+        confirmLabel="Xoá job"
+        destructive
+        pending={remove.isPending}
+        onConfirm={() =>
+          remove.mutate(undefined, {
+            onSuccess: (result) => {
+              toast.success(
+                result.reversedEntries > 0
+                  ? `Đã xoá job và trừ lại điểm của ${result.deletedTasks} dòng`
+                  : "Đã xoá job"
+              );
+              setDialog(null);
+              void navigate("/production/jobs", { replace: true });
+            },
+            onError: (error) => toast.error(productionErrorMessage(error))
+          })
+        }
+      />
+      <ConfirmDialog
         open={dialog === "archive"}
         onOpenChange={(open) => !open && !update.isPending && setDialog(null)}
         title={job.archived ? `Khôi phục job ${job.code}?` : `Lưu trữ job ${job.code}?`}
@@ -627,13 +735,15 @@ const ProgressStat = ({
   value,
   percent,
   tone = "brand",
-  hint
+  hint,
+  hintTone = "warning"
 }: {
   label: string;
   value: number;
   percent?: number;
   tone?: "brand" | "success" | "muted" | "warning";
   hint?: string | undefined;
+  hintTone?: "warning" | "muted";
 }) => (
   <div className="flex flex-col gap-1.5">
     <span className="text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase">
@@ -644,7 +754,16 @@ const ProgressStat = ({
       {percent !== undefined ? (
         <span className="text-xs text-foreground-muted tabular-nums">{percent}%</span>
       ) : null}
-      {hint ? <span className="text-xs font-medium text-warning">{hint}</span> : null}
+      {hint ? (
+        <span
+          className={cn(
+            "text-xs",
+            hintTone === "warning" ? "font-medium text-warning" : "text-foreground-muted"
+          )}
+        >
+          {hint}
+        </span>
+      ) : null}
     </span>
     {percent !== undefined ? <MiniBar value={percent} tone={tone} className="h-1.5" /> : null}
   </div>

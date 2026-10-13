@@ -78,15 +78,23 @@ const TocList = ({
         return (
           <li key={entry.id}>
             <a
-              href={`#${entry.id}`}
+              // No href: desktop browsers would show a URL pill on hover (see router-link.tsx).
+              role="link"
+              tabIndex={0}
               aria-current={current ? "location" : undefined}
               onClick={(event) => {
                 event.preventDefault();
                 onPick(entry.id);
               }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  onPick(entry.id);
+                }
+              }}
               style={{ paddingLeft: `${0.75 + (depths[index] ?? 0) * 0.85}rem` }}
               className={cn(
-                "relative block rounded-md py-1.5 pr-2 leading-snug text-foreground-muted outline-none transition-colors",
+                "relative block cursor-pointer rounded-md py-1.5 pr-2 leading-snug text-foreground-muted outline-none transition-colors",
                 "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-transparent",
                 "hover:bg-surface-hover/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                 large ? "text-[15px] pointer-coarse:py-2.5" : "text-[13px]",

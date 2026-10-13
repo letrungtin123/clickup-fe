@@ -22,6 +22,7 @@ const project = (id: string, code: string, active = true): ProductionProject => 
   id,
   code,
   name: `Dự án ${code}`,
+  description: null,
   clientId: null,
   clientName: id === "p1" ? "Khách Mẫu" : null,
   qcBufferHours: 0,

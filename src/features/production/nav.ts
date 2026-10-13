@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ChartColumnBig,
   ChartNoAxesCombined,
+  CircleDot,
   ClipboardList,
   Coins,
   Factory,
@@ -13,6 +14,7 @@ import {
   Gauge,
   GitBranch,
   LayoutDashboard,
+  LockKeyhole,
   MailCheck,
   Network,
   ScanSearch,
@@ -28,7 +30,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import type { ProductionRole } from "@/contracts/production-catalog";
+import type { JobPermissionScope, ProductionRole } from "@/contracts/production-catalog";
 
 import { hasAnyRole } from "./roles";
 
@@ -44,14 +46,35 @@ export type ProductionNavEntry = {
   roles: readonly ProductionRole[];
   /** Exact match only (overview vs. its children). */
   end?: boolean;
+  /**
+   * Shown by the job permission matrix (PD-036) instead of the roles: whoever may view jobs ("own" or "all") sees it.
+   * The roles still apply when the caller's scope is not known yet.
+   */
+  byJobView?: boolean;
 };
 
 export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
-  { to: "/production/dashboard", label: "Bảng điều khiển", icon: LayoutDashboard, roles: ["LEADER"] },
+  {
+    to: "/production/dashboard",
+    label: "Bảng điều khiển",
+    icon: LayoutDashboard,
+    roles: ["LEADER"]
+  },
   { to: "/production/admin", label: "Quản trị số liệu", icon: Gauge, roles: ["ADMIN"] },
-  { to: "/production/jobs", label: "Job", icon: Briefcase, roles: ["ACCOUNT", "LEADER"] },
-  { to: "/production/my-tasks", label: "Việc của tôi", icon: ClipboardList, roles: ["STAFF", "QC", "LEADER"] },
+  {
+    to: "/production/jobs",
+    label: "Job",
+    icon: Briefcase,
+    roles: ["ACCOUNT", "LEADER"],
+    byJobView: true
+  },
+  {
+    to: "/production/my-tasks",
+    label: "Việc của tôi",
+    icon: ClipboardList,
+    roles: ["STAFF", "QC", "LEADER"]
+  },
   { to: "/production/qc", label: "Hàng chờ QC", icon: ShieldCheck, roles: ["QC"] },
   { to: "/production/scores", label: "Bảng điểm", icon: ChartColumnBig, roles: [], end: true },
   { to: "/production/scores/board", label: "Xếp hạng", icon: Trophy, roles: [] },
@@ -67,13 +90,15 @@ const publicBoardOnly = new Set(["/production/scores/board"]);
 
 export const visibleNavEntries = (
   roles: readonly ProductionRole[],
-  options: { scoresPublic?: boolean } = {}
+  options: { scoresPublic?: boolean; jobView?: JobPermissionScope | undefined } = {}
 ) =>
   roles.length === 0
     ? []
     : productionNavEntries.filter(
         (entry) =>
-          hasAnyRole(roles, entry.roles) &&
+          (entry.byJobView && options.jobView !== undefined
+            ? options.jobView !== "none"
+            : hasAnyRole(roles, entry.roles)) &&
           (options.scoresPublic !== false ||
             roles.includes("ADMIN") ||
             !publicBoardOnly.has(entry.to))
@@ -124,6 +149,15 @@ export const settingsPages: readonly SettingsPage[] = [
     roles: ["ADMIN"]
   },
   {
+    slug: "job-permissions",
+    label: "Phân quyền Job",
+    description:
+      "Vai trò nào được xem, tạo, sửa, xoá job và dòng việc: không, của mình hay tất cả.",
+    icon: LockKeyhole,
+    group: "people",
+    roles: ["ADMIN"]
+  },
+  {
     slug: "clients",
     label: "Khách hàng",
     description: "Khách hàng đặt job, kèm trường tùy chỉnh và tag.",
@@ -134,7 +168,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "projects",
     label: "Dự án",
-    description: "Mã dự án, khách hàng và thời gian dự phòng cho QC.",
+    description: "Mã dự án, tên và mô tả.",
     icon: FolderKanban,
     group: "catalog",
     roles: ["ADMIN"]
@@ -150,7 +184,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "shifts",
     label: "Ca làm",
-    description: "Cách tính công của mỗi ca: tính điểm hoặc khoán theo KPI.",
+    description: "Cách tính công của mỗi ca: tính điểm hoặc khoán (có tiền).",
     icon: CalendarClock,
     group: "catalog",
     roles: ["ADMIN"]
@@ -168,6 +202,14 @@ export const settingsPages: readonly SettingsPage[] = [
     label: "Trạng thái & luồng chuyển",
     description: "Trạng thái task, cờ ghi điểm và ai được chuyển giữa các trạng thái.",
     icon: GitBranch,
+    group: "workflow",
+    roles: ["ADMIN"]
+  },
+  {
+    slug: "job-statuses",
+    label: "Trạng thái job",
+    description: "Trạng thái người đặt cho job (như ClickUp): tên, màu, thứ tự và trạng thái đóng.",
+    icon: CircleDot,
     group: "workflow",
     roles: ["ADMIN"]
   },
@@ -190,7 +232,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "general",
     label: "Cài đặt chung",
-    description: "Ngày chốt KPI, minh bạch điểm/tiền, cảnh báo và chat.",
+    description: "Ngày chốt KPI, chính sách tiền Khoán, minh bạch điểm/tiền, cảnh báo và chat.",
     icon: SlidersHorizontal,
     group: "system",
     roles: ["ADMIN"]

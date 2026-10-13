@@ -23,7 +23,8 @@ import {
   Settings2
 } from "lucide-react";
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Link, useMatch, useNavigate } from "react-router";
+import { useMatch, useNavigate } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ColorDot } from "@/components/shared/color-dot";
 import { ProjectIcon } from "@/components/shared/project-icon";

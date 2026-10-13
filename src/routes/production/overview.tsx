@@ -14,6 +14,7 @@ import {
   Coins,
   Eye,
   EyeOff,
+  HandCoins,
   Network,
   Paperclip,
   ShieldCheck,
@@ -21,15 +22,20 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { useMemo } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProductionRole } from "@/contracts/production-catalog";
 import { useSessionContext } from "@/features/auth/hooks";
-import { LateBadge, StatusChip } from "@/features/production/components/jobs/job-bits";
+import {
+  JobStatusChip,
+  LateBadge,
+  StatusChip
+} from "@/features/production/components/jobs/job-bits";
 import { RoleBadge } from "@/features/production/components/role-chips";
 import {
+  closeDaySchedule,
   formatCredit,
   formatDay,
   formatKpiPeriod,
@@ -38,11 +44,13 @@ import {
   todayIn
 } from "@/features/production/format";
 import { useProductionMe, useTeams } from "@/features/production/hooks";
+import { khoanPolicyMeta } from "@/features/production/kpi/khoan-policy";
 import { useMyScores } from "@/features/production/scores/hooks";
 import { useJobs, useMyTasks, useQcQueue } from "@/features/production/jobs-hooks";
 import {
   flattenPages,
   formatDateTime,
+  formatWorkDay,
   relativeDeadline,
   taskAgenda
 } from "@/features/production/jobs-model";
@@ -167,8 +175,11 @@ export const ProductionOverviewRoute = () => {
                     </span>
                   </>
                 ) : (
-                  `Chốt ngày ${settings.kpiCloseDay} hằng tháng`
+                  `Chốt ${closeDaySchedule(settings.kpiCloseDay)}`
                 )}
+              </Rule>
+              <Rule icon={HandCoins} label="Tiền Khoán">
+                {khoanPolicyMeta[settings.khoanPayPolicy].label}
               </Rule>
               <Rule icon={settings.scoresPublic ? Eye : EyeOff} label="Bảng điểm">
                 {settings.scoresPublic ? "Công khai cho mọi người" : "Riêng tư"}
@@ -596,11 +607,15 @@ const LateJobsCard = ({ timeZone }: { timeZone: string }) => {
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">{job.code}</span>
                     <span className="truncate text-xs text-foreground-muted">
-                      <span className="font-mono">{job.project.code}</span> · hạn{" "}
-                      {formatDateTime(job.deadline, timeZone)}
+                      <span className="font-mono">{job.project.code}</span> · giao{" "}
+                      {formatWorkDay(job.deadline, timeZone)}
                     </span>
                   </span>
-                  <LateBadge label={`${job.lateTaskCount} trễ`} />
+                  {/* The manual status (PD-038) above the late count; a long name ends in "…". */}
+                  <span className="flex max-w-[45%] shrink-0 flex-col items-end gap-0.5">
+                    <JobStatusChip status={job.jobStatus} size="sm" />
+                    <LateBadge label={`${job.lateTaskCount} trễ`} />
+                  </span>
                 </Link>
               </li>
             ))}

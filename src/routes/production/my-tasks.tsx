@@ -14,7 +14,14 @@ import {
   type ScreenReaderInstructions
 } from "@dnd-kit/core";
 import { cn } from "cn";
-import { CheckCheck, ChevronsDown, ClipboardList, Columns3, List } from "lucide-react";
+import {
+  CheckCheck,
+  ChevronsDown,
+  ClipboardList,
+  ClipboardPen,
+  Columns3,
+  List
+} from "lucide-react";
 import { memo, useMemo, useState, type HTMLAttributes } from "react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -30,10 +37,11 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { TaskCard } from "@/features/production/components/jobs/task-card";
 import { TransitionButtons } from "@/features/production/components/jobs/transition-controls";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
+import { WorkEntryDialog } from "@/features/production/components/jobs/work-entry-dialog";
 import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
 import { ListFiltersControl } from "@/features/production/components/list-filters";
 import { todayIn } from "@/features/production/format";
-import { useProductionMe } from "@/features/production/hooks";
+import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
 import { emptyListFilters } from "@/features/production/list-filters";
 import { useUrlListFilters } from "@/features/production/list-filters-hooks";
 import type { MyTasksRole } from "@/features/production/jobs-api";
@@ -82,6 +90,9 @@ export const ProductionMyTasksRoute = () => {
   const [role, setRole] = useState<MyTasksRole>("all");
   const [includeFinished, setIncludeFinished] = useState(false);
   const [view, setView] = useState<View>(readView);
+  // "Nhập công việc" (PD-035): a work-log row for myself (or anyone with "create: all").
+  const canEnter = useProductionAccess().jobScopes.create !== "none";
+  const [entering, setEntering] = useState(false);
   // TASK tags / custom fields, kept in the URL (?tag=…&cf.<key>=…).
   const listFilters = useUrlListFilters("TASK");
   const filtering = listFilters.count > 0;
@@ -139,6 +150,14 @@ export const ProductionMyTasksRoute = () => {
         eyebrow="Sản xuất"
         title="Việc của tôi"
         description="Task bạn làm hoặc kiểm tra, theo trạng thái."
+        actions={
+          canEnter ? (
+            <Button onClick={() => setEntering(true)}>
+              <ClipboardPen />
+              Nhập công việc
+            </Button>
+          ) : undefined
+        }
       >
         <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl<MyTasksRole>
@@ -275,6 +294,13 @@ export const ProductionMyTasksRoute = () => {
         )}
       </div>
       {mover.dialog}
+      {canEnter ? (
+        <WorkEntryDialog
+          key={entering ? "open" : "closed"}
+          open={entering}
+          onClose={() => setEntering(false)}
+        />
+      ) : null}
     </div>
   );
 };

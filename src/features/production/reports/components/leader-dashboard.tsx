@@ -10,7 +10,7 @@ import {
   UsersRound
 } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState } from "@/components/shared/states";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -520,7 +520,7 @@ export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["t
           size="sm"
           icon={UsersRound}
           title="Chưa có điểm trong 8 tuần gần nhất"
-          description="Điểm xuất hiện khi task xong hoặc được QC kiểm xong."
+          description="Điểm xuất hiện khi dòng công việc Done (dòng Checking ghi điểm QC)."
         />
       ) : (
         <div className="p-4">

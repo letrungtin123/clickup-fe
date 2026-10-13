@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import { ShieldCheck, UserRound, Users, type LucideIcon } from "lucide-react";
-import { Navigate, NavLink, Outlet } from "react-router";
+import { Navigate, Outlet } from "react-router";
+import { NavLink } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { P } from "@/features/auth/permissions";

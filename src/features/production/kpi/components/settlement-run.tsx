@@ -1,6 +1,7 @@
 import { cn } from "cn";
-import { CheckCircle2, Play, TriangleAlert } from "lucide-react";
+import { CheckCircle2, HandCoins, Play, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
+import { Link } from "@/components/shared/router-link";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import type { KhoanPayPolicy } from "@/contracts/production-catalog";
 import {
   closeDayOfPeriod,
   kpiPeriodRange,
@@ -22,25 +24,30 @@ import {
 } from "@/contracts/production-scores";
 
 import { ConfirmDialog, FormAlert, InfoNote } from "../../components/settings-kit";
-import { formatCredit, formatInteger, formatMoney } from "../../format";
+import { closeDayLabel, formatCredit, formatInteger, formatMoney } from "../../format";
 import { scoreErrorMessage } from "../../scores/errors";
 import { Panel } from "../../scores/components/kit";
 import { formatDayRange, periodLabel, periodsBetween, shiftPeriod } from "../../scores/periods";
 import { useRunKpiSettlement } from "../hooks";
+import { khoanPolicyMeta, khoanPolicyRule } from "../khoan-policy";
 
 /**
  * Manual KPI settlement (SPEC Phase 6 §5): pick a period, give a mandatory reason, confirm. The
  * period's current results are replaced (idempotent: same inputs give the same numbers) and members
- * plus admins are notified.
+ * plus admins are notified. The run uses the Khoán pay policy of the settings (PD-033): to compare
+ * both, switch it in Cài đặt chung and run the period again — the history keeps every run's policy.
  */
 export const SettlementRunPanel = ({
   currentPeriod,
   closeDays,
+  khoanPolicy,
   onDone
 }: {
   currentPeriod: string;
   /** settings.kpiCloseDays (closeDaysOf): each period keeps the close day in force for it. */
   closeDays: KpiCloseDays;
+  /** settings.khoanPayPolicy: the policy the next run uses. */
+  khoanPolicy: KhoanPayPolicy;
   /** Called with the settled period (the page shows its report). */
   onDone: (period: string) => void;
 }) => {
@@ -96,9 +103,21 @@ export const SettlementRunPanel = ({
   return (
     <Panel
       title="Chạy chốt KPI"
-      description={`Hệ thống tự chốt lúc 23:59 ngày chốt của mỗi kỳ (kỳ đang chạy: ngày ${closeDay}). Chạy tay khi cần sửa kết quả của một kỳ.`}
+      description={`Hệ thống tự chốt lúc 23:59 ngày chốt của mỗi kỳ (kỳ đang chạy: ${closeDayLabel(closeDay)}). Chạy tay khi cần sửa kết quả của một kỳ.`}
       bodyClassName="flex flex-col gap-4 p-4"
     >
+      <InfoNote icon={HandCoins}>
+        Tiền Khoán:{" "}
+        <span className="font-medium text-foreground">{khoanPolicyMeta[khoanPolicy].label}</span> —{" "}
+        {khoanPolicyRule(khoanPolicy)}. Muốn so sánh, đổi ở{" "}
+        <Link
+          to="/production/settings/general"
+          className="font-medium text-brand-text underline-offset-2 hover:underline"
+        >
+          Cài đặt chung
+        </Link>{" "}
+        rồi chạy lại kỳ.
+      </InfoNote>
       <form
         noValidate
         className="grid gap-4 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]"
@@ -177,9 +196,10 @@ export const SettlementRunPanel = ({
         title={`Chốt KPI ${periodLabel(period).toLocaleLowerCase("vi")}?`}
         description={
           <>
-            Tính lại cho mọi người có điểm hoặc KPI trong kỳ {formatDayRange(range.from, range.to)}:
-            đủ KPI thì tiền Khoán được trả, thiếu thì điểm Khoán quy về điểm. Kết quả hiện tại của
-            kỳ bị thay thế và mỗi người nhận thông báo. Lý do: “{reason.trim()}”.
+            Tính lại cho mọi người có điểm hoặc KPI trong kỳ {formatDayRange(range.from, range.to)}
+            theo chính sách “{khoanPolicyMeta[khoanPolicy].label}”: {khoanPolicyRule(khoanPolicy)}.
+            Kết quả hiện tại của kỳ bị thay thế và mỗi người nhận thông báo. Lý do: “{reason.trim()}
+            ”.
           </>
         }
         confirmLabel="Chạy chốt"
@@ -201,7 +221,9 @@ const RunResult = ({ result }: { result: KpiSettlementRunResult }) => {
         <CheckCircle2 className="size-4 text-success" aria-hidden="true" />
         Đã chốt {periodLabel(run.period).toLocaleLowerCase("vi")} cho {formatInteger(run.userCount)}{" "}
         người
-        {run.replacedCount > 0 ? ` (thay ${formatInteger(run.replacedCount)} kết quả cũ)` : ""}.
+        {run.replacedCount > 0
+          ? ` (thay ${formatInteger(run.replacedCount)} kết quả cũ)`
+          : ""} · {khoanPolicyMeta[run.khoanPolicy].short}.
       </p>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Đạt KPI" value={formatInteger(run.metCount)} tone="success" />

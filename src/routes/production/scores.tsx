@@ -1,6 +1,7 @@
 import { CalendarDays, CalendarRange, ChevronLeft, Coins, Sun, Trophy } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ErrorState } from "@/components/shared/states";
@@ -8,12 +9,21 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { KhoanPayPolicy } from "@/contracts/production-catalog";
 import type { MyScores, ScoreEntry, ScoreTotals } from "@/contracts/production-scores";
 import { useSessionContext } from "@/features/auth/hooks";
-import { formatCredit, formatInteger, formatMoney, todayIn } from "@/features/production/format";
+import {
+  closeDayLabel,
+  closeDaySchedule,
+  formatCredit,
+  formatInteger,
+  formatMoney,
+  todayIn
+} from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
 import { flattenPages } from "@/features/production/jobs-model";
 import { MySettlements } from "@/features/production/kpi/components/my-settlements";
+import { khoanProvisionalHint } from "@/features/production/kpi/khoan-policy";
 import {
   EntriesList,
   type EntriesPaging
@@ -69,6 +79,8 @@ export const ProductionScoresRoute = () => {
   const current = kpiPeriodOfDay(today, closeDays);
   const closeDay = closeDayOfPeriod(closeDays, current);
   const change = upcomingCloseDayChange(closeDays, current);
+  // PD-033: what the close does with Khoán money (ALWAYS while /me loads — the default).
+  const khoanPolicy = settings?.khoanPayPolicy ?? "ALWAYS";
   const requested = params.get("period");
   const period = isPeriod(requested) && requested <= current ? requested : current;
   const tab: Tab = params.get("tab") === "settled" ? "settled" : "overview";
@@ -102,7 +114,7 @@ export const ProductionScoresRoute = () => {
         description={
           breakpoint === "mobile"
             ? undefined
-            : `Điểm, tiền Khoán tạm tính và tiến độ KPI. Kỳ KPI chốt ngày ${closeDay} hằng tháng${change ? `; từ kỳ ${formatPeriod(change.fromPeriod)} chốt ngày ${change.closeDay}` : ""}.`
+            : `Điểm, tiền Khoán tạm tính và tiến độ KPI. Kỳ KPI chốt ${closeDaySchedule(closeDay)}${change ? `; từ kỳ ${formatPeriod(change.fromPeriod)} chốt ${closeDayLabel(change.closeDay)}` : ""}.`
         }
         actions={
           <Button
@@ -132,13 +144,18 @@ export const ProductionScoresRoute = () => {
 
       <PageBody>
         {tab === "settled" ? (
-          <MySettlements userId={session.user.id} currentPeriod={current} />
+          <MySettlements
+            userId={session.user.id}
+            currentPeriod={current}
+            khoanPolicy={khoanPolicy}
+          />
         ) : (
           <Overview
             period={period}
             current={current}
             closeDays={closeDays}
             today={today}
+            khoanPolicy={khoanPolicy}
             onPeriodChange={(next) => update({ period: next === current ? null : next })}
           />
         )}
@@ -152,12 +169,14 @@ const Overview = ({
   current,
   closeDays,
   today,
+  khoanPolicy,
   onPeriodChange
 }: {
   period: string;
   current: string;
   closeDays: KpiCloseDays;
   today: string;
+  khoanPolicy: KhoanPayPolicy;
   onPeriodChange: (period: string) => void;
 }) => {
   const range = kpiPeriodRange(period, closeDays);
@@ -216,6 +235,7 @@ const Overview = ({
           period={period}
           isCurrent={period === current}
           today={today}
+          khoanPolicy={khoanPolicy}
         />
       )}
     </>
@@ -237,7 +257,8 @@ const ScoresContent = ({
   paging,
   period,
   isCurrent,
-  today
+  today,
+  khoanPolicy
 }: {
   data: MyScores;
   entries: ScoreEntry[];
@@ -245,6 +266,7 @@ const ScoresContent = ({
   period: string;
   isCurrent: boolean;
   today: string;
+  khoanPolicy: KhoanPayPolicy;
 }) => {
   const { cards, summary } = data;
   const projects = summary.byProject
@@ -290,7 +312,7 @@ const ScoresContent = ({
         >
           <span>
             {summary.moneyKhoanProvisional > 0
-              ? "Nhận tiền nếu đạt KPI khi chốt kỳ; nếu thiếu sẽ quy về điểm."
+              ? khoanProvisionalHint(khoanPolicy)
               : "Chưa có task Khoán có giá trong kỳ."}
           </span>
         </StatCard>
@@ -350,7 +372,7 @@ const ScoresContent = ({
 
       <Panel
         title="Lịch sử ghi điểm"
-        description="Mỗi lần task xong hoặc được QC kiểm ghi một dòng; sửa số tấm sau khi xong thêm dòng điều chỉnh."
+        description="Mỗi dòng công việc ghi một dòng điểm khi Done (dòng Checking: điểm QC); sửa số tấm sau khi xong hoặc xoá dòng thì thêm dòng điều chỉnh."
       >
         <EntriesList entries={entries} paging={paging} />
       </Panel>

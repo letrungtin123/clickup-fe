@@ -11,7 +11,8 @@ import {
   Workflow
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
-import { Link, Navigate, Outlet, useNavigate, useParams, useSearchParams } from "react-router";
+import { Navigate, Outlet, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ColorDot } from "@/components/shared/color-dot";
 import { PageHeader } from "@/components/shared/page-header";
@@ -164,7 +165,10 @@ const ProjectHeader = ({
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate">{list?.name ?? project.name}</span>
           {project.visibility === "private" ? (
-            <Lock className="size-3.5 shrink-0 text-foreground-subtle" aria-label="Dự án riêng tư" />
+            <Lock
+              className="size-3.5 shrink-0 text-foreground-subtle"
+              aria-label="Dự án riêng tư"
+            />
           ) : null}
         </span>
       }
@@ -307,7 +311,13 @@ const ListMenu = ({
         <TooltipTrigger
           render={
             <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-sm" aria-label={`Tùy chọn danh sách ${list.name}`} />}
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Tùy chọn danh sách ${list.name}`}
+                />
+              }
             />
           }
         >

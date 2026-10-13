@@ -1,6 +1,18 @@
 import { cn } from "cn";
-import { Archive, ArchiveRestore, BookOpenText, BookPlus, Globe, Library, Lock, SearchX, ShieldOff, Users } from "lucide-react";
-import { Link, Navigate, Outlet, useLocation, useNavigate, useParams } from "react-router";
+import {
+  Archive,
+  ArchiveRestore,
+  BookOpenText,
+  BookPlus,
+  Globe,
+  Library,
+  Lock,
+  SearchX,
+  ShieldOff,
+  Users
+} from "lucide-react";
+import { Navigate, Outlet, useLocation, useNavigate, useParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -11,7 +23,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { KnowledgeSpace } from "@/contracts/knowledge";
 import { knowledgeErrorMessage } from "@/features/knowledge/errors";
-import { useArchiveSpace, useKnowledgePermissions, useKnowledgeSpace, useKnowledgeSpaces } from "@/features/knowledge/hooks";
+import {
+  useArchiveSpace,
+  useKnowledgePermissions,
+  useKnowledgeSpace,
+  useKnowledgeSpaces
+} from "@/features/knowledge/hooks";
 import { canCreateSpace, canSeeKnowledge, spaceUi } from "@/features/knowledge/model/access";
 import { dateToDay, formatDay } from "@/features/knowledge/model/dates";
 import { isUuid } from "@/features/knowledge/model/filters";
@@ -52,8 +69,18 @@ export const KnowledgeHomeRoute = () => {
   const active = items.filter((space) => space.archivedAt === null);
   const archived = items.filter((space) => space.archivedAt !== null);
   const groups = [
-    { key: "public", title: "Công khai", icon: Globe, spaces: active.filter((space) => space.visibility === "public") },
-    { key: "private", title: "Riêng tư", icon: Lock, spaces: active.filter((space) => space.visibility === "private") },
+    {
+      key: "public",
+      title: "Công khai",
+      icon: Globe,
+      spaces: active.filter((space) => space.visibility === "public")
+    },
+    {
+      key: "private",
+      title: "Riêng tư",
+      icon: Lock,
+      spaces: active.filter((space) => space.visibility === "private")
+    },
     { key: "archived", title: "Đã lưu trữ", icon: Archive, spaces: archived }
   ].filter((group) => group.spaces.length > 0);
 
@@ -79,7 +106,11 @@ export const KnowledgeHomeRoute = () => {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-6 md:px-8">
           {spaces.isPending ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Đang tải kho">
+            <div
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+              aria-busy="true"
+              aria-label="Đang tải kho"
+            >
               {[0, 1, 2].map((index) => (
                 <div key={index} className="flex flex-col gap-3 rounded-xl border bg-surface p-4">
                   <div className="flex items-center gap-3">
@@ -92,7 +123,11 @@ export const KnowledgeHomeRoute = () => {
               ))}
             </div>
           ) : spaces.isError ? (
-            <ErrorState error={spaces.error} onRetry={() => void spaces.refetch()} retrying={spaces.isFetching} />
+            <ErrorState
+              error={spaces.error}
+              onRetry={() => void spaces.refetch()}
+              retrying={spaces.isFetching}
+            />
           ) : groups.length === 0 ? (
             <EmptyState
               icon={BookOpenText}
@@ -113,20 +148,30 @@ export const KnowledgeHomeRoute = () => {
             />
           ) : (
             groups.map((group) => (
-              <section key={group.key} aria-labelledby={`kb-group-${group.key}`} className="flex flex-col gap-3">
+              <section
+                key={group.key}
+                aria-labelledby={`kb-group-${group.key}`}
+                className="flex flex-col gap-3"
+              >
                 <h2
                   id={`kb-group-${group.key}`}
                   className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.06em] text-foreground-subtle uppercase"
                 >
                   <group.icon className="size-3.5" aria-hidden="true" />
                   {group.title}
-                  <span className="font-normal tracking-normal normal-case">· {group.spaces.length}</span>
+                  <span className="font-normal tracking-normal normal-case">
+                    · {group.spaces.length}
+                  </span>
                 </h2>
                 {/* grid-cols-1 (minmax(0, 1fr)): a long space name must truncate, not widen the phone column. */}
                 <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {group.spaces.map((space) => (
                     <li key={space.id}>
-                      {space.archivedAt ? <ArchivedSpaceCard space={space} /> : <SpaceCard space={space} />}
+                      {space.archivedAt ? (
+                        <ArchivedSpaceCard space={space} />
+                      ) : (
+                        <SpaceCard space={space} />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -153,7 +198,11 @@ const SpaceCard = ({ space }: { space: KnowledgeSpace }) => (
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{space.name}</span>
         <span className="flex items-center gap-1 text-xs text-foreground-muted">
-          {space.visibility === "private" ? <Lock className="size-3" aria-hidden="true" /> : <Globe className="size-3" aria-hidden="true" />}
+          {space.visibility === "private" ? (
+            <Lock className="size-3" aria-hidden="true" />
+          ) : (
+            <Globe className="size-3" aria-hidden="true" />
+          )}
           {space.visibility === "private" ? "Riêng tư" : "Công khai"}
           {space.myAccess ? <span>· {accessLabel(space.myAccess)}</span> : null}
         </span>
@@ -225,10 +274,18 @@ const ArchivedSpaceCard = ({ space }: { space: KnowledgeSpace }) => {
       </div>
       <p className="line-clamp-2 min-h-[2.5em] text-[13px] leading-relaxed text-foreground-muted">
         {space.itemCount} mục, {space.memberCount} thành viên.{" "}
-        {space.capabilities.canArchive ? "Khôi phục để mọi người dùng lại kho." : "Mở để xem lại nội dung."}
+        {space.capabilities.canArchive
+          ? "Khôi phục để mọi người dùng lại kho."
+          : "Mở để xem lại nội dung."}
       </p>
       {space.capabilities.canArchive ? (
-        <Button variant="outline" size="sm" className="relative z-10 mt-auto self-start" disabled={archive.isPending} onClick={() => void restore()}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="relative z-10 mt-auto self-start"
+          disabled={archive.isPending}
+          onClick={() => void restore()}
+        >
           {archive.isPending ? <Spinner /> : <ArchiveRestore />}
           Khôi phục kho
         </Button>
@@ -259,11 +316,18 @@ export const KnowledgeSpaceLayoutRoute = () => {
     if (isNotFoundError(space.error) || isForbiddenError(space.error)) return <KnowledgeNotFound />;
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <ErrorState error={space.error} onRetry={() => void space.refetch()} retrying={space.isFetching} />
+        <ErrorState
+          error={space.error}
+          onRetry={() => void space.refetch()}
+          retrying={space.isFetching}
+        />
       </div>
     );
   }
-  const context: KnowledgeSpaceOutletContext = { space: space.data, ui: spaceUi(space.data, permissions) };
+  const context: KnowledgeSpaceOutletContext = {
+    space: space.data,
+    ui: spaceUi(space.data, permissions)
+  };
   return <Outlet context={context} />;
 };
 

@@ -1,16 +1,36 @@
 import { cn } from "cn";
-import { BookOpenText, ChevronDown, Clock3, FilePlus2, Folder, Inbox, Layers, Pin, SearchX } from "lucide-react";
+import {
+  BookOpenText,
+  ChevronDown,
+  Clock3,
+  FilePlus2,
+  Folder,
+  Inbox,
+  Layers,
+  Pin,
+  SearchX
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState, LoadMoreError } from "@/components/shared/states";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from "@/components/ui/sheet";
 import type { KnowledgeItemSummary, KnowledgeSpaceDetail } from "@/contracts/knowledge";
 import { useSessionContext } from "@/features/auth/hooks";
 import { ImportanceBadge, KnowledgeStatusChip } from "@/features/knowledge/components/badges";
-import { CategoryTree, type CategorySelection } from "@/features/knowledge/components/category-tree";
+import {
+  CategoryTree,
+  type CategorySelection
+} from "@/features/knowledge/components/category-tree";
 import { ItemFilterBar } from "@/features/knowledge/components/item-filters";
 import { ArchivedSpaceNotice } from "@/features/knowledge/components/settings/archived-notice";
 import { KnowledgeItemList, ListSkeleton } from "@/features/knowledge/components/item-list";
@@ -43,17 +63,23 @@ export const KnowledgeSpaceRoute = () => {
   const filters = useMemo(() => parseSpaceFilters(params), [params]);
   const wide = useMediaQuery("(min-width: 1024px)", true);
   const phone = useBreakpoint() === "mobile";
-  const query = useMemo(() => toItemQuery(filters, { selfId: session.user.id }), [filters, session.user.id]);
+  const query = useMemo(
+    () => toItemQuery(filters, { selfId: session.user.id }),
+    [filters, session.user.id]
+  );
   const items = useKnowledgeItems(space.id, query);
   const list = useMemo(() => {
     const seen = new Set<string>();
-    return (items.data?.pages ?? []).flatMap((page) => page.items).filter((item) => !seen.has(item.id) && Boolean(seen.add(item.id)));
+    return (items.data?.pages ?? [])
+      .flatMap((page) => page.items)
+      .filter((item) => !seen.has(item.id) && Boolean(seen.add(item.id)));
   }, [items.data]);
   const errorKind = pagedErrorKind(items);
   const narrowed = hasNarrowingFilters(filters);
 
   const setFilters = useCallback(
-    (next: SpaceFilters) => setParams((current) => writeSpaceFilters(current, next), { replace: true }),
+    (next: SpaceFilters) =>
+      setParams((current) => writeSpaceFilters(current, next), { replace: true }),
     [setParams]
   );
   const selectCategory = (category: CategorySelection) => setFilters({ ...filters, category });
@@ -82,15 +108,29 @@ export const KnowledgeSpaceRoute = () => {
       />
       <div className="flex min-h-0 flex-1">
         {wide ? (
-          <aside aria-label="Chuyên mục" className="w-64 shrink-0 overflow-y-auto border-r bg-canvas/40 px-2 py-3">
-            <CategoryTree space={space} canManage={ui.canManageCategories} selected={filters.category} onSelect={selectCategory} />
+          <aside
+            aria-label="Chuyên mục"
+            className="w-64 shrink-0 overflow-y-auto border-r bg-canvas/40 px-2 py-3"
+          >
+            <CategoryTree
+              space={space}
+              canManage={ui.canManageCategories}
+              selected={filters.category}
+              onSelect={selectCategory}
+            />
           </aside>
         ) : null}
         <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-4 md:px-6 md:py-5">
             {ui.readOnly ? <ArchivedSpaceNotice space={space} canRestore={ui.canArchive} /> : null}
             {wide ? null : (
-              <CategorySheetButton space={space} canManage={ui.canManageCategories} label={categoryLabel} selected={filters.category} onSelect={selectCategory} />
+              <CategorySheetButton
+                space={space}
+                canManage={ui.canManageCategories}
+                label={categoryLabel}
+                selected={filters.category}
+                onSelect={selectCategory}
+              />
             )}
             <ItemFilterBar space={space} filters={filters} onChange={setFilters} compact={phone} />
 
@@ -99,7 +139,11 @@ export const KnowledgeSpaceRoute = () => {
             <section aria-labelledby="kb-items-heading" className="flex flex-col gap-3">
               <div className="flex items-baseline gap-2">
                 <h2 id="kb-items-heading" className="text-[15px] font-semibold tracking-[-0.01em]">
-                  {narrowed ? (filters.category !== null && !filters.q.trim() ? categoryLabel : "Kết quả") : "Tất cả mục"}
+                  {narrowed
+                    ? filters.category !== null && !filters.q.trim()
+                      ? categoryLabel
+                      : "Kết quả"
+                    : "Tất cả mục"}
                 </h2>
                 {items.data ? (
                   <span className="text-xs text-foreground-subtle">
@@ -112,15 +156,27 @@ export const KnowledgeSpaceRoute = () => {
               {items.isPending ? (
                 <ListSkeleton cards={phone} />
               ) : errorKind === "initial" ? (
-                <ErrorState error={items.error} onRetry={() => void items.refetch()} retrying={items.isFetching} />
+                <ErrorState
+                  error={items.error}
+                  onRetry={() => void items.refetch()}
+                  retrying={items.isFetching}
+                />
               ) : list.length === 0 ? (
                 narrowed ? (
                   <EmptyState
                     icon={SearchX}
-                    title={filters.category !== null && !filters.q.trim() ? "Chuyên mục chưa có mục nào" : "Không có mục khớp bộ lọc"}
+                    title={
+                      filters.category !== null && !filters.q.trim()
+                        ? "Chuyên mục chưa có mục nào"
+                        : "Không có mục khớp bộ lọc"
+                    }
                     description="Thử bỏ bớt điều kiện lọc hoặc tìm bằng từ khoá khác."
                     action={
-                      <Button variant="outline" size="sm" onClick={() => setParams(new URLSearchParams(), { replace: true })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setParams(new URLSearchParams(), { replace: true })}
+                      >
                         Xem tất cả mục
                       </Button>
                     }
@@ -159,7 +215,10 @@ export const KnowledgeSpaceRoute = () => {
                     }}
                   />
                   {errorKind === "next" ? (
-                    <LoadMoreError onRetry={() => void items.fetchNextPage()} retrying={items.isFetchingNextPage} />
+                    <LoadMoreError
+                      onRetry={() => void items.fetchNextPage()}
+                      retrying={items.isFetchingNextPage}
+                    />
                   ) : null}
                 </>
               )}
@@ -201,8 +260,15 @@ const CategorySheetButton = ({
         <ChevronDown className="size-4 shrink-0 text-foreground-subtle" aria-hidden="true" />
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="bottom" showCloseButton={false} className="max-h-[80dvh] gap-0 overflow-y-auto rounded-t-2xl p-0 pb-(--safe-bottom)">
-          <span aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border-strong" />
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="max-h-[80dvh] gap-0 overflow-y-auto rounded-t-2xl p-0 pb-(--safe-bottom)"
+        >
+          <span
+            aria-hidden="true"
+            className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border-strong"
+          />
           <SheetHeader className="sr-only">
             <SheetTitle>Chọn chuyên mục</SheetTitle>
             <SheetDescription>Lọc mục theo chuyên mục</SheetDescription>
@@ -233,10 +299,20 @@ const Highlights = ({ space }: { space: KnowledgeSpaceDetail }) => {
   const recentItems = space.itemCount > 8 ? (recent.data?.pages[0]?.items ?? []).slice(0, 4) : [];
   if (pinnedItems.length === 0 && recentItems.length === 0) return null;
   return (
-    <div className={cn("grid gap-4", pinnedItems.length > 0 && recentItems.length > 0 && "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")}>
+    <div
+      className={cn(
+        "grid gap-4",
+        pinnedItems.length > 0 &&
+          recentItems.length > 0 &&
+          "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+      )}
+    >
       {pinnedItems.length > 0 ? (
         <section aria-labelledby="kb-pinned" className="flex min-w-0 flex-col gap-2.5">
-          <h2 id="kb-pinned" className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.06em] text-foreground-subtle uppercase">
+          <h2
+            id="kb-pinned"
+            className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.06em] text-foreground-subtle uppercase"
+          >
             <Pin className="size-3.5 rotate-45" aria-hidden="true" />
             Đã ghim
           </h2>
@@ -251,7 +327,10 @@ const Highlights = ({ space }: { space: KnowledgeSpaceDetail }) => {
       ) : null}
       {recentItems.length > 0 ? (
         <section aria-labelledby="kb-recent" className="flex min-w-0 flex-col gap-2.5">
-          <h2 id="kb-recent" className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.06em] text-foreground-subtle uppercase">
+          <h2
+            id="kb-recent"
+            className="flex items-center gap-1.5 text-xs font-semibold tracking-[0.06em] text-foreground-subtle uppercase"
+          >
             <Clock3 className="size-3.5" aria-hidden="true" />
             Mới cập nhật
           </h2>
@@ -262,14 +341,23 @@ const Highlights = ({ space }: { space: KnowledgeSpaceDetail }) => {
                   to={`/k/${space.id}/i/${item.id}`}
                   className="flex min-w-0 items-center gap-3 px-3.5 py-2.5 outline-none transition-colors hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                 >
-                  {item.updatedBy ? <UserAvatar user={item.updatedBy} size="sm" /> : <span className="size-6 shrink-0 rounded-full bg-muted" />}
+                  {item.updatedBy ? (
+                    <UserAvatar user={item.updatedBy} size="sm" />
+                  ) : (
+                    <span className="size-6 shrink-0 rounded-full bg-muted" />
+                  )}
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-[13px] font-medium">{item.title}</span>
                     <span className="truncate text-[11px] text-foreground-subtle">
-                      {item.updatedBy?.displayName ?? "Ai đó"} · v{item.version} · {relativeTime(item.updatedAt)}
+                      {item.updatedBy?.displayName ?? "Ai đó"} · v{item.version} ·{" "}
+                      {relativeTime(item.updatedAt)}
                     </span>
                   </span>
-                  <KnowledgeStatusChip status={item.status} size="xs" className="max-w-28 max-sm:hidden" />
+                  <KnowledgeStatusChip
+                    status={item.status}
+                    size="xs"
+                    className="max-w-28 max-sm:hidden"
+                  />
                 </Link>
               </li>
             ))}
@@ -286,8 +374,14 @@ const PinnedCard = ({ spaceId, item }: { spaceId: string; item: KnowledgeItemSum
     className="relative flex h-full flex-col gap-1.5 overflow-hidden rounded-xl border bg-surface p-3.5 shadow-xs outline-none transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
   >
     <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-brand/70" />
-    <span className="line-clamp-2 text-[14px] leading-snug font-semibold tracking-[-0.01em] wrap-break-word">{item.title}</span>
-    {item.summary ? <span className="line-clamp-2 text-[12px] leading-relaxed text-foreground-muted wrap-break-word">{item.summary}</span> : null}
+    <span className="line-clamp-2 text-[14px] leading-snug font-semibold tracking-[-0.01em] wrap-break-word">
+      {item.title}
+    </span>
+    {item.summary ? (
+      <span className="line-clamp-2 text-[12px] leading-relaxed text-foreground-muted wrap-break-word">
+        {item.summary}
+      </span>
+    ) : null}
     <span className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
       <ImportanceBadge importance={item.importance} size="xs" />
       <KnowledgeStatusChip status={item.status} size="xs" />

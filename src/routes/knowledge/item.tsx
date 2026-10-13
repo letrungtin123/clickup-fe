@@ -13,13 +13,20 @@ import {
   X
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 import { toast } from "sonner";
 
 import { AvatarGroup } from "@/components/shared/user-avatar";
 import { ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { KnowledgeItemDetail, KnowledgeSpaceDetail } from "@/contracts/knowledge";
@@ -30,21 +37,35 @@ import { ArchivedSpaceNotice } from "@/features/knowledge/components/settings/ar
 import { KnowledgeComments } from "@/features/knowledge/components/comments";
 import { KnowledgeBodyView } from "@/features/knowledge/components/knowledge-body";
 import { ItemHistory } from "@/features/knowledge/components/history-panel";
-import { ItemImportanceMenu, ItemStatusMenu, ItemToolbar } from "@/features/knowledge/components/item-actions";
+import {
+  ItemImportanceMenu,
+  ItemStatusMenu,
+  ItemToolbar
+} from "@/features/knowledge/components/item-actions";
 import { ItemInfoPanel } from "@/features/knowledge/components/item-info";
 import { useKeepFocusVisible } from "@/features/knowledge/editor/scroll";
 import { ReasonDialog } from "@/features/knowledge/components/reason-dialog";
 import { TocNav, TocSheetButton } from "@/features/knowledge/components/toc";
 import { knowledgeErrorMessage } from "@/features/knowledge/errors";
 import { useKnowledgeItem, useRestoreItem } from "@/features/knowledge/hooks";
-import { approvalLocked, isDraft, isRetired, itemActions, reasonRequired } from "@/features/knowledge/model/access";
+import {
+  approvalLocked,
+  isDraft,
+  isRetired,
+  itemActions,
+  reasonRequired
+} from "@/features/knowledge/model/access";
 import { bodyImageIds } from "@/features/knowledge/model/body";
 import { isUuid } from "@/features/knowledge/model/filters";
 import { extractToc } from "@/features/knowledge/model/toc";
 import { useItemFieldChange } from "@/features/knowledge/use-item-change";
 import "@/features/knowledge/knowledge.css";
 import { AttachmentSourceContext } from "@/features/tasks/attachments";
-import { FileRow, ImageLightbox, ImageThumb } from "@/features/tasks/components/detail/attachment-tiles";
+import {
+  FileRow,
+  ImageLightbox,
+  ImageThumb
+} from "@/features/tasks/components/detail/attachment-tiles";
 import { ConfirmHost } from "@/features/tasks/components/confirm-host";
 import { fullDateTime, relativeTime } from "@/features/tasks/time";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
@@ -63,7 +84,9 @@ const parseVersion = (raw: string | null) => {
 
 const parseCompare = (raw: string | null): [number, number] | null => {
   const [a, b] = (raw ?? "").split(",").map(Number);
-  return a && b && Number.isInteger(a) && Number.isInteger(b) && a > 0 && b > 0 ? [Math.min(a, b), Math.max(a, b)] : null;
+  return a && b && Number.isInteger(a) && Number.isInteger(b) && a > 0 && b > 0
+    ? [Math.min(a, b), Math.max(a, b)]
+    : null;
 };
 
 /**
@@ -81,10 +104,15 @@ export const KnowledgeItemRoute = () => {
   if (item.isPending) return <ItemSkeleton />;
   if (item.isError) {
     // A draft of someone else, a purged item, no access: the same not-found state as the spaces.
-    if (isApiError(item.error) && (item.error.status === 404 || item.error.status === 403)) return <KnowledgeNotFound />;
+    if (isApiError(item.error) && (item.error.status === 404 || item.error.status === 403))
+      return <KnowledgeNotFound />;
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <ErrorState error={item.error} onRetry={() => void item.refetch()} retrying={item.isFetching} />
+        <ErrorState
+          error={item.error}
+          onRetry={() => void item.refetch()}
+          retrying={item.isFetching}
+        />
       </div>
     );
   }
@@ -137,17 +165,36 @@ const ItemPage = ({ item, space }: { item: KnowledgeItemDetail; space: Knowledge
       space={space}
       version={version}
       compare={compare}
-      onOpenVersion={(number) => setParam({ version: number === null ? null : String(number), compare: null })}
-      onCompare={(pair) => setParam({ compare: pair ? `${pair[0]},${pair[1]}` : null, version: null })}
+      onOpenVersion={(number) =>
+        setParam({ version: number === null ? null : String(number), compare: null })
+      }
+      onCompare={(pair) =>
+        setParam({ compare: pair ? `${pair[0]},${pair[1]}` : null, version: null })
+      }
     />
   ) : null;
-  const comments = <KnowledgeComments item={item} space={space} focusCommentId={params.get("comment")} showHeading={false} />;
+  const comments = (
+    <KnowledgeComments
+      item={item}
+      space={space}
+      focusCommentId={params.get("comment")}
+      showHeading={false}
+    />
+  );
 
   return (
     <div className="kb-touch flex h-full min-h-0 flex-col">
       <ConfirmHost />
-      <ItemTopBar item={item} space={space} compact={phone} onShowHistory={() => setParam({ tab: "history" })} />
-      <div ref={setScrollRoot} className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto">
+      <ItemTopBar
+        item={item}
+        space={space}
+        compact={phone}
+        onShowHistory={() => setParam({ tab: "history" })}
+      />
+      <div
+        ref={setScrollRoot}
+        className="min-h-0 flex-1 overflow-y-auto scroll-smooth motion-reduce:scroll-auto"
+      >
         <div
           className={cn(
             "mx-auto grid w-full max-w-[84rem] justify-center gap-x-10 px-4 pt-6 pb-24 md:px-8 md:pt-8",
@@ -165,37 +212,65 @@ const ItemPage = ({ item, space }: { item: KnowledgeItemDetail; space: Knowledge
           ) : null}
 
           <article className="flex min-w-0 flex-col gap-5" aria-labelledby="kb-item-title">
-            {space.archivedAt ? <ArchivedSpaceNotice space={space} canRestore={space.capabilities.canArchive} /> : null}
+            {space.archivedAt ? (
+              <ArchivedSpaceNotice space={space} canRestore={space.capabilities.canArchive} />
+            ) : null}
             {item.deletedAt ? <TrashedBanner item={item} /> : null}
             {isRetired(item) ? <RetiredBanner statusName={item.status.name} /> : null}
             {others.length > 0 ? (
-              <div role="status" className="flex items-center gap-2.5 rounded-xl border bg-surface px-3.5 py-2.5 text-[13px] shadow-xs">
+              <div
+                role="status"
+                className="flex items-center gap-2.5 rounded-xl border bg-surface px-3.5 py-2.5 text-[13px] shadow-xs"
+              >
                 <AvatarGroup users={others} size="xs" max={3} />
                 <span className="text-foreground-muted">
-                  <span className="font-medium text-foreground">{others.map((user) => user.displayName).join(", ")}</span>{" "}
+                  <span className="font-medium text-foreground">
+                    {others.map((user) => user.displayName).join(", ")}
+                  </span>{" "}
                   đang sửa hoặc vừa lưu mục này
                 </span>
-                <NotebookPen className="ml-auto size-4 shrink-0 text-brand-text" aria-hidden="true" />
+                <NotebookPen
+                  className="ml-auto size-4 shrink-0 text-brand-text"
+                  aria-hidden="true"
+                />
               </div>
             ) : null}
 
             <header className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
-                <ItemImportanceMenu item={item} space={space} change={fieldChange.change} disabled={fieldChange.pending} />
-                <ItemStatusMenu item={item} space={space} change={fieldChange.change} disabled={fieldChange.pending} />
+                <ItemImportanceMenu
+                  item={item}
+                  space={space}
+                  change={fieldChange.change}
+                  disabled={fieldChange.pending}
+                />
+                <ItemStatusMenu
+                  item={item}
+                  space={space}
+                  change={fieldChange.change}
+                  disabled={fieldChange.pending}
+                />
                 {item.reviewDue ? <ReviewDueBadge /> : null}
               </div>
-              <h1 id="kb-item-title" className="text-[26px] leading-[1.2] font-bold tracking-[-0.025em] text-pretty sm:text-[32px]">
+              <h1
+                id="kb-item-title"
+                className="text-[26px] leading-[1.2] font-bold tracking-[-0.025em] text-pretty sm:text-[32px]"
+              >
                 {item.title}
               </h1>
               {item.summary ? (
-                <p className="text-[16px] leading-relaxed text-foreground-muted sm:text-[17px]">{item.summary}</p>
+                <p className="text-[16px] leading-relaxed text-foreground-muted sm:text-[17px]">
+                  {item.summary}
+                </p>
               ) : null}
               <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-foreground-subtle">
                 <span>Phiên bản {item.version}</span>
                 <span aria-hidden="true">·</span>
                 <span>
-                  cập nhật <time dateTime={item.updatedAt} title={fullDateTime(item.updatedAt)}>{relativeTime(item.updatedAt)}</time>
+                  cập nhật{" "}
+                  <time dateTime={item.updatedAt} title={fullDateTime(item.updatedAt)}>
+                    {relativeTime(item.updatedAt)}
+                  </time>
                   {item.updatedBy ? ` bởi ${item.updatedBy.displayName}` : ""}
                 </span>
                 {isDraft(item) ? (
@@ -207,13 +282,19 @@ const ItemPage = ({ item, space }: { item: KnowledgeItemDetail; space: Knowledge
               </p>
               {approvalLocked(item, space) ? (
                 <p className="flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2 text-[13px] text-foreground-muted">
-                  <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand-text" aria-hidden="true" />
-                  Kho này cần Quản lý duyệt: mục đã ban hành chỉ Quản lý sửa được. Hãy bình luận góp ý bên dưới.
+                  <ShieldCheck
+                    className="mt-0.5 size-4 shrink-0 text-brand-text"
+                    aria-hidden="true"
+                  />
+                  Kho này cần Quản lý duyệt: mục đã ban hành chỉ Quản lý sửa được. Hãy bình luận góp
+                  ý bên dưới.
                 </p>
               ) : null}
             </header>
 
-            {wide ? null : <CollapsibleInfo item={item} canEdit={actions.edit} change={fieldChange.change} />}
+            {wide ? null : (
+              <CollapsibleInfo item={item} canEdit={actions.edit} change={fieldChange.change} />
+            )}
 
             <div className="border-t pt-6">
               <KnowledgeBodyView
@@ -239,14 +320,18 @@ const ItemPage = ({ item, space }: { item: KnowledgeItemDetail; space: Knowledge
             ) : (
               <Tabs
                 value={tab}
-                onValueChange={(next) => setParam({ tab: next === "comments" ? null : String(next) })}
+                onValueChange={(next) =>
+                  setParam({ tab: next === "comments" ? null : String(next) })
+                }
                 className="mt-6 gap-5 border-t pt-6"
               >
                 <TabsList variant="line" className="h-9 gap-2">
                   <TabsTrigger value="comments" className="px-1 text-[14px]">
                     <MessageSquare />
                     Bình luận
-                    <span className="rounded-full bg-muted px-1.5 text-[11px] text-foreground-muted tabular-nums">{item.commentCount}</span>
+                    <span className="rounded-full bg-muted px-1.5 text-[11px] text-foreground-muted tabular-nums">
+                      {item.commentCount}
+                    </span>
                   </TabsTrigger>
                   {actions.history ? (
                     <TabsTrigger value="history" className="px-1 text-[14px]">
@@ -265,8 +350,13 @@ const ItemPage = ({ item, space }: { item: KnowledgeItemDetail; space: Knowledge
             // Sticky but never taller than the screen: the lower part of "Thông tin" stays reachable.
             <aside className="sticky top-6 -m-1 flex max-h-[calc(100dvh-6rem)] flex-col gap-6 self-start overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin]">
               {!extraWide ? <TocNav entries={toc} scrollRoot={scrollRoot} /> : null}
-              <section aria-label="Thông tin mục" className="rounded-xl border bg-surface px-4 py-3 shadow-xs">
-                <h2 className="mb-1 text-[11px] font-semibold tracking-[0.06em] text-foreground-subtle uppercase">Thông tin</h2>
+              <section
+                aria-label="Thông tin mục"
+                className="rounded-xl border bg-surface px-4 py-3 shadow-xs"
+              >
+                <h2 className="mb-1 text-[11px] font-semibold tracking-[0.06em] text-foreground-subtle uppercase">
+                  Thông tin
+                </h2>
                 <ItemInfoPanel item={item} canEdit={actions.edit} change={fieldChange.change} />
               </section>
             </aside>
@@ -292,8 +382,14 @@ const ItemTopBar = ({
   onShowHistory: () => void;
 }) => (
   <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-5 pointer-coarse:h-14">
-    <nav aria-label="Đường dẫn" className="flex min-w-0 flex-1 items-center gap-1 text-[13px] text-foreground-muted">
-      <Link to="/k" className="hidden shrink-0 items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex">
+    <nav
+      aria-label="Đường dẫn"
+      className="flex min-w-0 flex-1 items-center gap-1 text-[13px] text-foreground-muted"
+    >
+      <Link
+        to="/k"
+        className="hidden shrink-0 items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+      >
         <Library className="size-3.5" aria-hidden="true" />
         Tri thức
       </Link>
@@ -321,7 +417,9 @@ const ItemTopBar = ({
         </>
       ) : null}
     </nav>
-    {item.deletedAt ? null : <ItemToolbar item={item} space={space} compact={compact} onShowHistory={onShowHistory} />}
+    {item.deletedAt ? null : (
+      <ItemToolbar item={item} space={space} compact={compact} onShowHistory={onShowHistory} />
+    )}
   </div>
 );
 
@@ -347,9 +445,18 @@ const CollapsibleInfo = ({
         <Info className="size-4 text-foreground-subtle" aria-hidden="true" />
         <span className="font-medium">Thông tin</span>
         <span className="min-w-0 flex-1 truncate text-foreground-muted">
-          {[item.owner?.displayName, item.category?.name, item.tags.length ? `${item.tags.length} tag` : null].filter(Boolean).join(" · ")}
+          {[
+            item.owner?.displayName,
+            item.category?.name,
+            item.tags.length ? `${item.tags.length} tag` : null
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
-        <ChevronDown className={cn("size-4 text-foreground-subtle transition-transform", open && "rotate-180")} aria-hidden="true" />
+        <ChevronDown
+          className={cn("size-4 text-foreground-subtle transition-transform", open && "rotate-180")}
+          aria-hidden="true"
+        />
       </button>
       {open ? (
         <div className="border-t px-3.5 py-2">
@@ -364,22 +471,33 @@ const ItemAttachments = ({ item }: { item: KnowledgeItemDetail }) => {
   const [viewing, setViewing] = useState<number | null>(null);
   // Images placed in the body are shown there, not again in the file list.
   const inBody = new Set(bodyImageIds(item.body));
-  const files = item.attachments.filter((attachment) => attachment.commentId === null && !inBody.has(attachment.id));
+  const files = item.attachments.filter(
+    (attachment) => attachment.commentId === null && !inBody.has(attachment.id)
+  );
   if (files.length === 0) return null;
   const images = files.filter((attachment) => attachment.isImage);
   const others = files.filter((attachment) => !attachment.isImage);
   return (
     <AttachmentSourceContext value={knowledgeAttachmentSource}>
       <section aria-labelledby="kb-files-heading" className="flex flex-col gap-3 border-t pt-6">
-        <h2 id="kb-files-heading" className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]">
+        <h2
+          id="kb-files-heading"
+          className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]"
+        >
           <Paperclip className="size-4 text-foreground-muted" aria-hidden="true" />
           Tệp đính kèm
-          <span className="text-[13px] font-normal text-foreground-subtle tabular-nums">{files.length}</span>
+          <span className="text-[13px] font-normal text-foreground-subtle tabular-nums">
+            {files.length}
+          </span>
         </h2>
         {images.length > 0 ? (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {images.map((attachment, index) => (
-              <ImageThumb key={attachment.id} attachment={attachment} onOpen={() => setViewing(index)} />
+              <ImageThumb
+                key={attachment.id}
+                attachment={attachment}
+                onOpen={() => setViewing(index)}
+              />
             ))}
           </div>
         ) : null}
@@ -390,7 +508,12 @@ const ItemAttachments = ({ item }: { item: KnowledgeItemDetail }) => {
             ))}
           </div>
         ) : null}
-        <ImageLightbox images={images} index={viewing} onIndexChange={setViewing} onClose={() => setViewing(null)} />
+        <ImageLightbox
+          images={images}
+          index={viewing}
+          onIndexChange={setViewing}
+          onClose={() => setViewing(null)}
+        />
       </section>
     </AttachmentSourceContext>
   );
@@ -413,14 +536,22 @@ const TrashedBanner = ({ item }: { item: KnowledgeItemDetail }) => {
       }
     );
   return (
-    <div role="note" className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]">
+    <div
+      role="note"
+      className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-[13px]"
+    >
       <Trash2 className="size-4 shrink-0 text-danger" aria-hidden="true" />
       <p className="min-w-0 flex-1">
         <span className="font-semibold text-danger">Mục đang ở thùng rác.</span>{" "}
         <span className="text-foreground-muted">Mục được giữ 30 ngày rồi tự xoá vĩnh viễn.</span>
       </p>
       {(item.capabilities.canRestore ?? item.capabilities.canEdit) ? (
-        <Button variant="outline" size="sm" onClick={() => (reasonRequired(item.importance) ? setAsking(true) : run())} disabled={restore.isPending}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => (reasonRequired(item.importance) ? setAsking(true) : run())}
+          disabled={restore.isPending}
+        >
           <ArchiveRestore />
           Khôi phục
         </Button>
@@ -461,7 +592,11 @@ const MobilePanels = ({
   return (
     <>
       <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-5">
-        <Button variant="outline" className="h-12 justify-start gap-2.5 rounded-xl" onClick={() => onOpen("comments")}>
+        <Button
+          variant="outline"
+          className="h-12 justify-start gap-2.5 rounded-xl"
+          onClick={() => onOpen("comments")}
+        >
           <MessageSquare />
           <span className="flex min-w-0 flex-col items-start leading-tight">
             <span>Bình luận</span>
@@ -471,11 +606,17 @@ const MobilePanels = ({
           </span>
         </Button>
         {history ? (
-          <Button variant="outline" className="h-12 justify-start gap-2.5 rounded-xl" onClick={() => onOpen("history")}>
+          <Button
+            variant="outline"
+            className="h-12 justify-start gap-2.5 rounded-xl"
+            onClick={() => onOpen("history")}
+          >
             <History />
             <span className="flex min-w-0 flex-col items-start leading-tight">
               <span>Lịch sử</span>
-              <span className="max-w-full truncate text-[11px] font-normal text-foreground-subtle">v{item.version} · phiên bản, nhật ký</span>
+              <span className="max-w-full truncate text-[11px] font-normal text-foreground-subtle">
+                v{item.version} · phiên bản, nhật ký
+              </span>
             </span>
           </Button>
         ) : null}
@@ -487,17 +628,25 @@ const MobilePanels = ({
           // Sits on the on-screen keyboard (iOS overlays it: --keyboard-inset), so a composer stays in view.
           className="kb-touch gap-0 rounded-t-2xl p-0 pb-(--safe-bottom) data-[side=bottom]:bottom-(--keyboard-inset) data-[side=bottom]:h-[calc(92dvh-var(--keyboard-inset))]"
         >
-          <span aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border-strong" />
+          <span
+            aria-hidden="true"
+            className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border-strong"
+          />
           <SheetHeader className="flex-row items-center gap-2 border-b px-4 pt-1.5 pb-2.5">
             <div className="flex min-w-0 flex-1 flex-col">
-              <SheetTitle className="text-[15px]">{tab === "history" ? "Lịch sử" : "Bình luận"}</SheetTitle>
+              <SheetTitle className="text-[15px]">
+                {tab === "history" ? "Lịch sử" : "Bình luận"}
+              </SheetTitle>
               <SheetDescription className="truncate text-xs">{item.title}</SheetDescription>
             </div>
             <Button variant="ghost" size="icon" aria-label="Đóng" onClick={onClose}>
               <X />
             </Button>
           </SheetHeader>
-          <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">
+          <div
+            ref={setScroller}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6"
+          >
             {tab === "history" ? history : comments}
           </div>
         </SheetContent>

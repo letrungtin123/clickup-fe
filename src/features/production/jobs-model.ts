@@ -1,11 +1,15 @@
 import type {
   CreditRule,
   CustomField,
+  JobStatus,
   PayMode,
   ProductionRole,
   ProductionStatus
 } from "@/contracts/production-catalog";
+import { jobStatusLimit } from "@/contracts/production-catalog";
+import { noLeaderFilter } from "@/contracts/production-jobs";
 import type {
+  JobPage,
   JobSummary,
   ProductionTask,
   TaskLog,
@@ -15,7 +19,7 @@ import type {
 import type { QueryValue } from "@/lib/api/client";
 
 import { formatCustomValue, type CustomValue } from "./custom-fields";
-import { formatNumber } from "./format";
+import { formatMoney, formatNumber } from "./format";
 import {
   activeListFilterCount,
   emptyListFilters,
@@ -93,6 +97,30 @@ export const isoToZoned = (iso: string, timeZone: string) => {
   };
 };
 
+// Work-log dates (PD-035) -------------------------------------------------------------------------------
+
+/**
+ * "Ngày nhận" / "Ngày giao" are days in the work-log Excel. The API stores instants: a Ngày nhận is sent as 00:00 and
+ * a Ngày giao as 23:59 of the day in the organization timezone (so a line is late only after its whole delivery day).
+ */
+export const receivedDayToIso = (day: string, timeZone: string) =>
+  zonedToIso(day, "00:00", timeZone);
+export const dueDayToIso = (day: string, timeZone: string) => zonedToIso(day, "23:59", timeZone);
+/** The organization-calendar day ("YYYY-MM-DD") of an instant. */
+export const isoToDay = (iso: string, timeZone: string) => isoToZoned(iso, timeZone).day;
+
+/** "09/10" (this year) or "09/10/2025" — a work-log day in the organization timezone. */
+export const formatWorkDay = (
+  iso: string | null | undefined,
+  timeZone: string,
+  now: Date = new Date()
+) => {
+  if (!iso) return "—";
+  const p = partsIn(new Date(iso), timeZone);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(p.day)}/${pad(p.month)}${p.year === partsIn(now, timeZone).year ? "" : `/${p.year}`}`;
+};
+
 /**
  * "17:30 · 09/10" (short) or "17:30, 09/10/2026" (long) in the organization timezone. The short
  * form adds the year when it is not the current one ("17:30 · 09/10/2025", BUG-PR-26).
@@ -145,14 +173,17 @@ export const isFinishedStatus = (
 
 /**
  * The job deadline's countdown ("còn 3 giờ", "trễ 2 ngày"), or null once the job is complete or
- * delivered with no client feedback open — a countdown means nothing then (BUG-PR-26).
+ * delivered with no client feedback open — a countdown means nothing then (BUG-PR-26). A job whose
+ * manual status is closed ("Đã giao khách", PD-038) is done for the team too.
  */
 export const jobDeadlineCountdown = (
-  job: Pick<JobSummary, "deadline" | "status" | "openFeedbackCount">,
+  job: Pick<JobSummary, "deadline" | "status" | "openFeedbackCount"> &
+    Partial<Pick<JobSummary, "jobStatus">>,
   statuses: readonly FinishMeta[],
   now: Date = new Date()
 ) =>
-  job.openFeedbackCount === 0 && isFinishedStatus(job.status, statuses)
+  job.openFeedbackCount === 0 &&
+  (isFinishedStatus(job.status, statuses) || job.jobStatus?.isClosed === true)
     ? null
     : relativeDeadline(job.deadline, now);
 
@@ -232,45 +263,169 @@ export const myCreditSummary = (task: Pick<ProductionTask, "myCredits">) => {
 
 // Task lines (mirrors the API's checks for instant feedback) ----------------------------------------------
 
+/**
+ * One work-log row being typed (PD-035): Nhân viên thực hiện, Quy trình, Ca, Số lượng, Ngày nhận / Ngày giao (days,
+ * "YYYY-MM-DD"; null = not chosen; left out = not asked), optional Hình lỗi / Giờ OT (text as typed) and QC.
+ */
 export type TaskLineDraft = {
   assigneeId: string | null;
   qcId: string | null;
   processId: string | null;
   shiftId: string | null;
   qty: string;
+  receivedDay?: string | null;
+  dueDay?: string | null;
+  errorQty?: string;
+  otHours?: string;
+  /** "Link chia việc" (PD-040), as typed; optional. */
+  workLink?: string;
 };
 
 export type LineContext = {
-  callerId: string;
+  /** Production roles of the people the caller can list; a person missing here is left to the API. */
   roles: ReadonlyMap<string, readonly ProductionRole[]>;
+  /** The QC process ("Checking"): such a line is the QC person's own work, without a QC (PD-037). */
   qcProcessIds: ReadonlySet<string>;
 };
 
-/** Problems of one "Chia task" line, keyed by field (empty object = valid). */
+export type TaskLineProblemKey =
+  | "assignee"
+  | "qc"
+  | "process"
+  | "shift"
+  | "qty"
+  | "received"
+  | "due"
+  | "errorQty"
+  | "otHours"
+  | "workLink";
+
+/** "1,5" or "1.5" → 1.5; null when empty; NaN when not a number. */
+const decimalOf = (text: string) =>
+  text.trim() === "" ? null : Number(text.trim().replace(",", "."));
+
+/**
+ * Problems of one line ("Chia task", "Nhập công việc"), keyed by field (empty object = valid). QC is optional on
+ * every line (PD-035); a Checking line is done by a QC person (or Leader) and has no QC of its own (PD-037).
+ */
 export const taskLineProblems = (line: TaskLineDraft, context: LineContext) => {
-  const problems: Partial<Record<"assignee" | "qc" | "process" | "shift" | "qty", string>> = {};
+  const problems: Partial<Record<TaskLineProblemKey, string>> = {};
+  const checking = line.processId !== null && context.qcProcessIds.has(line.processId);
   if (!line.assigneeId) {
-    problems.assignee = "Chọn người làm.";
-  } else {
+    problems.assignee = "Chọn nhân viên thực hiện.";
+  } else if (context.roles.has(line.assigneeId)) {
     const roles = context.roles.get(line.assigneeId) ?? [];
-    if (!roles.includes("STAFF") && !roles.includes("LEADER"))
+    if (checking && !roles.some((role) => role === "QC" || role === "LEADER" || role === "ADMIN"))
+      problems.assignee = "Dòng Checking cần người có vai trò QC (hoặc Leader).";
+    else if (!checking && !roles.includes("STAFF") && !roles.includes("LEADER"))
       problems.assignee = "Cần vai trò Nhân viên hoặc Leader.";
   }
   if (line.qcId) {
-    if (!(context.roles.get(line.qcId) ?? []).includes("QC"))
+    if (checking) problems.qc = "Dòng Checking không có QC riêng.";
+    else if (context.roles.has(line.qcId) && !(context.roles.get(line.qcId) ?? []).includes("QC"))
       problems.qc = "Người QC cần vai trò QC.";
     else if (line.qcId === line.assigneeId) problems.qc = "QC phải khác người làm.";
-  } else if (line.assigneeId && line.assigneeId === context.callerId) {
-    problems.qc = "Tự giao cho mình thì cần QC là người khác.";
   }
   if (!line.processId) problems.process = "Chọn quy trình.";
-  else if (context.qcProcessIds.has(line.processId))
-    problems.process = "Quy trình QC không giao như task.";
   if (!line.shiftId) problems.shift = "Chọn ca.";
   const qty = Number(line.qty);
   if (!/^\d+$/.test(line.qty.trim()) || qty < 1 || qty > 1_000_000)
-    problems.qty = "Số tấm nguyên ≥ 1.";
+    problems.qty = "Số lượng nguyên ≥ 1.";
+  if (line.receivedDay === null) problems.received = "Chọn ngày nhận.";
+  if (line.dueDay === null) problems.due = "Chọn ngày giao.";
+  else if (line.receivedDay && line.dueDay && line.dueDay < line.receivedDay)
+    problems.due = "Ngày giao phải từ ngày nhận trở đi.";
+  const errorQty = line.errorQty?.trim() ?? "";
+  if (errorQty !== "" && (!/^\d+$/.test(errorQty) || Number(errorQty) > 1_000_000))
+    problems.errorQty = "Số nguyên ≥ 0.";
+  const otHours = decimalOf(line.otHours ?? "");
+  if (
+    otHours !== null &&
+    (!Number.isFinite(otHours) ||
+      otHours <= 0 ||
+      otHours > 24 ||
+      !Number.isInteger(Math.round(otHours * 1000) / 100))
+  )
+    problems.otHours = "Từ 0,1 đến 24 giờ.";
+  const workLink = workLinkProblem(line.workLink ?? "");
+  if (workLink) problems.workLink = workLink;
   return problems;
+};
+
+// "Link chia việc" (PD-040) ------------------------------------------------------------------------------------
+
+export const WORK_LINK_MAX = 2000;
+// eslint-disable-next-line no-control-regex -- rejecting control characters is intended (same rule as the API)
+const workLinkControls = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
+ * Why a typed "Link chia việc" would be refused (undefined = fine): any single-line text up to 2,000 characters once
+ * trimmed — a web link or a folder path (network drive, UNC) — without control characters (mirrors the API).
+ */
+export const workLinkProblem = (text: string) => {
+  const value = text.trim();
+  if (value.length > WORK_LINK_MAX) return "Tối đa 2.000 ký tự.";
+  if (workLinkControls.test(value)) return "Không được chứa ký tự điều khiển (tab, xuống dòng).";
+  return undefined;
+};
+
+/** The link to send: trimmed, null when empty. */
+export const workLinkValue = (text: string) => text.trim() || null;
+
+/** A web link (opened in a new tab); anything else is a folder path or free text (copied). */
+export const isWebLink = (value: string) => /^https?:\/\//i.test(value.trim());
+
+// Line forms ("Chia task", "Nhập công việc") ---------------------------------------------------------------
+
+/**
+ * What a collapsed "Chi tiết thêm" says about a row: its filled optional details, in form order, e.g.
+ * "QC: Tên · 3 hình lỗi · OT 1,5 giờ · Link · Ghi chú" (then `extra`, e.g. custom fields and tags). An empty string
+ * means nothing is filled (the section may stay collapsed).
+ */
+export const optionalDetailsSummary = (
+  details: {
+    qcName?: string | null | undefined;
+    errorQty?: string | undefined;
+    otHours?: string | undefined;
+    workLink?: string | undefined;
+    note?: string | undefined;
+  },
+  extra: readonly string[] = []
+) =>
+  [
+    details.qcName ? `QC: ${details.qcName}` : null,
+    details.errorQty?.trim() ? `${details.errorQty.trim()} hình lỗi` : null,
+    details.otHours?.trim() ? `OT ${details.otHours.trim()} giờ` : null,
+    details.workLink?.trim() ? "Link" : null,
+    details.note?.trim() ? "Ghi chú" : null,
+    ...extra
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+
+/**
+ * The unit price badge of a line from today's credit rule: "5,5 điểm/tấm", plus the money of a Khoán shift when the
+ * process has one ("5,5 điểm/tấm · 2.000 ₫/tấm"). Null without a rule ("Chưa có đơn giá").
+ */
+export const unitPriceLabel = (
+  rule: Pick<CreditRule, "creditPerImage" | "moneyPerImage"> | null,
+  payMode: PayMode | null
+) => {
+  if (!rule) return null;
+  const credit = `${formatNumber(rule.creditPerImage, 2)} điểm/tấm`;
+  return payMode === "MONEY_IF_KPI" && rule.moneyPerImage !== null
+    ? `${credit} · ${formatMoney(rule.moneyPerImage)}/tấm`
+    : credit;
+};
+
+/** The optional numbers of a line for the API: Hình lỗi (int) and Giờ OT (one decimal); null when empty. */
+export const lineOptionalNumbers = (line: Pick<TaskLineDraft, "errorQty" | "otHours">) => {
+  const errorQty = line.errorQty?.trim() ?? "";
+  const otHours = decimalOf(line.otHours ?? "");
+  return {
+    errorQty: errorQty === "" ? null : Number(errorQty),
+    otHours: otHours === null || !Number.isFinite(otHours) ? null : Math.round(otHours * 10) / 10
+  };
 };
 
 // Transitions ---------------------------------------------------------------------------------------------
@@ -425,13 +580,48 @@ export const boardColumns = <T extends { status: { id: string } }>(
     .map((status) => ({ status, tasks: byStatus.get(status.id) ?? [] }));
 };
 
+/** Given name for compact labels ("Bùi Thị Hoa" → "Hoa"): Vietnamese names end with it. */
+export const shortName = (displayName: string) => {
+  const words = displayName.trim().split(/\s+/).filter(Boolean);
+  return words[words.length - 1] ?? displayName;
+};
+
+/**
+ * Whose numbers the loaded job list holds (per-person view, PD-034). The first page says it
+ * (`personTotals.personId`), so while the next person's list loads, the previous page kept on screen
+ * stays labelled with its own person. Name: the member list, else the job rows, else "Nhân viên".
+ */
+export const listPersonOf = (
+  firstPage: Pick<JobPage, "personTotals"> | undefined,
+  jobs: readonly Pick<JobSummary, "people">[],
+  nameOf: (id: string) => string | undefined
+): { id: string; displayName: string } | null => {
+  const id = firstPage?.personTotals?.personId;
+  if (!id) return null;
+  const fromRows = jobs.flatMap((job) => job.people.workers).find((worker) => worker.user.id === id)
+    ?.user.displayName;
+  return { id, displayName: nameOf(id) ?? fromRows ?? "Nhân viên" };
+};
+
+/** Avatar stack of a job's "Người làm": the first `max` people (already ordered), then "+N". */
+export const jobPeopleStack = <T>(items: readonly T[], max = 4) => ({
+  shown: items.slice(0, max),
+  hidden: Math.max(0, items.length - max)
+});
+
 // Job list filters (URL state) ------------------------------------------------------------------------------
 
 export type JobFilters = {
   q: string;
   projectId: string | null;
-  statusId: string | null;
+  /**
+   * Manual job statuses (PD-038): any of them (`jobStatus` repeated in the URL). The derived line status is internal
+   * and no longer a filter (the old `status` parameter is ignored).
+   */
+  jobStatusIds: string[];
   leaderId: string | null;
+  /** "Mọi nhân viên": the assignee or QC of at least one task of the job. */
+  personId: string | null;
   /** Tags (any of them, `tag` repeated in the URL) and JOB custom-field filters (`cf.<key>`). */
   custom: ListFilters;
   /** Calendar days (organization timezone), inclusive. */
@@ -444,8 +634,9 @@ export type JobFilters = {
 export const emptyJobFilters: JobFilters = {
   q: "",
   projectId: null,
-  statusId: null,
+  jobStatusIds: [],
   leaderId: null,
+  personId: null,
   custom: emptyListFilters,
   from: null,
   to: null,
@@ -468,8 +659,12 @@ export const jobFiltersFromSearch = (params: URLSearchParams): JobFilters => {
   return {
     q: (params.get("q") ?? "").slice(0, 120),
     projectId: id("project"),
-    statusId: id("status"),
-    leaderId: id("leader"),
+    jobStatusIds: [
+      ...new Set(params.getAll("jobStatus").filter((value) => uuid.test(value)))
+    ].slice(0, jobStatusLimit),
+    // "none" = jobs without a leader ("Chưa có leader", PD-035).
+    leaderId: params.get("leader") === noLeaderFilter ? noLeaderFilter : id("leader"),
+    personId: id("person"),
     custom: listFiltersFromSearch(params, "tag"),
     from: day("from"),
     to: day("to"),
@@ -482,8 +677,9 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
   const params = new URLSearchParams();
   if (filters.q.trim()) params.set("q", filters.q.trim());
   if (filters.projectId) params.set("project", filters.projectId);
-  if (filters.statusId) params.set("status", filters.statusId);
+  for (const id of filters.jobStatusIds) params.append("jobStatus", id);
   if (filters.leaderId) params.set("leader", filters.leaderId);
+  if (filters.personId) params.set("person", filters.personId);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   if (filters.late) params.set("late", "1");
@@ -491,9 +687,11 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
   return listFiltersToSearch(filters.custom, params, "tag");
 };
 
+/** Every filter counts as one; the job statuses count once, however many are chosen. */
 export const activeFilterCount = (filters: JobFilters) =>
-  [filters.projectId, filters.statusId, filters.leaderId, filters.from, filters.to].filter(Boolean)
+  [filters.projectId, filters.leaderId, filters.personId, filters.from, filters.to].filter(Boolean)
     .length +
+  (filters.jobStatusIds.length > 0 ? 1 : 0) +
   (filters.late ? 1 : 0) +
   (filters.archived ? 1 : 0) +
   activeListFilterCount(filters.custom);
@@ -516,8 +714,10 @@ export const jobQueryFromFilters = (
   ...listFiltersToQuery(filters.custom),
   q: filters.q.trim() || undefined,
   projectId: filters.projectId ?? undefined,
-  statusId: filters.statusId ?? undefined,
+  // Repeated (`jobStatusId=a&jobStatusId=b`); sorted so the same choice shares one cache entry.
+  jobStatusId: filters.jobStatusIds.length > 0 ? [...filters.jobStatusIds].sort() : undefined,
   leaderId: filters.leaderId ?? undefined,
+  personId: filters.personId ?? undefined,
   deadlineFrom: filters.from
     ? (zonedToIso(filters.from, "00:00", timeZone) ?? undefined)
     : undefined,
@@ -527,6 +727,54 @@ export const jobQueryFromFilters = (
   late: filters.late ? "true" : undefined,
   includeArchived: filters.archived ? "true" : undefined
 });
+
+type JobStatusOption = Pick<JobStatus, "id" | "isClosed">;
+
+/**
+ * A shared link may name a job status that was deleted since: drop it once the catalog is known (`known` undefined =
+ * not loaded yet, everything is kept).
+ */
+export const sanitizeJobStatusIds = (
+  ids: readonly string[],
+  known: ReadonlySet<string> | undefined
+) => (known ? ids.filter((id) => known.has(id)) : [...ids]);
+
+/**
+ * The "Trạng thái" filter's catalog split for display and quick picks (PD-038): open statuses first, closed ones
+ * ("Đã giao khách") last, each in catalog order; `openIds` is "Đang mở", `closedIds` "Đã đóng".
+ */
+export const jobStatusFilterGroups = <T extends JobStatusOption>(catalog: readonly T[]) => {
+  const open = catalog.filter((status) => !status.isClosed);
+  const closed = catalog.filter((status) => status.isClosed);
+  return {
+    open,
+    closed,
+    openIds: open.map((status) => status.id),
+    closedIds: closed.map((status) => status.id)
+  };
+};
+
+/** Same ids, whatever the order (a quick pick is "on" when the choice is exactly its statuses). */
+export const sameIdSet = (a: readonly string[], b: readonly string[]) => {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...right].every((id) => left.has(id));
+};
+
+/** Adds or removes one status, keeping the catalog order (stable URLs and labels). */
+export const toggleJobStatusId = (
+  ids: readonly string[],
+  id: string,
+  catalog: readonly Pick<JobStatus, "id">[]
+) => {
+  const next = new Set(ids);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  const order = new Map(catalog.map((status, index) => [status.id, index]));
+  return [...next].sort(
+    (a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER)
+  );
+};
 
 // Timeline sentences ------------------------------------------------------------------------------------------
 
@@ -608,6 +856,24 @@ export const describeJobEdit = (
 ): { verb: string; changes: string[] } => {
   const from = log.fromValue ?? {};
   const to = log.toValue ?? {};
+  // The manual job status (PD-038): "Mới nhận → Đang làm"; an Admin deleting a status moves its jobs.
+  if (str(to.jobStatusId)) {
+    const change = `${str(from.jobStatusName) ?? "—"} → ${str(to.jobStatusName) ?? "—"}`;
+    return to.statusDeleted === true
+      ? {
+          verb: `đã xoá trạng thái ${str(from.jobStatusName) ?? "cũ"}, job chuyển sang ${str(to.jobStatusName) ?? "trạng thái khác"}`,
+          changes: []
+        }
+      : { verb: "đã đổi trạng thái job", changes: [change] };
+  }
+  // Deleting the whole job (PD-036): its lines were deleted first (their own DELETE rows).
+  if (to.deleted === true) {
+    const count = num(to.deletedTasks);
+    return {
+      verb: `đã xoá job${count !== null ? ` và ${formatNumber(count)} dòng` : ""}`,
+      changes: []
+    };
+  }
   const archived =
     to.archived === true ? "lưu trữ job" : to.archived === false ? "khôi phục job" : null;
   const changes = jobChanges(from, to, names);
@@ -621,7 +887,7 @@ const jobChanges = (from: Record<string, unknown>, to: Record<string, unknown>, 
   for (const key of Object.keys(to)) {
     switch (key) {
       case "code":
-        parts.push(`mã job ${str(from.code) ?? "—"} → ${str(to.code) ?? "—"}`);
+        parts.push(`gói công việc ${str(from.code) ?? "—"} → ${str(to.code) ?? "—"}`);
         break;
       case "name":
         parts.push(`tên job ${quoted(from.name)} → ${quoted(to.name)}`);
@@ -629,16 +895,22 @@ const jobChanges = (from: Record<string, unknown>, to: Record<string, unknown>, 
       case "projectId":
         parts.push(`dự án ${str(from.projectCode) ?? "khác"} → ${str(to.projectCode) ?? "khác"}`);
         break;
+      case "receivedAt":
+        parts.push(
+          `ngày nhận ${formatWorkDay(str(from.receivedAt), names.timeZone)} → ${formatWorkDay(str(to.receivedAt), names.timeZone)}`
+        );
+        break;
       case "deadline":
         parts.push(
-          `deadline ${str(from.deadline) ? formatShortDateTime(str(from.deadline)!, names.timeZone) : "—"} → ${
+          `ngày giao ${str(from.deadline) ? formatShortDateTime(str(from.deadline)!, names.timeZone) : "—"} → ${
             str(to.deadline) ? formatShortDateTime(str(to.deadline)!, names.timeZone) : "—"
           }`
         );
         break;
       case "leaderId": {
+        // null = no leader (PD-035).
         const who = (name: unknown, id: unknown) =>
-          str(name) ?? (str(id) ? (names.user(str(id)!) ?? "người khác") : "—");
+          str(name) ?? (str(id) ? (names.user(str(id)!) ?? "người khác") : "chưa có leader");
         parts.push(
           `Leader ${who(from.leaderName, from.leaderId)} → ${who(to.leaderName, to.leaderId)}`
         );
@@ -649,6 +921,11 @@ const jobChanges = (from: Record<string, unknown>, to: Record<string, unknown>, 
           `tổng tấm ${num(from.totalImages) !== null ? formatNumber(num(from.totalImages)) : "—"} → ${
             num(to.totalImages) !== null ? formatNumber(num(to.totalImages)) : "—"
           }`
+        );
+        break;
+      case "totalImagesManual":
+        parts.push(
+          to.totalImagesManual === false ? "tổng tấm tự tính theo các dòng" : "tổng tấm nhập tay"
         );
         break;
       case "driveLink":
@@ -683,10 +960,13 @@ const person = (id: unknown, names: Names, fallback = "người khác"): Segment
 };
 
 const fieldLabels: Record<string, string> = {
-  qtyAssigned: "số tấm giao",
+  qtyAssigned: "số lượng",
   processId: "quy trình",
   shiftId: "ca làm",
-  deadline: "deadline",
+  assignedAt: "ngày nhận",
+  deadline: "ngày giao",
+  errorQty: "hình lỗi",
+  otHours: "giờ OT",
   customValues: "trường tùy chỉnh"
 };
 
@@ -694,9 +974,10 @@ const fieldValue = (key: string, value: unknown, names: Names) => {
   if (key === "processId")
     return str(value) ? (names.process(str(value)!) ?? "quy trình khác") : "—";
   if (key === "shiftId") return str(value) ? (names.shift(str(value)!) ?? "ca khác") : "—";
-  if (key === "deadline")
-    return str(value) ? formatDateTime(str(value), names.timeZone, true) : "—";
+  if (key === "deadline" || key === "assignedAt") return formatWorkDay(str(value), names.timeZone);
   if (key === "qtyAssigned") return num(value) !== null ? `${num(value)} tấm` : "—";
+  if (key === "errorQty") return num(value) !== null ? formatNumber(num(value)) : "—";
+  if (key === "otHours") return num(value) !== null ? `${formatNumber(num(value))} giờ` : "—";
   return null;
 };
 
@@ -787,10 +1068,34 @@ export const describeTaskLog = (
       return str(to.note)
         ? [{ text: "cập nhật ghi chú của " }, task]
         : [{ text: "xóa ghi chú của " }, task];
+    case "DELETE": {
+      // PD-036: the line is hidden, kept for audit; its score rows were brought back to zero.
+      const segments: Segment[] = [
+        { text: "đã xoá dòng " },
+        task,
+        { text: " của " },
+        person(from.assigneeId, names)
+      ];
+      if (num(from.qtyAssigned) !== null)
+        segments.push({ text: ` · ${formatNumber(num(from.qtyAssigned))} tấm` });
+      if ((num(to.reversedEntries) ?? 0) > 0)
+        segments.push({ text: " · đã trừ lại điểm", tone: "warning" });
+      if (to.withJob === true) segments.push({ text: " (xoá cả job)" });
+      return segments;
+    }
     case "FIELD": {
       const keys = Object.keys(to);
       const parts = keys.flatMap((key) => {
         if (key === "tagIds") return tagChanges(from.tagIds, to.tagIds, names);
+        // PD-040: a path or URL is too long for a sentence — the change is named, the sheet shows the value.
+        if (key === "workLink")
+          return [
+            !str(from.workLink)
+              ? "thêm link chia việc"
+              : !str(to.workLink)
+                ? "xóa link chia việc"
+                : "đổi link chia việc"
+          ];
         if (key === "customValues" && names.field) {
           const changes = customValueChanges("TASK", from.customValues, to.customValues, names);
           return changes.length > 0 ? changes : [fieldLabels.customValues ?? key];
@@ -833,11 +1138,11 @@ export const canSeeJob = (
   personId: string,
   roles: readonly ProductionRole[] | undefined,
   job: {
-    leader: { id: string };
+    leader: { id: string } | null;
     tasks: readonly { assignee: { id: string }; qc: { id: string } | null }[];
   }
 ) =>
-  personId === job.leader.id ||
+  personId === job.leader?.id ||
   seesEverything(roles) ||
   job.tasks.some((task) => task.assignee.id === personId || task.qc?.id === personId);
 

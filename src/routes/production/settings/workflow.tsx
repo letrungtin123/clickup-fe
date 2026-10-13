@@ -49,8 +49,8 @@ const codeConflict = "Mã trạng thái đã tồn tại. Hãy chọn mã khác.
 const Flags = ({ status }: { status: ProductionStatus }) => {
   const flags = [
     status.isInitial && { label: "Bắt đầu", className: "bg-muted text-foreground-muted" },
-    status.countsDone && { label: "Ghi điểm NV", className: "bg-brand-soft text-brand-text" },
-    status.countsChecked && { label: "Ghi điểm QC", className: "bg-success-soft text-success" },
+    status.countsDone && { label: "Ghi điểm", className: "bg-brand-soft text-brand-text" },
+    status.countsChecked && { label: "Đã kiểm", className: "bg-success-soft text-success" },
     status.isTerminal && { label: "Kết thúc", className: "bg-warning-soft text-foreground" }
   ].filter((flag): flag is { label: string; className: string } => Boolean(flag));
   if (flags.length === 0) return null;
@@ -393,14 +393,14 @@ const StatusDialog = ({
               <FlagSwitch
                 checked={countsDone}
                 onChange={setCountsDone}
-                title="Ghi điểm NV"
-                hint="Vào trạng thái này thì ghi điểm cho người làm."
+                title="Ghi điểm"
+                hint="Vào trạng thái này lần đầu thì ghi điểm cho người làm dòng (dòng Checking: điểm QC)."
               />
               <FlagSwitch
                 checked={countsChecked}
                 onChange={setCountsChecked}
-                title="Ghi điểm QC"
-                hint="Vào trạng thái này thì ghi điểm QC cho người kiểm."
+                title="Đã kiểm"
+                hint="Vào trạng thái này thì dòng được tính là đã QC kiểm. Không ghi điểm: điểm QC ghi ở dòng Checking."
               />
               <FlagSwitch
                 checked={isTerminal}

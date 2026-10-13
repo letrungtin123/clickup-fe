@@ -1,6 +1,7 @@
 import { ChevronLeft } from "lucide-react";
 import { motion } from "motion/react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { TaskDetailView } from "@/features/production/components/jobs/task-detail";
 import { touchTargets } from "@/features/production/ui";
@@ -31,6 +32,7 @@ export const ProductionTaskRoute = () => {
             taskId={taskId}
             variant="page"
             onOpenTask={(id) => void navigate(`/production/tasks/${id}`)}
+            onDeleted={(jobId) => void navigate(`/production/jobs/${jobId}`, { replace: true })}
           />
         ) : null}
       </motion.div>

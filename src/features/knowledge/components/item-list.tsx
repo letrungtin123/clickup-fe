@@ -1,7 +1,7 @@
 import { cn } from "cn";
 import { CalendarClock, MessageSquare, Paperclip, Tag } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,7 +59,8 @@ export const KnowledgeItemList = ({
     return () => observer.disconnect();
   }, [hasMore, items.length]);
 
-  const pathOf = (item: KnowledgeItemSummary) => (showCategory ? categoryPath(categories, item.categoryId) : null);
+  const pathOf = (item: KnowledgeItemSummary) =>
+    showCategory ? categoryPath(categories, item.categoryId) : null;
 
   return (
     <>
@@ -109,9 +110,19 @@ const gridColumns =
 const itemHref = (spaceId: string, itemId: string) => `/k/${spaceId}/i/${itemId}`;
 
 const updatedTitle = (item: KnowledgeItemSummary) =>
-  item.updatedBy ? `${fullDateTime(item.updatedAt)} · ${item.updatedBy.displayName}` : fullDateTime(item.updatedAt);
+  item.updatedBy
+    ? `${fullDateTime(item.updatedAt)} · ${item.updatedBy.displayName}`
+    : fullDateTime(item.updatedAt);
 
-const ItemRow = ({ spaceId, item, category }: { spaceId: string; item: KnowledgeItemSummary; category: string | null }) => {
+const ItemRow = ({
+  spaceId,
+  item,
+  category
+}: {
+  spaceId: string;
+  item: KnowledgeItemSummary;
+  category: string | null;
+}) => {
   const retired = item.status.group === "retired";
   return (
     <li className="border-b last:border-b-0">
@@ -136,7 +147,12 @@ const ItemRow = ({ spaceId, item, category }: { spaceId: string; item: Knowledge
             </span>
           </div>
           {item.summary ? (
-            <p className={cn("line-clamp-1 text-[13px] text-foreground-muted", retired && "text-foreground-subtle")}>
+            <p
+              className={cn(
+                "line-clamp-1 text-[13px] text-foreground-muted",
+                retired && "text-foreground-subtle"
+              )}
+            >
               {item.summary}
             </p>
           ) : null}
@@ -158,7 +174,11 @@ const ItemRow = ({ spaceId, item, category }: { spaceId: string; item: Knowledge
             <span className="text-[13px] text-foreground-subtle">—</span>
           )}
         </span>
-        <time dateTime={item.updatedAt} title={updatedTitle(item)} className="block truncate pt-1 text-[13px] text-foreground-muted">
+        <time
+          dateTime={item.updatedAt}
+          title={updatedTitle(item)}
+          className="block truncate pt-1 text-[13px] text-foreground-muted"
+        >
           {relativeTime(item.updatedAt)}
         </time>
         <span className="hidden pt-0.5 2xl:block">
@@ -179,11 +199,28 @@ const ItemRow = ({ spaceId, item, category }: { spaceId: string; item: Knowledge
 };
 
 /** Tags, category, counters and (when the review column is hidden) the review badge. */
-const ItemMeta = ({ item, category, className }: { item: KnowledgeItemSummary; category: string | null; className?: string }) => {
-  const hasMeta = Boolean(category) || item.tags.length > 0 || item.openCommentCount > 0 || item.attachmentCount > 0;
+const ItemMeta = ({
+  item,
+  category,
+  className
+}: {
+  item: KnowledgeItemSummary;
+  category: string | null;
+  className?: string;
+}) => {
+  const hasMeta =
+    Boolean(category) ||
+    item.tags.length > 0 ||
+    item.openCommentCount > 0 ||
+    item.attachmentCount > 0;
   if (!hasMeta && !item.reviewDue) return null;
   return (
-    <div className={cn("flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-foreground-subtle", className)}>
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-foreground-subtle",
+        className
+      )}
+    >
       {category ? <span className="max-w-full truncate">{category}</span> : null}
       {item.tags.length > 0 ? (
         <span className="inline-flex max-w-full min-w-0 items-center gap-1">
@@ -195,13 +232,19 @@ const ItemMeta = ({ item, category, className }: { item: KnowledgeItemSummary; c
         </span>
       ) : null}
       {item.openCommentCount > 0 ? (
-        <span className="inline-flex shrink-0 items-center gap-1 text-foreground-muted" title={`${item.openCommentCount} góp ý chưa xử lý`}>
+        <span
+          className="inline-flex shrink-0 items-center gap-1 text-foreground-muted"
+          title={`${item.openCommentCount} góp ý chưa xử lý`}
+        >
           <MessageSquare className="size-3" aria-hidden="true" />
           {item.openCommentCount}
         </span>
       ) : null}
       {item.attachmentCount > 0 ? (
-        <span className="inline-flex shrink-0 items-center gap-1" title={`${item.attachmentCount} tệp đính kèm`}>
+        <span
+          className="inline-flex shrink-0 items-center gap-1"
+          title={`${item.attachmentCount} tệp đính kèm`}
+        >
           <Paperclip className="size-3" aria-hidden="true" />
           {item.attachmentCount}
         </span>
@@ -211,7 +254,15 @@ const ItemMeta = ({ item, category, className }: { item: KnowledgeItemSummary; c
   );
 };
 
-const ItemCard = ({ spaceId, item, category }: { spaceId: string; item: KnowledgeItemSummary; category: string | null }) => {
+const ItemCard = ({
+  spaceId,
+  item,
+  category
+}: {
+  spaceId: string;
+  item: KnowledgeItemSummary;
+  category: string | null;
+}) => {
   const retired = item.status.group === "retired";
   return (
     <Link
@@ -223,11 +274,20 @@ const ItemCard = ({ spaceId, item, category }: { spaceId: string; item: Knowledg
     >
       <div className="flex items-start gap-2">
         {item.pinned ? <PinnedMark className="mt-1" /> : null}
-        <span className={cn("line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug font-semibold tracking-[-0.01em] wrap-break-word", retired && retiredClass)}>
+        <span
+          className={cn(
+            "line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug font-semibold tracking-[-0.01em] wrap-break-word",
+            retired && retiredClass
+          )}
+        >
           {item.title}
         </span>
       </div>
-      {item.summary ? <p className="line-clamp-2 text-[13px] leading-relaxed text-foreground-muted">{item.summary}</p> : null}
+      {item.summary ? (
+        <p className="line-clamp-2 text-[13px] leading-relaxed text-foreground-muted">
+          {item.summary}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-1.5">
         <ImportanceBadge importance={item.importance} size="xs" />
         <KnowledgeStatusChip status={item.status} size="xs" />
@@ -239,7 +299,10 @@ const ItemCard = ({ spaceId, item, category }: { spaceId: string; item: Knowledg
           {category ? `${category} · ` : ""}cập nhật {relativeTime(item.updatedAt)}
         </span>
         {item.openCommentCount > 0 ? (
-          <span className="inline-flex shrink-0 items-center gap-1" title={`${item.openCommentCount} góp ý chưa xử lý`}>
+          <span
+            className="inline-flex shrink-0 items-center gap-1"
+            title={`${item.openCommentCount} góp ý chưa xử lý`}
+          >
             <MessageSquare className="size-3.5" aria-hidden="true" />
             {item.openCommentCount}
           </span>

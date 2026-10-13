@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { motion } from "motion/react";
 import { ArrowUpRight, Bell, FolderPlus, Globe, ListTodo, Lock, Search } from "lucide-react";
-import { Link } from "react-router";
+import { Link } from "@/components/shared/router-link";
 
 import { ProjectIcon } from "@/components/shared/project-icon";
 import { Shortcut } from "@/components/shared/shortcut";

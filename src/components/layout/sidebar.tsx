@@ -16,7 +16,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { type ReactNode } from "react";
-import { Link, NavLink, useMatch } from "react-router";
+import { useMatch } from "react-router";
+import { Link, NavLink } from "@/components/shared/router-link";
 
 import { ProjectIcon } from "@/components/shared/project-icon";
 import { Shortcut } from "@/components/shared/shortcut";

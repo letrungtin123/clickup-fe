@@ -6,7 +6,7 @@ import type { CustomField } from "@/contracts/production-catalog";
 import type { ProductionTask } from "@/contracts/production-jobs";
 
 import { formatCredit } from "../../format";
-import { formatDateTime, myCreditSummary, relativeDeadline } from "../../jobs-model";
+import { formatDateTime, formatWorkDay, myCreditSummary, relativeDeadline } from "../../jobs-model";
 import { CustomFieldChips } from "../list-filters";
 import { KindBadge, LateBadge, Person, StatusChip } from "./job-bits";
 
@@ -93,7 +93,7 @@ export const TaskCard = memo(function TaskCard({
         </span>
         <span>{task.shift.name}</span>
         <span className={cn("tabular-nums", task.isLate && "font-medium text-danger")}>
-          {formatDateTime(task.deadline, timeZone)}
+          Giao {formatWorkDay(task.deadline, timeZone)}
           {!task.doneAt ? (
             <span className={cn(deadline.late ? "text-danger" : "text-foreground-subtle")}>
               {" "}
