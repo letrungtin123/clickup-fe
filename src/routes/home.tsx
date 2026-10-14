@@ -1,7 +1,17 @@
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { motion } from "motion/react";
-import { ArrowUpRight, Bell, FolderPlus, Globe, ListTodo, Lock, Search } from "lucide-react";
+import {
+  ArrowUpRight,
+  Bell,
+  Factory,
+  FolderPlus,
+  Globe,
+  ListTodo,
+  Lock,
+  Search
+} from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Link } from "@/components/shared/router-link";
 
 import { ProjectIcon } from "@/components/shared/project-icon";
@@ -9,27 +19,47 @@ import { Shortcut } from "@/components/shared/shortcut";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { departmentLabels } from "@/contracts/departments";
 import { P } from "@/features/auth/permissions";
 import { usePermissions, useSessionContext } from "@/features/auth/hooks";
+import { useCurrentDepartment } from "@/features/departments/hooks";
 import { InboxWidgetContent } from "@/features/notifications/components/inbox-widget";
+import { useProductionNavEntries } from "@/features/production/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { MyTasksWidget } from "@/features/tasks/components/my-tasks-list";
 import { greetingFor } from "@/lib/greeting";
 import { useUiStore } from "@/stores/ui-store";
 
+// Photo Retouch only: the Production department never downloads the production agenda.
+const HomeProductionAgenda = lazy(() =>
+  import("@/features/production/components/agenda").then((module) => ({
+    default: module.HomeProductionAgenda
+  }))
+);
+
+/**
+ * Trang chủ follows the department shown (PD-041):
+ *   Production     Việc của tôi + Hộp thư, Dự án của bạn, "Dự án mới"
+ *   Photo Retouch  the production agenda (Việc cần làm) + Hộp thư, no project widgets
+ *   no department  Hộp thư only (shared content)
+ */
 export const HomeRoute = () => {
   const session = useSessionContext();
+  const department = useCurrentDepartment();
   const { can } = usePermissions();
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
+  const retouchOverview = useProductionNavEntries().some((entry) => entry.to === "/production");
   const now = new Date();
+  const weekday = format(now, "EEEE, d MMMM", { locale: vi });
+  const day = weekday.charAt(0).toLocaleUpperCase("vi") + weekday.slice(1);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 md:px-8 md:py-10">
         <header className="flex flex-col gap-1">
           <p className="text-[13px] text-foreground-muted first-letter:uppercase">
-            {format(now, "EEEE, d MMMM", { locale: vi })}
+            {department ? `${departmentLabels[department]} · ${day}` : day}
           </p>
           <h1 className="text-2xl font-semibold tracking-[-0.02em]">
             {greetingFor(now)}, {session.user.displayName}
@@ -42,28 +72,61 @@ export const HomeRoute = () => {
             Tìm kiếm
             <Shortcut keys={["mod", "K"]} className="ml-1" />
           </Button>
-          {can(P.ProjectCreate) ? (
+          {department === "PRODUCTION" && can(P.ProjectCreate) ? (
             <Button variant="outline" onClick={() => setNewProjectOpen(true)}>
               <FolderPlus />
               Dự án mới
             </Button>
           ) : null}
+          {department === "PHOTO_RETOUCH" && retouchOverview ? (
+            <Button variant="outline" render={<Link to="/production" />} nativeButton={false}>
+              <Factory />
+              Tổng quan Photo Retouch
+            </Button>
+          ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Widget title="Việc của tôi" icon={ListTodo} href="/my-tasks">
-            <MyTasksWidget />
-          </Widget>
-          <Widget title="Hộp thư" icon={Bell} href="/inbox">
-            <InboxWidgetContent />
-          </Widget>
-        </div>
-
-        <RecentProjects />
+        {department === "PRODUCTION" ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Widget title="Việc của tôi" icon={ListTodo} href="/my-tasks">
+                <MyTasksWidget />
+              </Widget>
+              <InboxWidget />
+            </div>
+            <RecentProjects />
+          </>
+        ) : department === "PHOTO_RETOUCH" ? (
+          <>
+            <Suspense fallback={<AgendaFallback />}>
+              <HomeProductionAgenda />
+            </Suspense>
+            <InboxWidget />
+          </>
+        ) : (
+          <InboxWidget />
+        )}
       </div>
     </div>
   );
 };
+
+/** Same footprint as the agenda while its chunk loads. */
+const AgendaFallback = () => (
+  <div className="flex flex-col gap-3" aria-busy="true" aria-label="Đang tải việc cần làm">
+    <Skeleton className="h-4 w-28" />
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Skeleton className="h-56 rounded-xl" />
+      <Skeleton className="h-56 rounded-xl" />
+    </div>
+  </div>
+);
+
+const InboxWidget = () => (
+  <Widget title="Hộp thư" icon={Bell} href="/inbox">
+    <InboxWidgetContent />
+  </Widget>
+);
 
 const Widget = ({
   title,

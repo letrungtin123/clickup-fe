@@ -91,7 +91,7 @@ export const adminDashboardCsv = (data: AdminDashboard, timeZone: string) => {
     blocks.push([csvLine([`${title} · ${scope}`]), ...lines]);
 
   blocks.push([
-    csvLine(["Quản trị số liệu sản xuất"]),
+    csvLine(["Quản trị số liệu Photo Retouch"]),
     csvLine([
       `Ngày ${formatDay(data.today)} · Kỳ KPI ${data.period.key.slice(5, 7)}/${data.period.key.slice(0, 4)} (${formatRange(data.period.from, data.period.to)})`
     ]),

@@ -35,7 +35,7 @@ const useSettingsNav = (): SettingsNavItem[] => {
     },
     {
       to: "/settings/roles",
-      label: "Vai trò và quyền",
+      label: "Vai trò & phân quyền",
       short: "Vai trò",
       icon: ShieldCheck,
       visible: can(P.RoleView) || can(P.MemberManage)

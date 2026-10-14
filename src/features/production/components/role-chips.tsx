@@ -51,9 +51,10 @@ type RoleToggleGroupProps = {
   /** Roles that cannot be toggled, with the reason shown as a tooltip. */
   locked?: Partial<Record<ProductionRole, string>>;
   disabled?: boolean;
-  "aria-label": string;
+  /** Lets a form focus the first chip (`#id button`). */
+  id?: string;
   className?: string;
-};
+} & ({ "aria-label": string } | { "aria-labelledby": string });
 
 /**
  * Multi-select role chips: one click grants or removes a role. Each chip is a toggle button
@@ -64,10 +65,11 @@ export const RoleToggleGroup = ({
   onChange,
   locked = {},
   disabled,
+  id,
   className,
   ...aria
 }: RoleToggleGroupProps) => (
-  <div role="group" {...aria} className={cn("flex flex-wrap gap-1", className)}>
+  <div id={id} role="group" {...aria} className={cn("flex flex-wrap gap-1", className)}>
     {productionRoleCodes.map((role) => {
       const pressed = value.includes(role);
       const lockReason = locked[role];

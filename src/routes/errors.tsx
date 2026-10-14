@@ -15,7 +15,7 @@ export const NotFoundRoute = () => (
       action={
         <Button render={<Link to="/" />} nativeButton={false} variant="outline">
           <Home />
-          Về trang chủ
+          Về Trang chủ
         </Button>
       }
     />

@@ -31,6 +31,25 @@ export const groupLabels: Record<SearchGroup, string> = {
 export const isSearchTab = (value: string | null): value is SearchTab =>
   searchTabs.some((tab) => tab.value === value);
 
+/**
+ * Groups of the Production department's workspace (PD-041). Outside that department (Photo Retouch, or no
+ * department) search covers shared content only: people, messages and knowledge.
+ */
+export const workspaceSearchGroups: readonly SearchGroup[] = ["tasks", "projects", "lists"];
+
+export const isWorkspaceGroup = (group: SearchTab) =>
+  (workspaceSearchGroups as readonly SearchTab[]).includes(group);
+
+/** Tabs offered on /search: "Tri thức" needs knowledge.view, the workspace groups the Production department. */
+export const visibleSearchTabs = ({ knowledge, workspace }: { knowledge: boolean; workspace: boolean }) =>
+  searchTabs.filter(
+    (tab) => (tab.value !== "knowledge" || knowledge) && (workspace || !isWorkspaceGroup(tab.value))
+  );
+
+/** Drops workspace hits outside the Production department (the server already sends none for Photo Retouch). */
+export const scopeSearchItems = (items: readonly SearchItem[], workspace: boolean): SearchItem[] =>
+  workspace ? [...items] : items.filter((item) => !isWorkspaceGroup(item.group));
+
 /** Link to a message inside its conversation (thread replies open their thread). */
 export const messageHref = (hit: {
   channelId: string;

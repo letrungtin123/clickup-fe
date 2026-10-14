@@ -1,7 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { cn } from "cn";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import {
+  Building2,
   Check,
   Copy,
   Ellipsis,
@@ -11,7 +13,7 @@ import {
   UserPlus,
   Users
 } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -53,9 +55,26 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import type { Department } from "@/contracts/departments";
 import { useAdminMembers, useAdminRoles, useMemberMutations } from "@/features/admin/api";
+import { adminErrorMessage } from "@/features/admin/errors";
 import { P } from "@/features/auth/permissions";
 import { usePermissions, useSessionContext } from "@/features/auth/hooks";
+import {
+  DepartmentCell,
+  DepartmentFields,
+  DepartmentFilterSelect,
+  EditDepartmentsDialog,
+  type DepartmentEditTarget
+} from "@/features/departments-admin/department-fields";
+import {
+  departmentErrorField,
+  toDepartmentPayload,
+  validateDepartmentDraft,
+  type DepartmentDraft,
+  type DepartmentErrors
+} from "@/features/departments-admin/department-form";
+import { useDepartmentLocks } from "@/features/departments-admin/use-department-locks";
 import { getErrorMessage } from "@/lib/api/errors";
 import type { AdminMember, AdminRole } from "@/lib/api/schemas";
 
@@ -65,6 +84,12 @@ const statusLabels: Record<AdminMember["status"], string> = {
   disabled: "Đã vô hiệu"
 };
 
+const isSuperadmin = (member: AdminMember) => member.role.key === "superadmin";
+
+/** Desktop columns: member · departments · role · status · joined · actions. */
+const columns =
+  "md:grid-cols-[minmax(0,2fr)_minmax(8.5rem,1fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_7rem_2.5rem]";
+
 const normalize = (value: string) =>
   value.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").toLowerCase();
 
@@ -72,7 +97,15 @@ export const MembersSettingsRoute = () => {
   const { can } = usePermissions();
   const canView = can(P.MemberView);
   const canManage = can(P.MemberManage);
-  const members = useAdminMembers(canView);
+  const [department, setDepartment] = useState<Department | null>(null);
+  // `?department=` filters server-side (superadmins belong to every department).
+  const members = useAdminMembers(canView, department);
+  const mutations = useMemberMutations();
+  const locks = useDepartmentLocks({ retouchNeedsProductionAdmin: true });
+  const [editing, setEditing] = useState<{
+    membershipId: string;
+    target: DepartmentEditTarget;
+  } | null>(null);
   // Roles only feed the role pickers, which need member.manage — GET /roles is refused otherwise (WK-62).
   const roles = useAdminRoles(canView && canManage);
   const [term, setTerm] = useState("");
@@ -115,6 +148,11 @@ export const MembersSettingsRoute = () => {
             className="pl-8"
           />
         </div>
+        <DepartmentFilterSelect
+          value={department}
+          onChange={setDepartment}
+          className="min-w-0 flex-1 basis-36 sm:w-44 sm:flex-none sm:basis-auto"
+        />
         <span className="text-xs text-foreground-muted">
           {members.data ? `${filtered.length}/${members.data.items.length} thành viên` : null}
         </span>
@@ -126,9 +164,21 @@ export const MembersSettingsRoute = () => {
         ) : null}
       </div>
 
-      <div className="rounded-xl border bg-surface shadow-xs">
-        <div className="hidden grid-cols-[minmax(0,2fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_7rem_2.5rem] gap-4 border-b px-4 py-2.5 text-xs font-medium text-foreground-muted md:grid">
+      <div
+        aria-busy={members.isPlaceholderData || undefined}
+        className={cn(
+          "rounded-xl border bg-surface shadow-xs transition-opacity duration-150",
+          members.isPlaceholderData && "opacity-60"
+        )}
+      >
+        <div
+          className={cn(
+            "hidden gap-4 border-b px-4 py-2.5 text-xs font-medium text-foreground-muted md:grid",
+            columns
+          )}
+        >
           <span>Thành viên</span>
+          <span>Phòng ban</span>
           <span>Vai trò</span>
           <span>Trạng thái</span>
           <span>Tham gia</span>
@@ -143,7 +193,13 @@ export const MembersSettingsRoute = () => {
             size="sm"
             icon={Users}
             title="Không có thành viên phù hợp"
-            description={term ? "Thử từ khóa khác." : undefined}
+            description={
+              department
+                ? "Thử từ khóa khác hoặc bỏ lọc phòng ban."
+                : term
+                  ? "Thử từ khóa khác."
+                  : undefined
+            }
           />
         ) : (
           <ul className="divide-y">
@@ -154,6 +210,16 @@ export const MembersSettingsRoute = () => {
                 roles={roles.data?.items ?? []}
                 canManage={canManage}
                 onSecret={(password) => setSecret({ name: member.user.displayName, password })}
+                onEditDepartments={() =>
+                  setEditing({
+                    membershipId: member.id,
+                    target: {
+                      id: member.id,
+                      name: member.user.displayName,
+                      departments: member.departments
+                    }
+                  })
+                }
               />
             ))}
           </ul>
@@ -169,6 +235,25 @@ export const MembersSettingsRoute = () => {
         />
       ) : null}
       <TemporaryPasswordDialog secret={secret} onClose={() => setSecret(null)} />
+      {canManage ? (
+        <EditDepartmentsDialog
+          target={editing?.target ?? null}
+          locks={locks}
+          describeError={(error) => adminErrorMessage(error, "Không lưu được phòng ban.")}
+          onClose={() => setEditing(null)}
+          onSave={(change) =>
+            editing
+              ? mutations.setDepartments.mutateAsync({
+                  membershipId: editing.membershipId,
+                  input: {
+                    departments: change.departments,
+                    ...(change.roles ? { productionRoles: change.roles } : {})
+                  }
+                })
+              : Promise.resolve()
+          }
+        />
+      ) : null}
     </div>
   );
 };
@@ -177,12 +262,14 @@ const MemberRow = ({
   member,
   roles,
   canManage,
-  onSecret
+  onSecret,
+  onEditDepartments
 }: {
   member: AdminMember;
   roles: AdminRole[];
   canManage: boolean;
   onSecret: (password: string) => void;
+  onEditDepartments: () => void;
 }) => {
   const session = useSessionContext();
   const mutations = useMemberMutations();
@@ -191,12 +278,20 @@ const MemberRow = ({
   const full = session.hasFullOrganizationAuthority;
   // Mirrors the API escalation guards: only superadmins touch superadmin accounts or grant that role.
   const editable = canManage && !isSelf && (full || member.role.key !== "superadmin");
+  // A superadmin implicitly belongs to every department ("Tất cả"): nothing to edit.
+  const superadmin = isSuperadmin(member);
+  const departmentsEditable = editable && !superadmin;
   const roleItems = roles
     .filter((role) => full || role.key !== "superadmin")
     .map((role) => ({ value: role.id, label: roleLabel(role) }));
 
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 md:grid-cols-[minmax(0,2fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_7rem_2.5rem] md:gap-x-4">
+    <li
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 md:gap-x-4",
+        columns
+      )}
+    >
       <div className="col-span-2 flex min-w-0 items-center gap-3 md:col-span-1">
         <UserAvatar user={member.user} size="md" />
         <div className="flex min-w-0 flex-col">
@@ -206,6 +301,17 @@ const MemberRow = ({
           </span>
           <span className="truncate text-xs text-foreground-muted">{member.user.email ?? "—"}</span>
         </div>
+      </div>
+
+      {/* Phones: a row of its own under the name. */}
+      <div className="col-span-3 flex min-w-0 md:col-span-1">
+        <DepartmentCell
+          departments={member.departments}
+          superadmin={superadmin}
+          name={member.user.displayName}
+          onEdit={departmentsEditable ? onEditDepartments : undefined}
+          className="max-md:w-auto max-md:min-w-0"
+        />
       </div>
 
       {editable && roles.length > 0 ? (
@@ -296,6 +402,12 @@ const MemberRow = ({
               <Ellipsis />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              {departmentsEditable ? (
+                <DropdownMenuItem onClick={onEditDepartments}>
+                  <Building2 />
+                  Đổi phòng ban
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem onClick={() => setConfirmReset(true)}>
                 <KeyRound />
                 Đặt lại mật khẩu
@@ -347,6 +459,9 @@ const createSchema = z.object({
 });
 type CreateValues = z.infer<typeof createSchema>;
 
+/** No department pre-selected (a conscious choice); "Nhân viên" waits in case Photo Retouch is ticked. */
+const emptyDepartmentDraft: DepartmentDraft = { departments: [], roles: ["STAFF"] };
+
 const CreateMemberDialog = ({
   open,
   onOpenChange,
@@ -360,7 +475,11 @@ const CreateMemberDialog = ({
 }) => {
   const ids = useId();
   const mutations = useMemberMutations();
+  const locks = useDepartmentLocks({ retouchNeedsProductionAdmin: true });
   const [formError, setFormError] = useState<string | null>(null);
+  // Departments + Photo Retouch roles: the same fields (and rules) as the production users admin.
+  const [departments, setDepartments] = useState<DepartmentDraft>(emptyDepartmentDraft);
+  const [departmentErrors, setDepartmentErrors] = useState<DepartmentErrors>({});
   const assignable = roles.filter((role) => role.key !== "superadmin");
   const defaultRole = assignable.find((role) => role.key === "member") ?? assignable[0];
   const { register, handleSubmit, control, formState, reset } = useForm<CreateValues>({
@@ -373,32 +492,62 @@ const CreateMemberDialog = ({
     if (!next) {
       reset();
       setFormError(null);
+      setDepartments(emptyDepartmentDraft);
+      setDepartmentErrors({});
     }
     onOpenChange(next);
   };
 
-  const onSubmit = handleSubmit((values) =>
+  const focusDepartmentField = (field: keyof DepartmentErrors) =>
+    document
+      .getElementById(`${ids}-${field}`)
+      ?.querySelector<HTMLElement>("button:not([aria-disabled])")
+      ?.focus();
+
+  const submitValues = handleSubmit((values) => {
+    // The other fields are valid here: send the focus to the department problem.
+    const problems = validateDepartmentDraft(departments, { locks });
+    if (problems.departments || problems.roles) {
+      focusDepartmentField(problems.departments ? "departments" : "roles");
+      return;
+    }
+    const payload = toDepartmentPayload(departments);
     mutations.create.mutate(
       {
         displayName: values.displayName,
         email: values.email,
         roleId: values.roleId,
-        jobTitle: values.jobTitle || null
+        jobTitle: values.jobTitle || null,
+        departments: payload.departments,
+        ...(payload.roles.length > 0 ? { productionRoles: payload.roles } : {})
       },
       {
         onSuccess: (result) => {
           close(false);
           onCreated(result.member.user.displayName, result.temporaryPassword);
         },
-        onError: (error) => setFormError(getErrorMessage(error, "Không tạo được tài khoản."))
+        onError: (error) => {
+          const message = adminErrorMessage(error, "Không tạo được tài khoản.");
+          const field = departmentErrorField(error);
+          if (field) {
+            setDepartmentErrors({ [field]: message });
+            focusDepartmentField(field);
+          } else setFormError(message);
+        }
       }
-    )
-  );
+    );
+  });
+
+  // Department problems show together with the other fields' ones.
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    setDepartmentErrors(validateDepartmentDraft(departments, { locks }));
+    void submitValues(event);
+  };
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="sm:max-w-md">
-        <form noValidate className="flex flex-col gap-4" onSubmit={(event) => void onSubmit(event)}>
+      <DialogContent className="sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:overflow-y-auto">
+        <form noValidate className="flex flex-col gap-4" onSubmit={onSubmit}>
           <DialogHeader>
             <DialogTitle>Thêm thành viên</DialogTitle>
             <DialogDescription>
@@ -460,6 +609,19 @@ const CreateMemberDialog = ({
               <Input id={`${ids}-title`} {...register("jobTitle")} />
             </Field>
           </div>
+          <DepartmentFields
+            idPrefix={ids}
+            value={departments}
+            onChange={(next, field) => {
+              setDepartments(next);
+              setDepartmentErrors((current) =>
+                current[field] ? { ...current, [field]: undefined } : current
+              );
+              setFormError(null);
+            }}
+            errors={departmentErrors}
+            locks={locks}
+          />
           {formError ? (
             <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
               {formError}

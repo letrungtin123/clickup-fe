@@ -39,6 +39,7 @@ import { TransitionButtons } from "@/features/production/components/jobs/transit
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
 import { WorkEntryDialog } from "@/features/production/components/jobs/work-entry-dialog";
 import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
+import { MyLedJobs } from "@/features/production/components/jobs/my-led-jobs";
 import { ListFiltersControl } from "@/features/production/components/list-filters";
 import { todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
@@ -147,9 +148,9 @@ export const ProductionMyTasksRoute = () => {
   return (
     <div className={cn("flex h-full min-h-0 flex-col", touchTargets)}>
       <PageHeader
-        eyebrow="Sản xuất"
+        eyebrow="Photo Retouch"
         title="Việc của tôi"
-        description="Task bạn làm hoặc kiểm tra, theo trạng thái."
+        description="Task bạn làm hoặc kiểm tra, theo trạng thái — kèm các job bạn làm Leader."
         actions={
           canEnter ? (
             <Button onClick={() => setEntering(true)}>
@@ -197,6 +198,8 @@ export const ProductionMyTasksRoute = () => {
           />
         </div>
       </PageHeader>
+
+      <MyLedJobs className="shrink-0" />
 
       <div className="flex min-h-0 flex-1 flex-col">
         {tasks.isPending || mover.lookup.isPending ? (

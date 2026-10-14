@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -23,18 +23,20 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { CreatedProductionUser } from "@/contracts/users-admin";
+import { DepartmentFields } from "@/features/departments-admin/department-fields";
+import { departmentErrorField } from "@/features/departments-admin/department-form";
+import { useDepartmentLocks } from "@/features/departments-admin/use-department-locks";
 import { isApiError } from "@/lib/api/errors";
 
-import { productionErrorMessage } from "../../errors";
 import { useCreateProductionUser } from "../../hooks";
 import type { Team } from "../../types";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
-import { RoleToggleGroup } from "../role-chips";
 import { FormAlert } from "../settings-kit";
 import {
   emptyNewMember,
   MAX_JOB_TITLE_LENGTH,
   MAX_NAME_LENGTH,
+  memberErrorMessage,
   toCreateUserInput,
   validateNewMember,
   type NewMemberDraft,
@@ -48,7 +50,8 @@ const emailCodes = new Set(["MEMBER_EXISTS", "ACCOUNT_EXISTS"]);
 
 /**
  * "Thêm thành viên" (POST /production/users, PD-024): a login account with the organization's
- * default "Thành viên" role plus the chosen production roles and team. The server answers a
+ * default "Thành viên" role, its departments (PD-041, required) and — with Photo Retouch — the
+ * chosen Photo Retouch roles, plus a team. Same department fields as Cài đặt › Thành viên. The server answers a
  * one-time temporary password, handed to `onCreated` (shown by TemporaryPasswordDialog). Mount it
  * with a fresh `key` per opening so the form starts empty.
  */
@@ -65,6 +68,7 @@ export const CreateMemberDialog = ({
 }) => {
   const ids = useId();
   const create = useCreateProductionUser();
+  const locks = useDepartmentLocks();
   const [draft, setDraft] = useState<NewMemberDraft>(emptyNewMember);
   const [errors, setErrors] = useState<NewMemberErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -79,24 +83,36 @@ export const CreateMemberDialog = ({
     setFormError(null);
   };
 
+  /** Inputs take the focus; the department / role groups give it to their first usable chip. */
+  const focusField = (key: keyof NewMemberErrors) => {
+    const element = document.getElementById(`${ids}-${key}`);
+    if (key === "departments" || key === "roles")
+      element?.querySelector<HTMLElement>("button:not([aria-disabled])")?.focus();
+    else element?.focus();
+  };
+
   const submit = () => {
-    const problems = validateNewMember(draft);
+    const problems = validateNewMember(draft, locks);
     setErrors(problems);
     if (Object.keys(problems).length > 0) {
       // Focus the first field to fix (keyboard and screen-reader friendly).
-      const first = (["email", "displayName", "jobTitle"] as const).find((key) => problems[key]);
-      if (first) document.getElementById(`${ids}-${first}`)?.focus();
+      const first = (["email", "displayName", "jobTitle", "departments", "roles"] as const).find(
+        (key) => problems[key]
+      );
+      if (first) focusField(first);
       return;
     }
     create.mutate(toCreateUserInput(draft), {
       onSuccess: (result) => onCreated(result, { whitelisted: draft.allowGoogleSignIn }),
       onError: (error) => {
-        const message = productionErrorMessage(error, {
+        const message = memberErrorMessage(error, {
           fallback: "Không tạo được tài khoản. Thử lại sau."
         });
-        if (isApiError(error) && emailCodes.has(error.code)) {
-          setErrors({ email: message });
-          document.getElementById(`${ids}-email`)?.focus();
+        const field =
+          isApiError(error) && emailCodes.has(error.code) ? "email" : departmentErrorField(error);
+        if (field) {
+          setErrors({ [field]: message });
+          focusField(field);
         } else setFormError(message);
       }
     });
@@ -121,8 +137,8 @@ export const CreateMemberDialog = ({
           <DialogHeader className="border-b px-4 pt-4 pb-3">
             <DialogTitle>Thêm thành viên</DialogTitle>
             <DialogDescription className="text-[13px]">
-              Tạo tài khoản đăng nhập và gán vai trò sản xuất. Hệ thống tạo mật khẩu tạm thời; người
-              dùng phải đổi mật khẩu ở lần đăng nhập đầu tiên.
+              Tạo tài khoản đăng nhập, chọn phòng ban và vai trò Photo Retouch. Hệ thống tạo mật
+              khẩu tạm thời; người dùng phải đổi mật khẩu ở lần đăng nhập đầu tiên.
             </DialogDescription>
           </DialogHeader>
 
@@ -201,22 +217,17 @@ export const CreateMemberDialog = ({
               </Field>
             </div>
 
-            <Field data-invalid={Boolean(errors.roles)}>
-              <FieldLabel id={`${ids}-roles`}>Vai trò sản xuất</FieldLabel>
-              <RoleToggleGroup
-                aria-label="Vai trò sản xuất của thành viên mới"
-                value={draft.roles}
-                onChange={(roles) => edit("roles", roles)}
-                className="gap-1.5 [&_button]:h-7 [&_button]:px-2.5 [&_button]:text-xs pointer-coarse:[&_button]:h-9"
-              />
-              {errors.roles ? (
-                <FieldError>{errors.roles}</FieldError>
-              ) : (
-                <FieldDescription className="text-xs">
-                  Một người có thể giữ nhiều vai trò.
-                </FieldDescription>
-              )}
-            </Field>
+            <DepartmentFields
+              idPrefix={ids}
+              value={{ departments: draft.departments, roles: draft.roles }}
+              onChange={(next, field) =>
+                field === "departments"
+                  ? edit("departments", next.departments)
+                  : edit("roles", next.roles)
+              }
+              errors={{ departments: errors.departments, roles: errors.roles }}
+              locks={locks}
+            />
 
             <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 select-none">
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">

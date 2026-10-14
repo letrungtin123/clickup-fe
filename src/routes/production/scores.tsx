@@ -107,7 +107,7 @@ export const ProductionScoresRoute = () => {
             className="inline-flex items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-sm:-my-3 max-sm:py-3 max-sm:pr-3"
           >
             <ChevronLeft className="size-3.5" aria-hidden="true" />
-            Sản xuất
+            Photo Retouch
           </Link>
         }
         title="Bảng điểm của tôi"

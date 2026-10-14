@@ -88,7 +88,7 @@ export const ProductionScoreBoardRoute = () => {
             className="inline-flex items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-sm:-my-3 max-sm:py-3 max-sm:pr-3"
           >
             <ChevronLeft className="size-3.5" aria-hidden="true" />
-            Sản xuất
+            Photo Retouch
           </Link>
         }
         title="Xếp hạng"
@@ -187,7 +187,7 @@ export const ProductionScoreBoardRoute = () => {
                       ? "Không có ai khớp bộ lọc nhân viên. Bỏ bớt điều kiện ở “Lọc nhân viên”."
                       : teamId
                         ? "Team này chưa có thành viên làm việc. Thử chọn team khác."
-                        : "Chưa có nhân viên sản xuất nào."
+                        : "Chưa có nhân viên Photo Retouch nào."
                   }
                 />
               </Panel>

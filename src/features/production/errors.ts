@@ -4,7 +4,7 @@ import { getErrorMessage, isApiError, isNotFoundError } from "@/lib/api/errors";
 
 /** Vietnamese copy for production API codes (BE modules/production). Falls back to the shared map. */
 const productionMessages: Record<string, string> = {
-  PRODUCTION_NOT_FOUND: "Bạn chưa được thêm vào bộ phận sản xuất.",
+  PRODUCTION_NOT_FOUND: "Bạn chưa được thêm vào phòng ban Photo Retouch.",
   SELF_ADMIN_REMOVAL:
     "Bạn không thể tự bỏ quyền Quản trị của mình. Nhờ một Quản trị khác làm việc này.",
   MEMBER_NOT_FOUND: "Không tìm thấy thành viên.",
@@ -43,8 +43,9 @@ const productionMessages: Record<string, string> = {
     "Vai trò mặc định “Thành viên” đang có quyền quản trị tổ chức. Nhờ quản trị tổ chức sửa lại.",
   // The server words these two in English: keep production copy.
   MEMBER_EXISTS:
-    "Email này đã là thành viên. Tìm người đó trong danh sách để gán vai trò sản xuất.",
-  ACCOUNT_EXISTS: "Email này đã có tài khoản. Tìm người đó trong danh sách để gán vai trò sản xuất."
+    "Email này đã là thành viên. Tìm người đó trong danh sách để gán vai trò Photo Retouch.",
+  ACCOUNT_EXISTS:
+    "Email này đã có tài khoản. Tìm người đó trong danh sách để gán vai trò Photo Retouch."
 };
 
 /** Codes whose server message is already user-facing Vietnamese naming the offending fields. */

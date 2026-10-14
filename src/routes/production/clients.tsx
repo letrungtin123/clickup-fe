@@ -10,7 +10,7 @@ export const ProductionClientsRoute = () => (
   <RequireProductionRole roles={["ACCOUNT"]}>
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
-        eyebrow="Sản xuất"
+        eyebrow="Photo Retouch"
         title="Khách hàng"
         description="Khách hàng đặt job, kèm trường tùy chỉnh và tag."
       />

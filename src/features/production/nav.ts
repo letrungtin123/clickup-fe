@@ -14,7 +14,6 @@ import {
   Gauge,
   GitBranch,
   LayoutDashboard,
-  LockKeyhole,
   MailCheck,
   Network,
   ScanSearch,
@@ -127,7 +126,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "members",
     label: "Thành viên & vai trò",
-    description: "Gán vai trò sản xuất, team, trường tùy chỉnh và tag cho từng người.",
+    description: "Gán vai trò Photo Retouch, team, trường tùy chỉnh và tag cho từng người.",
     icon: UsersRound,
     group: "people",
     roles: ["ADMIN"]
@@ -145,15 +144,6 @@ export const settingsPages: readonly SettingsPage[] = [
     label: "Whitelist email",
     description: "Email được phép đăng nhập lần đầu.",
     icon: MailCheck,
-    group: "people",
-    roles: ["ADMIN"]
-  },
-  {
-    slug: "job-permissions",
-    label: "Phân quyền Job",
-    description:
-      "Vai trò nào được xem, tạo, sửa, xoá job và dòng việc: không, của mình hay tất cả.",
-    icon: LockKeyhole,
     group: "people",
     roles: ["ADMIN"]
   },

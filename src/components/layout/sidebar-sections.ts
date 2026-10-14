@@ -1,13 +1,19 @@
 import { useCallback, useSyncExternalStore } from "react";
 
+import type { Department } from "@/contracts/departments";
+
 /**
  * Open / collapsed state of the sidebar sections, remembered per user on this device (localStorage,
  * every access guarded: private mode or blocked storage simply means "not remembered").
  */
-export type SidebarSectionId = "production" | "projects" | "knowledge" | "channels" | "dms";
+/**
+ * "retouch" = the Photo Retouch menu (PD-041). It replaced the old "production" id on purpose: that section used to be
+ * secondary (collapsed for admins), the department menu starts open again for everyone.
+ */
+export type SidebarSectionId = "retouch" | "projects" | "knowledge" | "channels" | "dms";
 export type SidebarSectionState = Partial<Record<SidebarSectionId, boolean>>;
 
-const sectionIds: readonly SidebarSectionId[] = ["production", "projects", "knowledge", "channels", "dms"];
+const sectionIds: readonly SidebarSectionId[] = ["retouch", "projects", "knowledge", "channels", "dms"];
 const keyPrefix = "nesso-work-sidebar-sections:";
 export const sidebarSectionsKey = (userId: string) => `${keyPrefix}${userId}`;
 
@@ -30,12 +36,11 @@ export const parseSectionState = (raw: string | null): SidebarSectionState => {
 };
 
 /**
- * Production ("Sản xuất") starts expanded for people whose work is production — anyone holding an
- * explicit production role. Organization admins only see the module through their implicit ADMIN
- * (PD-011), so for them it starts collapsed; after the first toggle the choice is remembered.
+ * Photo Retouch (the production module, PD-041) is that department's own menu: it starts expanded whenever the
+ * department is shown (it is hidden otherwise). After the first toggle the choice is remembered.
  */
-export const productionSectionDefaultOpen = (explicitProductionRoles: readonly string[]) =>
-  explicitProductionRoles.length > 0;
+export const retouchSectionDefaultOpen = (current: Department | null) =>
+  current === "PHOTO_RETOUCH";
 
 export const isSectionOpen = (
   state: SidebarSectionState,

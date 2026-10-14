@@ -28,6 +28,7 @@ const make = (type: Notification["type"], payload: Record<string, unknown> = {},
     ...target
   },
   payload: { spaceName: "Quy trình Sản xuất", importance: "normal", ...payload },
+  department: null,
   createdAt: "2026-10-11T08:00:00.000Z",
   readAt: null
 });

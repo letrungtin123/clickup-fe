@@ -170,7 +170,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
               : null
           ].filter((note): note is string => note !== null);
           toast.success(
-            "Đã lưu cài đặt sản xuất",
+            "Đã lưu cài đặt Photo Retouch",
             notes.length > 0 ? { description: notes.join(" ") } : undefined
           );
         },

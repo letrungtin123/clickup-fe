@@ -30,7 +30,7 @@ export const RequireProductionRole = ({
       <EmptyState
         icon={ShieldAlert}
         title="Bạn không có quyền xem trang này"
-        description={`Trang này dành cho vai trò: ${names}. Liên hệ Quản trị sản xuất nếu bạn cần quyền.`}
+        description={`Trang này dành cho vai trò: ${names}. Liên hệ Quản trị Photo Retouch nếu bạn cần quyền.`}
       />
     </div>
   );

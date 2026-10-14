@@ -11,6 +11,9 @@ import { useSessionContext } from "@/features/auth/hooks";
 import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
 import { useChatUnreadLabel } from "@/features/chat/hooks/use-chat-unread-label";
 import { CommandPalette } from "@/features/command/command-palette";
+import { DepartmentGuard } from "@/features/departments/components/department-guard";
+import { DepartmentSwitcher } from "@/features/departments/components/department-switcher";
+import { useDepartment, useDepartmentFade } from "@/features/departments/hooks";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { NewSpaceDialog } from "@/features/knowledge/components/new-space-dialog";
 import { useKnowledgePermissions } from "@/features/knowledge/hooks";
@@ -56,6 +59,8 @@ export const AppShell = () => {
   const mobile = breakpoint === "mobile";
   // A conversation brings its own header (back to /c); the global bar would only eat chat space.
   const inConversation = useMatch("/c/:channelId") !== null;
+  // Switching department fades the page in place (PD-041).
+  const mainRef = useDepartmentFade<HTMLElement>();
 
   return (
     // Height follows the on-screen keyboard (see app/ViewportSync) so bottom composers stay visible.
@@ -130,7 +135,7 @@ export const AppShell = () => {
           >
             <SheetTitle className="sr-only">Điều hướng</SheetTitle>
             <SheetDescription className="sr-only">
-              Dự án, tri thức, kênh và cài đặt
+              Phòng ban, tri thức, kênh và cài đặt
             </SheetDescription>
             <Sidebar variant="full" onNavigate={closeOverlay} />
           </SheetContent>
@@ -140,6 +145,7 @@ export const AppShell = () => {
       <div className="flex min-w-0 flex-1 flex-col">
         {mobile && !inConversation ? <MobileTopBar onOpenNav={() => setOverlayOpen(true)} /> : null}
         <main
+          ref={mainRef}
           id="main"
           tabIndex={-1}
           className={cn(
@@ -149,7 +155,10 @@ export const AppShell = () => {
           )}
         >
           <Suspense fallback={<RouteFallback />}>
-            <Outlet />
+            {/* Routes of a department: follow them (member) or explain (not a member). */}
+            <DepartmentGuard>
+              <Outlet />
+            </DepartmentGuard>
           </Suspense>
         </main>
       </div>
@@ -167,9 +176,13 @@ export const AppShell = () => {
   );
 };
 
-/** Phone header: navigation drawer, workspace, search, chat and the notification bell (with unread badges). */
+/**
+ * Phone header: navigation drawer, workspace, department (people in several departments: icon + short label, the
+ * organization name truncates first), search, chat and the notification bell (with unread badges).
+ */
 const MobileTopBar = ({ onOpenNav }: { onOpenNav: () => void }) => {
   const session = useSessionContext();
+  const { canSwitch } = useDepartment();
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const chatLabel = useChatUnreadLabel("Tin nhắn");
   return (
@@ -180,14 +193,26 @@ const MobileTopBar = ({ onOpenNav }: { onOpenNav: () => void }) => {
         </Button>
         <Link
           to="/"
-          className="ml-0.5 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "ml-0.5 flex items-center gap-2 rounded-md px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            canSwitch ? "shrink-0" : "min-w-0 flex-1"
+          )}
           aria-label={`${session.organization.name} — Trang chủ`}
         >
           <OrgMark name={session.organization.name} className="size-6 text-xs" />
-          <span className="min-w-0 truncate text-sm font-semibold">
-            {session.organization.name}
-          </span>
+          {/* With the department switcher the bar keeps only the mark: a name cut to two letters reads as noise. */}
+          {canSwitch ? null : (
+            <span className="min-w-0 truncate text-sm font-semibold">
+              {session.organization.name}
+            </span>
+          )}
         </Link>
+        {canSwitch ? (
+          <>
+            <DepartmentSwitcher variant="topbar" />
+            <span className="flex-1" aria-hidden="true" />
+          </>
+        ) : null}
         <Button
           variant="ghost"
           size="icon"

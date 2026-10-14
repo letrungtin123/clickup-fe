@@ -9,6 +9,8 @@ import { ActionSheet, ActionSheetItem } from "@/components/shared/action-sheet";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Notification } from "@/contracts/notifications";
+import { DepartmentBadge } from "@/features/departments/components/department-badge";
+import { useHasSeveralDepartments } from "@/features/departments/hooks";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useTouchPrimary } from "@/hooks/use-pointer";
 
@@ -24,7 +26,10 @@ const toneClasses: Record<NotificationDescription["tone"], string> = {
   muted: "bg-foreground-muted text-background"
 };
 
-/** One inbox entry: actor + type badge, Vietnamese sentence, subject / excerpt, time, actions. */
+/**
+ * One inbox entry: actor + type badge, Vietnamese sentence, subject / excerpt, time (+ the department for people in
+ * several departments, PD-041), actions.
+ */
 export const NotificationItem = memo(function NotificationItem({
   notification,
   onOpen,
@@ -50,6 +55,7 @@ export const NotificationItem = memo(function NotificationItem({
   const [sheetOpen, setSheetOpen] = useState(false);
   const hasActions = Boolean(onMarkRead || onArchive);
   const longPress = useLongPress(() => setSheetOpen(true), { enabled: touch && hasActions });
+  const department = useHasSeveralDepartments() ? notification.department : null;
 
   const body = (
     <div
@@ -126,15 +132,18 @@ export const NotificationItem = memo(function NotificationItem({
             {description.excerpt}
           </span>
         ) : null}
-        <time
-          dateTime={notification.createdAt}
-          title={format(new Date(notification.createdAt), "HH:mm, EEEE d MMMM yyyy", {
-            locale: vi
-          })}
-          className="text-[11px] text-foreground-subtle"
-        >
-          {timeAgo(notification.createdAt)}
-        </time>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <time
+            dateTime={notification.createdAt}
+            title={format(new Date(notification.createdAt), "HH:mm, EEEE d MMMM yyyy", {
+              locale: vi
+            })}
+            className="shrink-0 text-[11px] text-foreground-subtle"
+          >
+            {timeAgo(notification.createdAt)}
+          </time>
+          {department ? <DepartmentBadge department={department} /> : null}
+        </span>
       </span>
       {unread ? (
         <span className="mt-2 size-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />

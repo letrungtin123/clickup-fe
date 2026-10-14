@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiError } from "@/lib/api/errors";
+
 import {
   addOrphanNotice,
   emptyNewMember,
   formatLedDeadline,
   jobsLedByHref,
+  memberErrorMessage,
   orphanTitle,
   toCreateUserInput,
   validateNewMember,
@@ -15,6 +18,34 @@ describe("new member form", () => {
   it("requires an email, a name and at least one role", () => {
     const errors = validateNewMember({ ...emptyNewMember, roles: [] });
     expect(Object.keys(errors).sort()).toEqual(["displayName", "email", "roles"]);
+    expect(errors.roles).toBe("Chọn ít nhất một vai trò Photo Retouch.");
+  });
+
+  it("starts in Photo Retouch as Nhân viên", () => {
+    expect(emptyNewMember.departments).toEqual(["PHOTO_RETOUCH"]);
+    expect(emptyNewMember.roles).toEqual(["STAFF"]);
+  });
+
+  it("requires a department; roles only with Photo Retouch", () => {
+    const base = { ...emptyNewMember, email: "a@b.vn", displayName: "A" };
+    expect(validateNewMember({ ...base, departments: [] }).departments).toBe(
+      "Chọn ít nhất một phòng ban."
+    );
+    // Production only: no role needed (the kept chips are not sent).
+    expect(validateNewMember({ ...base, departments: ["PRODUCTION"], roles: [] })).toEqual({});
+    expect(
+      validateNewMember({ ...base, departments: ["PRODUCTION", "PHOTO_RETOUCH"], roles: [] }).roles
+    ).toBeDefined();
+  });
+
+  it("refuses a department the caller is not in", () => {
+    const base = { ...emptyNewMember, email: "a@b.vn", displayName: "A" };
+    const locks = { PRODUCTION: "Bạn không thuộc phòng ban Production" };
+    expect(validateNewMember(base, locks)).toEqual({});
+    expect(
+      validateNewMember({ ...base, departments: ["PHOTO_RETOUCH", "PRODUCTION"] }, locks)
+        .departments
+    ).toBe(locks.PRODUCTION);
   });
 
   it("checks the email shape like the API", () => {
@@ -38,6 +69,7 @@ describe("new member form", () => {
         email: " An.Pham@Nesso.VN ",
         displayName: "  An Phạm ",
         jobTitle: "  ",
+        departments: ["PRODUCTION", "PHOTO_RETOUCH", "PRODUCTION"],
         roles: ["STAFF", "QC", "STAFF"],
         teamId: null,
         allowGoogleSignIn: false
@@ -45,10 +77,20 @@ describe("new member form", () => {
     ).toEqual({
       email: "an.pham@nesso.vn",
       displayName: "An Phạm",
-      roles: ["STAFF", "QC"],
+      departments: ["PHOTO_RETOUCH", "PRODUCTION"],
+      roles: ["QC", "STAFF"],
       teamId: null,
       allowGoogleSignIn: false
     });
+    // Production only: the roles picked before unticking Photo Retouch are not sent.
+    expect(
+      toCreateUserInput({
+        ...emptyNewMember,
+        email: "a@b.vn",
+        displayName: "A",
+        departments: ["PRODUCTION"]
+      })
+    ).toMatchObject({ departments: ["PRODUCTION"], roles: [] });
     expect(
       toCreateUserInput({
         ...emptyNewMember,
@@ -57,6 +99,19 @@ describe("new member form", () => {
         jobTitle: " Retoucher "
       }).jobTitle
     ).toBe("Retoucher");
+  });
+});
+
+describe("member errors", () => {
+  it("words the department answers, then the production copy", () => {
+    const error = (code: string, status = 400) => new ApiError({ status, code, message: "x" });
+    expect(memberErrorMessage(error("DEPARTMENT_ESCALATION", 403))).toBe(
+      "Bạn chỉ thêm hoặc bỏ được phòng ban mà bạn thuộc về."
+    );
+    expect(memberErrorMessage(error("PRODUCTION_ROLES_NOT_ALLOWED"))).toBe(
+      "Vai trò Photo Retouch chỉ dành cho người thuộc phòng ban Photo Retouch."
+    );
+    expect(memberErrorMessage(error("SELF_ADMIN_REMOVAL", 409))).toContain("Quản trị");
   });
 });
 
@@ -70,7 +125,12 @@ describe("orphaned jobs", () => {
       code: `J${index}`,
       name: null,
       deadline: "2026-10-12T03:00:00.000Z",
-      jobStatus: { id: `${userId}-status`, name: "Đang làm", color: "blue" as const, isClosed: false },
+      jobStatus: {
+        id: `${userId}-status`,
+        name: "Đang làm",
+        color: "blue" as const,
+        isClosed: false
+      },
       taskCount: 0
     }))
   });

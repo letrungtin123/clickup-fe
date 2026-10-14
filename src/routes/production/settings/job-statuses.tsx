@@ -368,7 +368,13 @@ export const ProductionJobStatusesRoute = () => {
           trạng thái đầu tiên của danh sách.
         </InfoNote>
         <InfoNote icon={LockKeyhole}>
-          Ai được đổi trạng thái của job: theo quyền “Sửa” ở <SettingsLink slug="job-permissions" />{" "}
+          Ai được đổi trạng thái của job: theo quyền “Sửa” ở{" "}
+          <Link
+            to="/settings/roles"
+            className="font-medium text-brand-text underline-offset-2 hover:underline"
+          >
+            Cài đặt → Vai trò & phân quyền
+          </Link>{" "}
           — “Tất cả”: mọi job; “Của mình”: chỉ job mình được giao dòng việc hoặc là Leader. Quản trị
           luôn đổi được.
         </InfoNote>

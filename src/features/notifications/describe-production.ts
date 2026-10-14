@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CircleX,
   ClipboardCheck,
+  Crown,
   MessageCircleWarning,
   MessageSquare,
   SlidersHorizontal,
@@ -76,6 +77,22 @@ export const describeProductionNotification = (
         icon: UserRoundPlus,
         tone: "brand"
       };
+    case "production.job_leader_assigned": {
+      // { jobId, jobCode, jobName, projectCode, deadline, taskCount }
+      const due = formatDeadline(notification.payload.deadline);
+      const name = str(notification.payload.jobName);
+      return {
+        segments: [
+          actor,
+          { text: " đã giao bạn làm Leader job " },
+          { text: str(notification.payload.jobCode) ?? notification.title, strong: true }
+        ],
+        subject: [name, due ? `hạn ${due}` : null].filter(Boolean).join(" · ") || null,
+        excerpt: null,
+        icon: Crown,
+        tone: "brand"
+      };
+    }
     case "production.task_waiting_qc":
       return {
         segments: [{ text: "Task " }, ref, { text: " đang chờ bạn QC" }],

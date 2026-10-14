@@ -1,7 +1,15 @@
+import type { Department } from "@/contracts/departments";
 import type { ProductionRole } from "@/contracts/production-catalog";
 import type { LedJob } from "@/contracts/users-admin";
+import {
+  departmentErrorMessage,
+  toDepartmentPayload,
+  validateDepartmentDraft,
+  type DepartmentLocks
+} from "@/features/departments-admin/department-form";
 
 import type { CreateUserInput } from "../../api";
+import { productionErrorMessage } from "../../errors";
 
 /**
  * Pure helpers of the production user administration on "Thành viên & vai trò" (SPEC Phase 0
@@ -15,23 +23,26 @@ export type NewMemberDraft = {
   email: string;
   displayName: string;
   jobTitle: string;
+  /** PD-041: at least one; the roles below are only sent with PHOTO_RETOUCH. */
+  departments: Department[];
   roles: ProductionRole[];
   teamId: string | null;
   allowGoogleSignIn: boolean;
 };
 
-/** Most new accounts are retouchers: "Nhân viên" is pre-selected (still editable). */
+/** Most new accounts here are retouchers: Photo Retouch + "Nhân viên" pre-selected (still editable). */
 export const emptyNewMember: NewMemberDraft = {
   email: "",
   displayName: "",
   jobTitle: "",
+  departments: ["PHOTO_RETOUCH"],
   roles: ["STAFF"],
   teamId: null,
   allowGoogleSignIn: true
 };
 
 export type NewMemberErrors = Partial<
-  Record<"email" | "displayName" | "jobTitle" | "roles", string>
+  Record<"email" | "displayName" | "jobTitle" | "departments" | "roles", string>
 >;
 
 /** Same shape the API accepts (AccountEmailSchema). */
@@ -40,7 +51,11 @@ const emailPattern = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
 export const MAX_NAME_LENGTH = 160;
 export const MAX_JOB_TITLE_LENGTH = 120;
 
-export const validateNewMember = (draft: NewMemberDraft): NewMemberErrors => {
+/** `locks`: departments the caller may not add (escalation guard, useDepartmentLocks). */
+export const validateNewMember = (
+  draft: NewMemberDraft,
+  locks: DepartmentLocks = {}
+): NewMemberErrors => {
   const errors: NewMemberErrors = {};
   const email = draft.email.trim();
   if (!email) errors.email = "Nhập email đăng nhập.";
@@ -52,22 +67,38 @@ export const validateNewMember = (draft: NewMemberDraft): NewMemberErrors => {
     errors.displayName = `Họ tên tối đa ${MAX_NAME_LENGTH} ký tự.`;
   if (draft.jobTitle.trim().length > MAX_JOB_TITLE_LENGTH)
     errors.jobTitle = `Chức danh tối đa ${MAX_JOB_TITLE_LENGTH} ký tự.`;
-  if (draft.roles.length === 0) errors.roles = "Chọn ít nhất một vai trò sản xuất.";
+  const departmentProblems = validateDepartmentDraft(
+    { departments: draft.departments, roles: draft.roles },
+    { locks }
+  );
+  if (departmentProblems.departments) errors.departments = departmentProblems.departments;
+  if (departmentProblems.roles) errors.roles = departmentProblems.roles;
   return errors;
 };
 
-/** POST /production/users body: trimmed, lower-cased email, empty job title left out. */
+/**
+ * POST /production/users body: trimmed, lower-cased email, empty job title left out, departments
+ * in stable order, roles (canonical order) only with Photo Retouch.
+ */
 export const toCreateUserInput = (draft: NewMemberDraft): CreateUserInput => {
   const jobTitle = draft.jobTitle.trim();
+  const { departments, roles } = toDepartmentPayload(draft);
   return {
     email: draft.email.trim().toLowerCase(),
     displayName: draft.displayName.trim(),
     ...(jobTitle ? { jobTitle } : {}),
-    roles: [...new Set(draft.roles)],
+    departments,
+    roles,
     teamId: draft.teamId,
     allowGoogleSignIn: draft.allowGoogleSignIn
   };
 };
+
+/** Member admin errors: the department answers (PD-041) first, then the production copy. */
+export const memberErrorMessage = (
+  error: unknown,
+  options?: Parameters<typeof productionErrorMessage>[1]
+) => departmentErrorMessage(error) ?? productionErrorMessage(error, options);
 
 // Temporary password ------------------------------------------------------------------------------
 

@@ -23,6 +23,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import type { Department } from "@/contracts/departments";
 import {
   productionRoleCodes,
   type CustomField,
@@ -32,6 +33,14 @@ import {
 } from "@/contracts/production-catalog";
 import type { LedJob } from "@/contracts/users-admin";
 import { useSessionContext } from "@/features/auth/hooks";
+import {
+  DepartmentCell,
+  DepartmentFilterSelect,
+  EditDepartmentsDialog,
+  type DepartmentEditTarget
+} from "@/features/departments-admin/department-fields";
+import { inDepartment } from "@/features/departments-admin/department-form";
+import { useDepartmentLocks } from "@/features/departments-admin/use-department-locks";
 import { matchesQuery } from "@/features/production/catalog";
 import {
   CustomFieldsForm,
@@ -50,6 +59,7 @@ import {
 } from "@/features/production/components/members/member-actions";
 import {
   addOrphanNotice,
+  memberErrorMessage,
   orphanTitle,
   type OrphanNotice,
   type TemporarySecret
@@ -72,7 +82,7 @@ import {
 } from "@/features/production/components/settings-kit";
 import { TagPicker } from "@/features/production/components/tag-picker";
 import { toCustomValuesPayload, validateCustomValues } from "@/features/production/custom-fields";
-import { productionErrorMessage, toastProductionError } from "@/features/production/errors";
+import { productionErrorMessage } from "@/features/production/errors";
 import { todayIn } from "@/features/production/format";
 import {
   useProductionAccess,
@@ -97,15 +107,31 @@ const noQuery = {};
 
 type RoleFilter = typeof ALL | typeof NONE | ProductionRole;
 
+/** Member account / role / department errors as a toast (department codes worded, PD-041). */
+const toastMemberError = (error: unknown) => toast.error(memberErrorMessage(error));
+
+/**
+ * Photo Retouch roles need the PHOTO_RETOUCH department (PD-041): someone only in Production has
+ * none to toggle. Rows without any department (older servers) stay editable.
+ */
+const outsideRetouch = (member: ProductionMember) =>
+  member.departments.length > 0 && !member.departments.includes("PHOTO_RETOUCH");
+
+const outsideRetouchReason = "Chưa thuộc phòng ban Photo Retouch — thêm phòng ban trước.";
+const outsideRetouchLocks = Object.fromEntries(
+  productionRoleCodes.map((role) => [role, outsideRetouchReason])
+) as Partial<Record<ProductionRole, string>>;
+
 /** Still leads after the change: a stale "N job vẫn do … dẫn" warning about them can go. */
 const leadsAgain = (member: ProductionMember) =>
   member.active && (member.roles.includes("LEADER") || member.roles.includes("ADMIN"));
 
 /**
- * Production members (PD-011) and production user administration (SPEC Phase 0 /admin/users,
- * PD-024): the Admin creates accounts, grants production roles (multi-valued), a report team, USER
- * custom fields and tags, disables / re-enables accounts and resets passwords. Tag and custom-field
- * filters (Admin only) live in the URL.
+ * Photo Retouch members (PD-011) and user administration (SPEC Phase 0 /admin/users, PD-024): the
+ * Admin creates accounts, sets their departments (PD-041), grants Photo Retouch roles
+ * (multi-valued), a report team, USER custom fields and tags, disables / re-enables accounts and
+ * resets passwords. Tag and custom-field filters (Admin only) live in the URL; the department filter
+ * is client-side.
  */
 export const ProductionMembersRoute = () => {
   const access = useProductionAccess();
@@ -120,7 +146,11 @@ export const ProductionMembersRoute = () => {
   const teams = useTeams();
   const locksFor = useMemberLocks();
   const setActive = useSetProductionUserActive();
+  const update = useUpdateMember();
+  const departmentLocks = useDepartmentLocks();
   const [term, setTerm] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState<Department | null>(null);
+  const [departmentsOf, setDepartmentsOf] = useState<DepartmentEditTarget | null>(null);
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
   const [teamFilter, setTeamFilter] = useState<string>(ALL);
   const [limit, setLimit] = useState(PAGE);
@@ -162,13 +192,22 @@ export const ProductionMembersRoute = () => {
               ? member.roles.length === 0
               : member.roles.includes(roleFilter))) &&
           (teamFilter === ALL ||
-            (teamFilter === NONE ? member.teamId === null : member.teamId === teamFilter))
+            (teamFilter === NONE ? member.teamId === null : member.teamId === teamFilter)) &&
+          inDepartment(
+            member.departments,
+            departmentFilter,
+            locksFor(member).lock?.kind === "superadmin"
+          )
       ),
-    [items, term, roleFilter, teamFilter]
+    [items, term, roleFilter, teamFilter, departmentFilter, locksFor]
   );
   const visible = rows.slice(0, limit);
   const filtering =
-    term.trim() !== "" || roleFilter !== ALL || teamFilter !== ALL || listFilters.count > 0;
+    term.trim() !== "" ||
+    roleFilter !== ALL ||
+    teamFilter !== ALL ||
+    departmentFilter !== null ||
+    listFilters.count > 0;
   const teamItems = [
     { value: ALL, label: "Mọi team" },
     { value: NONE, label: "Chưa có team" },
@@ -177,9 +216,12 @@ export const ProductionMembersRoute = () => {
       label: team.active ? team.name : `${team.name} (lưu trữ)`
     }))
   ];
+  // Each row is its own grid: only fixed or fr tracks line the columns up across rows ("auto" would
+  // size every row by its own content, e.g. a row with two department chips).
   const template = [
     "minmax(14rem,1.4fr)",
-    "minmax(19rem,auto)",
+    "10.5rem",
+    "27rem",
     "11rem",
     "minmax(10rem,1fr)",
     ...columns.map(() => "minmax(8rem,1fr)"),
@@ -196,6 +238,7 @@ export const ProductionMembersRoute = () => {
     setTerm("");
     setRoleFilter(ALL);
     setTeamFilter(ALL);
+    setDepartmentFilter(null);
     setLimit(PAGE);
     listFilters.setFilters(emptyListFilters);
   };
@@ -241,12 +284,40 @@ export const ProductionMembersRoute = () => {
           toast.success(`Đã kích hoạt lại tài khoản của ${member.displayName}`);
           if (leadsAgain(result.member)) dismissNotice(member.userId);
         },
-        onError: (error) => toastProductionError(error)
+        onError: toastMemberError
       }
     );
 
+  /** PATCH /production/users/:id { departments, roles? }; a removed Photo Retouch may orphan led jobs. */
+  const saveDepartments = (
+    target: DepartmentEditTarget,
+    change: { departments: Department[]; roles?: ProductionRole[] }
+  ) =>
+    update
+      .mutateAsync({
+        userId: target.id,
+        input: {
+          departments: change.departments,
+          ...(change.roles ? { roles: change.roles } : {})
+        }
+      })
+      .then((result) => {
+        if (result.orphanedJobs.length === 0)
+          toast.success(`Đã cập nhật phòng ban của ${target.name}`);
+        afterAccountChange(result.member, result.orphanedJobs, "role");
+      });
+
+  const editDepartments = (member: ProductionMember) =>
+    setDepartmentsOf({
+      id: member.userId,
+      name: member.displayName,
+      departments: member.departments,
+      roles: member.roles
+    });
+
   const runAction = (member: ProductionMember, action: MemberAction) => {
     if (action === "led-jobs") setLedOf(member);
+    else if (action === "departments") editDepartments(member);
     else if (action === "activate") activate(member);
     else setRequest({ kind: action, member });
   };
@@ -269,8 +340,8 @@ export const ProductionMembersRoute = () => {
           </Button>
         }
       >
-        Tạo tài khoản, gán vai trò sản xuất (một người có thể giữ nhiều vai trò), team báo cáo,
-        trường tùy chỉnh và tag; vô hiệu hóa hoặc đặt lại mật khẩu khi cần.
+        Tạo tài khoản, chọn phòng ban, gán vai trò Photo Retouch (một người có thể giữ nhiều vai
+        trò), team báo cáo, trường tùy chỉnh và tag; vô hiệu hóa hoặc đặt lại mật khẩu khi cần.
       </PageIntro>
 
       <OrphanedJobsPanel notices={orphans} onDismiss={dismissNotice} />
@@ -343,6 +414,14 @@ export const ProductionMembersRoute = () => {
               ))}
             </SelectContent>
           </Select>
+          <DepartmentFilterSelect
+            value={departmentFilter}
+            onChange={(value) => {
+              setDepartmentFilter(value);
+              setLimit(PAGE);
+            }}
+            className="min-w-0 flex-1 basis-36 sm:w-44 sm:flex-none sm:basis-auto"
+          />
           {/* Tag / USER custom-field filters: Admin data (403 CUSTOM_FIELDS_FORBIDDEN otherwise). */}
           {access.isAdmin ? (
             <ListFiltersControl
@@ -388,8 +467,8 @@ export const ProductionMembersRoute = () => {
             title={filtering ? "Không có thành viên phù hợp" : "Chưa có thành viên"}
             description={
               filtering
-                ? "Thử từ khóa khác hoặc bỏ bớt bộ lọc vai trò, team, trường và tag."
-                : "Thêm tài khoản đầu tiên cho bộ phận sản xuất."
+                ? "Thử từ khóa khác hoặc bỏ bớt bộ lọc vai trò, team, phòng ban, trường và tag."
+                : "Thêm tài khoản đầu tiên cho phòng ban Photo Retouch."
             }
             action={
               filtering ? (
@@ -412,7 +491,8 @@ export const ProductionMembersRoute = () => {
             <div className="md:min-w-max">
               <div className="hidden grid-cols-(--member-cols) border-b text-xs font-medium text-foreground-muted md:grid">
                 <span className="sticky left-0 z-10 bg-surface px-4 py-2.5">Thành viên</span>
-                <span className="px-3 py-2.5">Vai trò sản xuất</span>
+                <span className="px-3 py-2.5">Phòng ban</span>
+                <span className="px-3 py-2.5">Vai trò Photo Retouch</span>
                 <span className="px-3 py-2.5">Team</span>
                 <span className="px-3 py-2.5">Tag</span>
                 {columns.map((field) => (
@@ -441,6 +521,10 @@ export const ProductionMembersRoute = () => {
                         setActive.isPending && setActive.variables.userId === member.userId
                       }
                       onOpenProfile={() => setProfileOf(member)}
+                      onEditDepartments={
+                        // Not yourself (you could only remove your own), a superadmin or a protected admin.
+                        lock === null ? () => editDepartments(member) : undefined
+                      }
                       onAction={(action) => runAction(member, action)}
                       onRolesSaved={(result, jobs) => afterAccountChange(result, jobs, "role")}
                     />
@@ -485,6 +569,18 @@ export const ProductionMembersRoute = () => {
         }}
       />
       <TemporaryPasswordDialog secret={secret} onClose={() => setSecret(null)} />
+      <EditDepartmentsDialog
+        target={departmentsOf}
+        locks={departmentLocks}
+        contentClassName={sheetOnPhone}
+        describeError={(error) =>
+          memberErrorMessage(error, { fallback: "Không lưu được phòng ban. Thử lại sau." })
+        }
+        onClose={() => setDepartmentsOf(null)}
+        onSave={(change) =>
+          departmentsOf ? saveDepartments(departmentsOf, change) : Promise.resolve()
+        }
+      />
       <MemberAccountConfirm
         request={request}
         onClose={() => setRequest(null)}
@@ -509,6 +605,7 @@ const MemberRow = ({
   lockedRoles,
   activating,
   onOpenProfile,
+  onEditDepartments,
   onAction,
   onRolesSaved
 }: {
@@ -523,13 +620,18 @@ const MemberRow = ({
   lockedRoles: Partial<Record<ProductionRole, string>>;
   activating: boolean;
   onOpenProfile: () => void;
+  /** Absent: the departments are read-only on this row. */
+  onEditDepartments: (() => void) | undefined;
   onAction: (action: MemberAction) => void;
   onRolesSaved: (member: ProductionMember, orphanedJobs: readonly LedJob[]) => void;
 }) => {
   const session = useSessionContext();
   const update = useUpdateMember();
   const isSelf = member.userId === session.user.id;
-  const rolesLocked = lock !== null && lock.kind !== "self";
+  const superadmin = lock?.kind === "superadmin";
+  const noRetouch = !superadmin && outsideRetouch(member);
+  const rolesLocked = (lock !== null && lock.kind !== "self") || noRetouch;
+  const roleLocks = noRetouch ? outsideRetouchLocks : lockedRoles;
   const canReactivate = !member.active && lock === null;
   const teamChoices = teams.filter((team) => team.active || team.id === member.teamId);
   const teamItems = [
@@ -549,7 +651,7 @@ const MemberRow = ({
           if (result.orphanedJobs.length === 0) toast.success(message);
           onSaved?.(result.member, result.orphanedJobs);
         },
-        onError: (error) => toastProductionError(error)
+        onError: toastMemberError
       }
     );
 
@@ -625,8 +727,8 @@ const MemberRow = ({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Hồ sơ sản xuất của ${member.displayName}`}
-          title="Hồ sơ sản xuất"
+          aria-label={`Hồ sơ Photo Retouch của ${member.displayName}`}
+          title="Hồ sơ Photo Retouch"
           onClick={onOpenProfile}
         >
           <IdCard />
@@ -640,11 +742,22 @@ const MemberRow = ({
         className="col-span-2 -mt-0.5 md:hidden"
       />
 
+      {/* Phones: a row of its own under the name. */}
+      <div className="col-span-2 flex min-w-0 md:col-span-1 md:px-3 md:py-2">
+        <DepartmentCell
+          departments={member.departments}
+          superadmin={superadmin}
+          name={member.displayName}
+          onEdit={onEditDepartments}
+          className="max-md:w-auto max-md:min-w-0"
+        />
+      </div>
+
       <div className="col-span-2 flex flex-col gap-1.5 md:col-span-1 md:px-3 md:py-2">
         <RoleToggleGroup
-          aria-label={`Vai trò sản xuất của ${member.displayName}`}
+          aria-label={`Vai trò Photo Retouch của ${member.displayName}`}
           value={member.roles}
-          locked={lockedRoles}
+          locked={roleLocks}
           onChange={(roles) =>
             save({ roles }, `Đã cập nhật vai trò của ${member.displayName}`, onRolesSaved)
           }
@@ -654,9 +767,11 @@ const MemberRow = ({
         {rolesLocked ? (
           <span className="flex items-start gap-1 text-[11px] leading-snug text-foreground-subtle md:hidden">
             <Lock className="mt-px size-3 shrink-0" aria-hidden="true" />
-            {lock.kind === "superadmin"
-              ? "Superadmin: vai trò không đổi được ở đây."
-              : "Quản trị tổ chức: chỉ superadmin đổi được vai trò."}
+            {noRetouch
+              ? outsideRetouchReason
+              : lock?.kind === "superadmin"
+                ? "Superadmin: vai trò không đổi được ở đây."
+                : "Quản trị tổ chức: chỉ superadmin đổi được vai trò."}
           </span>
         ) : null}
       </div>
@@ -778,7 +893,7 @@ const MemberProfileDialog = ({
                   size="sm"
                 />
               ) : null}
-              <span className="truncate">Hồ sơ sản xuất · {member?.displayName}</span>
+              <span className="truncate">Hồ sơ Photo Retouch · {member?.displayName}</span>
             </DialogTitle>
             <DialogDescription>
               {member ? <RoleBadges roles={member.roles} /> : null}

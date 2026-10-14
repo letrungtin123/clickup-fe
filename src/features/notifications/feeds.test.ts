@@ -25,6 +25,7 @@ const notification = (n: number, type: Notification["type"], readAt: string | nu
     knowledgeItemId: null
   },
   payload: {},
+  department: null,
   createdAt: "2026-10-09T00:00:00.000Z",
   readAt
 });

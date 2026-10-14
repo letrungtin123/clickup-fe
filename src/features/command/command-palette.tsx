@@ -47,9 +47,14 @@ import { ChannelGlyph } from "@/features/chat/components/channel-glyph";
 import { useChannels, useOpenDm } from "@/features/chat/hooks/use-channels";
 import { channelTitle, sortChannels } from "@/features/chat/model/channels";
 import { useChatDialogStore } from "@/features/chat/model/ui-state";
+import { departmentLabels } from "@/contracts/departments";
+import { useDepartment } from "@/features/departments/hooks";
+import { departmentIcons } from "@/features/departments/meta";
+import { myTasksPathFor, withoutRetouchMyTasks } from "@/features/departments/model";
 import { ImportanceBadge, KnowledgeStatusChip } from "@/features/knowledge/components/badges";
 import { useKnowledgePermissions, useKnowledgeSpaces } from "@/features/knowledge/hooks";
 import { canCreateSpace, canSeeKnowledge } from "@/features/knowledge/model/access";
+import { useProductionNavEntries } from "@/features/production/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { Highlight } from "@/features/search/components/highlight";
 import { excerptAround, foldText, knowledgeItemHref, messageHref } from "@/features/search/model";
@@ -66,7 +71,8 @@ import { asTaskKey, findTaskByKey } from "./task-key";
 
 /**
  * Global ⌘K / Ctrl+K palette: jump to conversations, navigation, actions and server-side search
- * (tasks, messages, projects, lists, people). Also hosts the app-wide shell services (chat runtime,
+ * (tasks, messages, projects, lists, people). Follows the current department (PD-041): projects, lists, tasks and
+ * "Tạo dự án" only in Production, the Photo Retouch menu only in Photo Retouch; shared content everywhere. Also hosts the app-wide shell services (chat runtime,
  * inbox runtime, chat dialogs) because it is the one component mounted on every layout tier.
  */
 export const CommandPalette = () => {
@@ -119,10 +125,18 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
   const { logout } = useLogout();
   const search = useGlobalSearch(term);
   const queryClient = useQueryClient();
+  const { current: department, departments, canSwitch, setDepartment } = useDepartment();
+  const workspace = department === "PRODUCTION";
+  const productionNav = useProductionNavEntries();
+  const retouchNav = department === "PHOTO_RETOUCH" ? withoutRetouchMyTasks(productionNav) : [];
+  const myTasksPath = myTasksPathFor(
+    department,
+    productionNav.map((entry) => entry.to)
+  );
   const trimmed = term.trim();
   const searching = trimmed.length >= 2;
   // An exact task key ("WEB-12") + Enter opens that task (WK-50), even before results arrive.
-  const taskKey = asTaskKey(trimmed);
+  const taskKey = workspace ? asTaskKey(trimmed) : null;
   const exactTask = findTaskByKey(search.data?.tasks, taskKey);
   const [opening, setOpening] = useState(false);
 
@@ -155,7 +169,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
     }
   };
 
-  const projectItems = projects.data?.items ?? [];
+  const projectItems = workspace ? (projects.data?.items ?? []) : [];
   const conversations = sortChannels(channels.data?.items ?? [], "activity");
   const results = searching ? search.data : undefined;
   const highlightTerm = search.debouncedTerm;
@@ -235,7 +249,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandGroup>
         ) : null}
 
-        {results && results.tasks.some((task) => task.id !== exactTask?.id) ? (
+        {workspace && results && results.tasks.some((task) => task.id !== exactTask?.id) ? (
           <CommandGroup heading="Công việc">
             {results.tasks.filter((task) => task.id !== exactTask?.id).map((task) => (
               <CommandItem
@@ -317,7 +331,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandGroup>
         ) : null}
 
-        {results && results.lists.length > 0 ? (
+        {workspace && results && results.lists.length > 0 ? (
           <CommandGroup heading="Danh sách (tìm kiếm)">
             {results.lists.map((list) => (
               <CommandItem
@@ -384,32 +398,48 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandGroup>
         ) : null}
 
-        <CommandGroup heading="Dự án">
-          {projectItems.map((project) => {
-            const first = project.lists[0];
-            return (
+        {projectItems.length > 0 ? (
+          <CommandGroup heading="Dự án">
+            {projectItems.map((project) => {
+              const first = project.lists[0];
+              return (
+                <CommandItem
+                  key={project.id}
+                  value={`project ${project.name}`}
+                  keywords={[project.key]}
+                  onSelect={() =>
+                    go(first ? `/p/${project.id}/l/${first.id}` : `/p/${project.id}/settings`)
+                  }
+                >
+                  <ProjectIcon
+                    color={project.color}
+                    icon={project.icon}
+                    name={project.name}
+                    size="xs"
+                  />
+                  <span className="truncate">{project.name}</span>
+                  <CommandShortcut className="font-mono tracking-normal text-foreground-subtle">
+                    {project.key}
+                  </CommandShortcut>
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        ) : null}
+
+        {retouchNav.length > 0 ? (
+          <CommandGroup heading="Photo Retouch">
+            {retouchNav.map((entry) => (
               <CommandItem
-                key={project.id}
-                value={`project ${project.name}`}
-                keywords={[project.key]}
-                onSelect={() =>
-                  go(first ? `/p/${project.id}/l/${first.id}` : `/p/${project.id}/settings`)
-                }
+                key={entry.to}
+                value={`nav photo retouch ${entry.label}`}
+                onSelect={() => go(entry.to)}
               >
-                <ProjectIcon
-                  color={project.color}
-                  icon={project.icon}
-                  name={project.name}
-                  size="xs"
-                />
-                <span className="truncate">{project.name}</span>
-                <CommandShortcut className="font-mono tracking-normal text-foreground-subtle">
-                  {project.key}
-                </CommandShortcut>
+                <entry.icon /> {entry.label}
               </CommandItem>
-            );
-          })}
-        </CommandGroup>
+            ))}
+          </CommandGroup>
+        ) : null}
 
         {knowledgeVisible && (knowledgeSpaces.data?.items ?? []).some((space) => space.archivedAt === null) ? (
           <CommandGroup heading="Kho tri thức">
@@ -431,7 +461,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           </CommandGroup>
         ) : null}
 
-        {trimmed ? (
+        {trimmed && projectItems.length > 0 ? (
           <CommandGroup heading="Danh sách">
             {projectItems.flatMap((project) =>
               project.lists.map((list) => (
@@ -460,9 +490,11 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           <CommandItem value="nav trang chủ home" onSelect={() => go("/")}>
             <House /> Trang chủ
           </CommandItem>
-          <CommandItem value="nav việc của tôi my tasks" onSelect={() => go("/my-tasks")}>
-            <ListTodo /> Việc của tôi
-          </CommandItem>
+          {myTasksPath ? (
+            <CommandItem value="nav việc của tôi my tasks" onSelect={() => go(myTasksPath)}>
+              <ListTodo /> Việc của tôi
+            </CommandItem>
+          ) : null}
           <CommandItem value="nav hộp thư inbox thông báo" onSelect={() => go("/inbox")}>
             <Inbox /> Hộp thư
           </CommandItem>
@@ -486,8 +518,11 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
             </CommandItem>
           ) : null}
           {can(P.RoleView) ? (
-            <CommandItem value="nav vai trò quyền roles" onSelect={() => go("/settings/roles")}>
-              <ShieldCheck /> Vai trò và quyền
+            <CommandItem
+              value="nav vai trò phân quyền roles permissions job"
+              onSelect={() => go("/settings/roles")}
+            >
+              <ShieldCheck /> Vai trò & phân quyền
             </CommandItem>
           ) : null}
         </CommandGroup>
@@ -514,7 +549,7 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
           >
             <Compass /> Duyệt kênh
           </CommandItem>
-          {can(P.ProjectCreate) ? (
+          {workspace && can(P.ProjectCreate) ? (
             <CommandItem
               value="action tạo dự án mới new project"
               onSelect={() => run(() => setNewProjectOpen(true))}
@@ -530,6 +565,22 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
               <BookPlus /> Tạo kho tri thức
             </CommandItem>
           ) : null}
+          {canSwitch
+            ? departments
+                .filter((entry) => entry !== department)
+                .map((entry) => {
+                  const Icon = departmentIcons[entry];
+                  return (
+                    <CommandItem
+                      key={entry}
+                      value={`action chuyển phòng ban department ${departmentLabels[entry]}`}
+                      onSelect={() => run(() => setDepartment(entry))}
+                    >
+                      <Icon /> Chuyển sang {departmentLabels[entry]}
+                    </CommandItem>
+                  );
+                })
+            : null}
           <CommandItem
             value="action giao diện sáng light theme"
             onSelect={() => run(() => setMode("light"))}

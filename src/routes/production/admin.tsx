@@ -50,7 +50,7 @@ const AdminDashboardPage = () => {
             className="inline-flex items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-sm:-my-3 max-sm:py-3 max-sm:pr-3"
           >
             <ChevronLeft className="size-3.5" aria-hidden="true" />
-            Sản xuất
+            Photo Retouch
           </Link>
         }
         title="Quản trị số liệu"
@@ -59,7 +59,7 @@ const AdminDashboardPage = () => {
             ? undefined
             : data
               ? `Số liệu tức thì ngày ${formatDay(data.today)} · ${periodLabel(data.period.key)} (${formatRange(data.period.from, data.period.to)}). Bấm "Mở báo cáo" để xem chi tiết.`
-              : "Số liệu tức thì của bộ phận sản xuất."
+              : "Số liệu tức thì của phòng ban Photo Retouch."
         }
         actions={
           <div className={`flex items-center gap-1.5 ${touchTargets}`}>

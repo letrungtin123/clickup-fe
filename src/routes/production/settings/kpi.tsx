@@ -176,8 +176,8 @@ export const ProductionKpiTargetsRoute = () => {
           ) : data && data.rows.length === 0 ? (
             <EmptyState
               icon={Target}
-              title="Chưa có thành viên sản xuất"
-              description="Gán vai trò sản xuất cho thành viên trước, rồi đặt KPI cho từng người."
+              title="Chưa có thành viên Photo Retouch"
+              description="Gán vai trò Photo Retouch cho thành viên trước, rồi đặt KPI cho từng người."
             />
           ) : rows.length === 0 ? (
             <EmptyState

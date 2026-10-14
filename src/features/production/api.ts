@@ -27,7 +27,6 @@ import {
   type SetCreditRuleRequestSchema,
   type UpdateJobStatusRequestSchema,
   type UpdateNotificationPreferencesRequestSchema,
-  type UpdateProductionMemberRequestSchema,
   type UpdateProductionSettingsRequestSchema,
   type UpsertClientRequestSchema,
   type UpsertCustomFieldRequestSchema,
@@ -43,7 +42,8 @@ import {
   LedJobsSchema,
   ProductionUserChangeResultSchema,
   ProductionUserPasswordResetSchema,
-  type CreateProductionUserRequestSchema
+  type CreateProductionUserRequestSchema,
+  type UpdateProductionUserRequestSchema
 } from "@/contracts/users-admin";
 import { api, apiPath, type QueryValue } from "@/lib/api/client";
 import { OkResponseSchema } from "@/lib/api/schemas";
@@ -56,7 +56,8 @@ import { queryPath } from "./list-filters";
  * can replace the cached list directly.
  */
 
-export type UpdateMemberInput = z.input<typeof UpdateProductionMemberRequestSchema>;
+/** Roles / team / custom values / tags, plus `departments` (PD-041, replaces them). */
+export type UpdateMemberInput = z.input<typeof UpdateProductionUserRequestSchema>;
 export type CreateUserInput = z.input<typeof CreateProductionUserRequestSchema>;
 export type TeamInput = z.input<typeof UpsertTeamRequestSchema>;
 export type ClientInput = z.input<typeof UpsertClientRequestSchema>;
@@ -86,9 +87,10 @@ export const productionApi = {
     }),
   /**
    * Roles / team / custom values / tags of one member through the production user administration
-   * (PATCH /production/users/:userId, PD-024): same body as PATCH /production/members, but it also
-   * guards organization admins (403 ORG_ADMIN_PROTECTED) and answers the jobs a demoted leader still
-   * leads (`orphanedJobs`).
+   * (PATCH /production/users/:userId, PD-024): same body as PATCH /production/members plus
+   * `departments` (PD-041; removing PHOTO_RETOUCH removes the roles, 403 DEPARTMENT_ESCALATION for
+   * a department the caller is not in), but it also guards organization admins (403
+   * ORG_ADMIN_PROTECTED) and answers the jobs a demoted leader still leads (`orphanedJobs`).
    */
   updateMember: (userId: string, input: UpdateMemberInput) =>
     api.patch(apiPath`/production/users/${userId}`, ProductionUserChangeResultSchema, input),

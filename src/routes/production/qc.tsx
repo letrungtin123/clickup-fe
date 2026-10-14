@@ -60,7 +60,7 @@ const QcQueue = () => {
   return (
     <div className={cn("flex h-full min-h-0 flex-col", touchTargets)}>
       <PageHeader
-        eyebrow="Sản xuất"
+        eyebrow="Photo Retouch"
         title="Hàng chờ QC"
         description="Task đã xong đang chờ bạn kiểm tra, cũ nhất trước."
         actions={

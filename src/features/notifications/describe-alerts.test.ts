@@ -36,6 +36,7 @@ const make = (overrides: Partial<Notification>): Notification => ({
       { id: id(13), code: "VD JOB-3" }
     ]
   },
+  department: null,
   createdAt: "2026-10-11T01:00:00.000Z",
   readAt: null,
   ...overrides
@@ -76,5 +77,21 @@ describe("admin alerts in the inbox and the bell", () => {
     expect(describeNotification(alert).tone).toBe("danger");
     expect(notificationTarget(alert)).toEqual({ kind: "none" });
     expect(sentenceText(describeNotification({ ...alert, payload: {} }))).toBe("Có thông báo/email gửi lỗi trong hàng đợi");
+  });
+});
+
+describe("a job given to its Leader", () => {
+  it("names the job and links to it", () => {
+    const notification = make({
+      type: "production.job_leader_assigned",
+      title: "VD JOB-9",
+      body: "Tên mẫu",
+      target: { ...make({}).target, jobId: id(40) },
+      payload: { jobId: id(40), jobCode: "VD JOB-9", jobName: "Tên mẫu", projectCode: "VD", deadline: "2026-10-13T16:59:00.000Z", taskCount: 0 }
+    });
+    const description = describeNotification(notification);
+    expect(sentenceText(description)).toBe("Quản trị Mẫu đã giao bạn làm Leader job VD JOB-9");
+    expect(description.subject).toBe("Tên mẫu · hạn 23:59, 13/10");
+    expect(notificationTarget(notification)).toEqual({ kind: "path", path: `/production/jobs/${id(40)}` });
   });
 });

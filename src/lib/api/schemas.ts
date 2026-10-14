@@ -9,6 +9,7 @@ import {
   PermissionDefinitionSchema,
   RoleSchema
 } from "@/contracts/schemas";
+import { DepartmentSchema } from "@/contracts/departments";
 
 /**
  * FE-side tolerant variants of contract schemas.
@@ -38,8 +39,17 @@ export const SessionContextSchema = z.object({
   hasFullOrganizationAuthority: z.boolean(),
   /** Admin-provisioned accounts must replace their temporary password first (PD-005). */
   mustChangePassword: z.boolean().default(false),
-  /** Explicit production roles (PD-011); superadmins also act as production ADMIN without one. */
+  /**
+   * Explicit production roles (PD-011); superadmins also act as production ADMIN without one. Empty outside the
+   * PHOTO_RETOUCH department (PD-041).
+   */
   productionRoles: z.array(z.string().min(1).max(20)).default([]),
+  /** Departments (PD-041), stable order; superadmins belong to all. Older servers omit it. */
+  departments: z.array(DepartmentSchema.catch("PRODUCTION")).default([]),
+  /** More than one department: show the header switcher. */
+  canSwitchDepartment: z.boolean().default(false),
+  /** Department remembered server-side (PUT /workspace/department); null without any department. */
+  currentDepartment: DepartmentSchema.nullable().catch(null).default(null),
   /**
    * Personal channels (PD-021), read fresh by /workspace/context. `notifyWeb` off = no toast for new
    * notifications (inbox, bell and badges still update). Older servers omit it: web on, email off.

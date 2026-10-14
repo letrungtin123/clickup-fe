@@ -32,6 +32,7 @@ const make = (overrides: Partial<Notification>): Notification => ({
     qty: 5,
     deadline: "2026-10-09T10:30:00.000Z"
   },
+  department: null,
   createdAt: "2026-10-09T08:00:00.000Z",
   readAt: null,
   ...overrides

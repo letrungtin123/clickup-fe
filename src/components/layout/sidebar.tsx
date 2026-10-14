@@ -15,7 +15,8 @@ import {
   WifiOff,
   type LucideIcon
 } from "lucide-react";
-import { type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useMemo, type ReactNode } from "react";
 import { useMatch } from "react-router";
 import { Link, NavLink } from "@/components/shared/router-link";
 
@@ -35,6 +36,9 @@ import { ChatNavBadge } from "@/features/chat/components/chat-nav-badge";
 import { KnowledgeSidebarSection } from "@/features/knowledge/components/sidebar-section";
 import { useKnowledgePermissions } from "@/features/knowledge/hooks";
 import { canCreateSpace, canSeeKnowledge } from "@/features/knowledge/model/access";
+import { DepartmentSwitcher } from "@/features/departments/components/department-switcher";
+import { useDepartment } from "@/features/departments/hooks";
+import { myTasksPathFor, withoutRetouchMyTasks } from "@/features/departments/model";
 import { InboxNavBadge } from "@/features/notifications/components/inbox-badge";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { useProductionNavEntries } from "@/features/production/hooks";
@@ -45,7 +49,7 @@ import { useRealtimeStatus } from "@/lib/realtime/hooks";
 import { useUiStore } from "@/stores/ui-store";
 
 import {
-  productionSectionDefaultOpen,
+  retouchSectionDefaultOpen,
   useSidebarSection,
   type SidebarSectionId
 } from "./sidebar-sections";
@@ -53,11 +57,31 @@ import { UserMenu } from "./user-menu";
 
 type NavEntry = { to: string; label: string; icon: LucideIcon; end?: boolean };
 
-const primaryNav: NavEntry[] = [
-  { to: "/", label: "Trang chủ", icon: House, end: true },
-  { to: "/my-tasks", label: "Việc của tôi", icon: ListTodo },
-  { to: "/inbox", label: "Hộp thư", icon: Inbox }
-];
+const homeEntry: NavEntry = { to: "/", label: "Trang chủ", icon: House, end: true };
+const inboxEntry: NavEntry = { to: "/inbox", label: "Hộp thư", icon: Inbox };
+
+/**
+ * Navigation of the department shown (PD-041): Trang chủ, exactly one "Việc của tôi" following the department (the
+ * production kanban for Photo Retouch, the cross-project list for Production) and Hộp thư; plus the Photo Retouch menu
+ * (without its own "Việc của tôi") while that department is shown. The rest of the sidebar is shared.
+ */
+const useDepartmentNav = () => {
+  const { current, canSwitch } = useDepartment();
+  const productionNav = useProductionNavEntries();
+  return useMemo(() => {
+    const myTasks = myTasksPathFor(
+      current,
+      productionNav.map((entry) => entry.to)
+    );
+    const primary: NavEntry[] = [
+      homeEntry,
+      ...(myTasks ? [{ to: myTasks, label: "Việc của tôi", icon: ListTodo }] : []),
+      inboxEntry
+    ];
+    const retouch = current === "PHOTO_RETOUCH" ? withoutRetouchMyTasks(productionNav) : [];
+    return { current, canSwitch, primary, retouch };
+  }, [canSwitch, current, productionNav]);
+};
 
 const navItemClass = (active: boolean) =>
   cn(
@@ -90,8 +114,7 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
   const setNewProjectOpen = useUiStore((state) => state.setNewProjectOpen);
   const setNewSpaceOpen = useUiStore((state) => state.setNewSpaceOpen);
   const knowledge = useKnowledgePermissions();
-  const productionNav = useProductionNavEntries();
-  const productionDefaultOpen = useProductionSectionDefault();
+  const { current, canSwitch, primary, retouch } = useDepartmentNav();
   // Phones reach the bell from the top bar; the drawer keeps "Hộp thư".
   const showBell = useBreakpoint() !== "mobile";
 
@@ -106,6 +129,13 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
           </IconTooltipButton>
         ) : null}
       </div>
+
+      {/* Department switcher (PD-041): only for people in more than one department. */}
+      {canSwitch ? (
+        <div className="px-2 pb-1.5">
+          <DepartmentSwitcher variant="sidebar" />
+        </div>
+      ) : null}
 
       <div className="px-2 pb-2">
         <button
@@ -124,7 +154,7 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4"
       >
         <ul className="flex flex-col gap-px px-2">
-          {primaryNav.map((entry) => (
+          {primary.map((entry) => (
             <li key={entry.to}>
               <NavLink
                 to={entry.to}
@@ -140,38 +170,55 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
           ))}
         </ul>
 
-        {/* Production (retouch) module: only for users holding a production role (PD-011). */}
-        {productionNav.length > 0 ? (
-          <SidebarSection id="production" title="Sản xuất" defaultOpen={productionDefaultOpen}>
-            <ul className="flex flex-col gap-px px-2">
-              {productionNav.map((entry) => (
-                <li key={entry.to}>
-                  <NavLink
-                    to={entry.to}
-                    end={entry.end ?? false}
-                    onClick={() => onNavigate?.()}
-                    className={({ isActive }) => navItemClass(isActive)}
-                  >
-                    <entry.icon aria-hidden="true" />
-                    {entry.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </SidebarSection>
-        ) : null}
+        {/* The department's own module swaps in place when the department changes. */}
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={current ?? "none"}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {/* Photo Retouch: the production module menu (production roles still apply, PD-011). */}
+            {retouch.length > 0 ? (
+              <SidebarSection
+                id="retouch"
+                title="Photo Retouch"
+                defaultOpen={retouchSectionDefaultOpen(current)}
+              >
+                <ul className="flex flex-col gap-px px-2">
+                  {retouch.map((entry) => (
+                    <li key={entry.to}>
+                      <NavLink
+                        to={entry.to}
+                        end={entry.end ?? false}
+                        onClick={() => onNavigate?.()}
+                        className={({ isActive }) => navItemClass(isActive)}
+                      >
+                        <entry.icon aria-hidden="true" />
+                        {entry.label}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </SidebarSection>
+            ) : null}
 
-        <SidebarSection
-          id="projects"
-          title="Dự án"
-          action={
-            can(P.ProjectCreate) ? (
-              <SectionActionButton label="Tạo dự án" onClick={() => setNewProjectOpen(true)} />
-            ) : null
-          }
-        >
-          <ProjectTree onNavigate={onNavigate} />
-        </SidebarSection>
+            {/* Production: the workspace projects. */}
+            {current === "PRODUCTION" ? (
+              <SidebarSection
+                id="projects"
+                title="Dự án"
+                action={
+                  can(P.ProjectCreate) ? (
+                    <SectionActionButton label="Tạo dự án" onClick={() => setNewProjectOpen(true)} />
+                  ) : null
+                }
+              >
+                <ProjectTree onNavigate={onNavigate} />
+              </SidebarSection>
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Knowledge base (PD-031): only with knowledge.view; "Tạo kho" with knowledge.create. */}
         {canSeeKnowledge(knowledge) ? (
@@ -224,10 +271,6 @@ const SidebarFull = ({ onNavigate, onToggle }: Pick<SidebarProps, "onNavigate" |
     </div>
   );
 };
-
-/** Default for the "Sản xuất" section: open for people holding an explicit production role. */
-const useProductionSectionDefault = () =>
-  productionSectionDefaultOpen(useSessionContext().productionRoles);
 
 const SidebarSection = ({
   id,
@@ -371,24 +414,23 @@ const RailLink = ({ entry }: { entry: NavEntry }) => (
 
 const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
-  const projects = useProjects();
-  const projectMatch = useMatch("/p/:projectId/*");
-  const productionNav = useProductionNavEntries();
   const knowledge = useKnowledgePermissions();
+  const { current, canSwitch, primary, retouch } = useDepartmentNav();
   const userId = useSessionContext().user.id;
-  const [productionOpen] = useSidebarSection(userId, "production", useProductionSectionDefault());
-  // A collapsed "Sản xuất" section leaves one icon (the overview) on the rail.
-  const productionOverview = productionNav[0];
-  const railProduction = productionOpen
-    ? productionNav
-    : productionOverview
-      ? [{ ...productionOverview, label: "Sản xuất", end: false }]
+  const [retouchOpen] = useSidebarSection(userId, "retouch", retouchSectionDefaultOpen(current));
+  // A collapsed "Photo Retouch" section leaves one icon (the overview) on the rail.
+  const retouchOverview = retouch[0];
+  const railRetouch = retouchOpen
+    ? retouch
+    : retouchOverview
+      ? [{ ...retouchOverview, label: "Photo Retouch", end: false }]
       : [];
 
   return (
     <div className="flex h-full w-full flex-col items-center gap-1 bg-canvas py-2">
       <UserMenu compact />
       <NotificationBell placement="rail" />
+      {canSwitch ? <DepartmentSwitcher variant="rail" /> : null}
       <nav
         aria-label="Điều hướng chính"
         className="flex min-h-0 w-full flex-1 flex-col items-center gap-1"
@@ -410,7 +452,7 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
             Tìm kiếm <Shortcut keys={["mod", "K"]} />
           </TooltipContent>
         </Tooltip>
-        {primaryNav.map((entry) => (
+        {primary.map((entry) => (
           <RailLink key={entry.to} entry={entry} />
         ))}
         {/* Chat lives in sidebar sections on the full sidebar; the rail links to all conversations. */}
@@ -418,52 +460,29 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
         {canSeeKnowledge(knowledge) ? (
           <RailLink entry={{ to: "/k", label: "Tri thức", icon: Library }} />
         ) : null}
-        {railProduction.length > 0 ? (
+        {/* The department's own module takes the scrolling middle of the rail. */}
+        {current === "PRODUCTION" ? (
           <>
             <Separator className="my-1 w-6" />
-            {railProduction.map((entry) => (
-              <RailLink key={entry.to} entry={entry} />
-            ))}
+            <RailProjects />
           </>
-        ) : null}
-        <Separator className="my-1 w-6" />
-        <ul
-          aria-label="Dự án"
-          className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto scrollbar-none"
-        >
-          {(projects.data?.items ?? []).map((project) => {
-            const firstList = project.lists[0];
-            const active = projectMatch?.params.projectId === project.id;
-            return (
-              <li key={project.id}>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Link
-                        to={
-                          firstList
-                            ? `/p/${project.id}/l/${firstList.id}`
-                            : `/p/${project.id}/settings`
-                        }
-                        aria-label={project.name}
-                        aria-current={active ? "page" : undefined}
-                        className={railItemClass(active)}
-                      />
-                    }
-                  >
-                    <ProjectIcon
-                      color={project.color}
-                      icon={project.icon}
-                      name={project.name}
-                      size="sm"
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{project.name}</TooltipContent>
-                </Tooltip>
-              </li>
-            );
-          })}
-        </ul>
+        ) : railRetouch.length > 0 ? (
+          <>
+            <Separator className="my-1 w-6" />
+            <ul
+              aria-label="Photo Retouch"
+              className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto scrollbar-none"
+            >
+              {railRetouch.map((entry) => (
+                <li key={entry.to}>
+                  <RailLink entry={entry} />
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <div className="flex-1" aria-hidden="true" />
+        )}
         <RailLink entry={{ to: "/trash", label: "Thùng rác", icon: Trash2 }} />
         <RailLink entry={{ to: "/settings", label: "Cài đặt", icon: Settings }} />
         {onToggle ? (
@@ -473,5 +492,48 @@ const SidebarRail = ({ onToggle }: Pick<SidebarProps, "onToggle">) => {
         ) : null}
       </nav>
     </div>
+  );
+};
+
+/** Production's projects on the rail (fetched only while that department is shown). */
+const RailProjects = () => {
+  const projects = useProjects();
+  const projectMatch = useMatch("/p/:projectId/*");
+  return (
+    <ul
+      aria-label="Dự án"
+      className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto scrollbar-none"
+    >
+      {(projects.data?.items ?? []).map((project) => {
+        const firstList = project.lists[0];
+        const active = projectMatch?.params.projectId === project.id;
+        return (
+          <li key={project.id}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Link
+                    to={
+                      firstList ? `/p/${project.id}/l/${firstList.id}` : `/p/${project.id}/settings`
+                    }
+                    aria-label={project.name}
+                    aria-current={active ? "page" : undefined}
+                    className={railItemClass(active)}
+                  />
+                }
+              >
+                <ProjectIcon
+                  color={project.color}
+                  icon={project.icon}
+                  name={project.name}
+                  size="sm"
+                />
+              </TooltipTrigger>
+              <TooltipContent side="right">{project.name}</TooltipContent>
+            </Tooltip>
+          </li>
+        );
+      })}
+    </ul>
   );
 };

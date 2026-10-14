@@ -303,13 +303,11 @@ const JobTable = ({
                         {job.code}
                       </span>
                     </span>
-                    <span
-                      className="truncate text-xs text-foreground-muted"
-                      title={job.name ? `${job.project.code} · ${job.name}` : job.project.code}
-                    >
-                      <span className="font-mono">{job.project.code}</span>
-                      {job.name ? ` · ${job.name}` : ""}
-                    </span>
+                    {job.name ? (
+                      <span className="truncate text-xs text-foreground-muted" title={job.name}>
+                        {job.name}
+                      </span>
+                    ) : null}
                   </span>
                   {person ? (
                     <span role="cell" className="min-w-0 px-3">
@@ -461,13 +459,11 @@ const JobCards = ({
                   >
                     {job.code}
                   </span>
-                  <span
-                    className="truncate text-xs text-foreground-muted"
-                    title={job.name ? `${job.project.code} · ${job.name}` : job.project.code}
-                  >
-                    <span className="font-mono">{job.project.code}</span>
-                    {job.name ? ` · ${job.name}` : ""}
-                  </span>
+                  {job.name ? (
+                    <span className="truncate text-xs text-foreground-muted" title={job.name}>
+                      {job.name}
+                    </span>
+                  ) : null}
                 </span>
                 {/* At most half the row, so the package name keeps its room. */}
                 <JobStatusChip status={job.jobStatus} size="sm" className="max-w-[50%] shrink-0" />

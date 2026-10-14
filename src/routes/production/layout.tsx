@@ -2,18 +2,25 @@ import { Outlet } from "react-router";
 
 import { RouteFallback } from "@/components/layout/route-fallback";
 import { ErrorState } from "@/components/shared/states";
+import { useSessionContext } from "@/features/auth/hooks";
+import { DepartmentForbidden } from "@/features/departments/components/department-forbidden";
 import { ProductionTaskSheet } from "@/features/production/components/jobs/task-sheet";
 import { isProductionHidden } from "@/features/production/errors";
 import { useProductionMe } from "@/features/production/hooks";
 import { NotFoundRoute } from "@/routes/errors";
 
 /**
- * Gate for every /production/* screen (PD-011): users without a production role get the ordinary
- * not-found page, exactly like any unknown URL — the module does not exist for them.
+ * Gate for every /production/* screen — the Photo Retouch department's module (PD-041). People outside that
+ * department get the "Bạn không thuộc phòng ban này" page; inside it, the module still needs a production role
+ * (PD-011): without one it simply does not exist for them (the ordinary not-found page).
  */
 export const ProductionLayoutRoute = () => {
+  const inRetouch = useSessionContext().departments.includes("PHOTO_RETOUCH");
   const me = useProductionMe();
 
+  if (!inRetouch) {
+    return <DepartmentForbidden department="PHOTO_RETOUCH" />;
+  }
   if (me.isPending) {
     return <RouteFallback />;
   }

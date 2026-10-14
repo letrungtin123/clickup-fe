@@ -99,6 +99,6 @@ export const lockedRoles = (
       ? { ADMIN: "Bạn không thể tự bỏ quyền Quản trị của mình" }
       : {};
   return lock.kind === "superadmin"
-    ? allRoles("Superadmin luôn có quyền Quản trị sản xuất; vai trò không đổi được ở đây.")
+    ? allRoles("Superadmin luôn có quyền Quản trị Photo Retouch; vai trò không đổi được ở đây.")
     : allRoles("Chỉ superadmin đổi được vai trò của tài khoản quản trị tổ chức.");
 };

@@ -1,5 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
+import type { Department } from "@/contracts/departments";
+import type { ProductionRole } from "@/contracts/production-catalog";
 import { api, apiPath } from "@/lib/api/client";
 import {
   AdminMemberCollectionSchema,
@@ -13,11 +16,25 @@ import {
 } from "@/lib/api/schemas";
 import { qk } from "@/lib/query-keys";
 
+import { adminErrorMessage } from "./errors";
+
 export type CreateMemberInput = {
   email: string;
   displayName: string;
   roleId: string;
   jobTitle?: string | null;
+  /** PD-041: at least one (the role chosen here is never superadmin). */
+  departments: Department[];
+  /** Required with PHOTO_RETOUCH, left out without it. */
+  productionRoles?: ProductionRole[];
+};
+export type UpdateMemberInput = {
+  roleId?: string;
+  status?: "active" | "disabled";
+  /** Replaces the departments; removing PHOTO_RETOUCH also removes the production roles (server-side). */
+  departments?: Department[];
+  /** Required (non-empty) when PHOTO_RETOUCH is newly added. */
+  productionRoles?: ProductionRole[];
 };
 export type CreateRoleInput = {
   key: string;
@@ -38,14 +55,16 @@ export const adminApi = {
     api.patch(apiPath`/roles/${roleId}/permissions`, AdminRoleSchema, { permissions }),
   archiveRole: (roleId: string) => api.delete(apiPath`/roles/${roleId}`, OkResponseSchema),
 
-  members: (signal?: AbortSignal) =>
-    api.get("/organization/members", AdminMemberCollectionSchema, { signal }),
+  /** `department`: members of that department (superadmins included, PD-041). */
+  members: (signal?: AbortSignal, department?: Department | null) =>
+    api.get("/organization/members", AdminMemberCollectionSchema, {
+      signal,
+      query: { department: department ?? undefined }
+    }),
   createMember: (input: CreateMemberInput) =>
     api.post("/organization/members", CreatedMemberResponseSchema, input),
-  updateMember: (
-    membershipId: string,
-    input: { roleId?: string; status?: "active" | "disabled" }
-  ) => api.patch(apiPath`/organization/members/${membershipId}`, AdminMemberSchema, input),
+  updateMember: (membershipId: string, input: UpdateMemberInput) =>
+    api.patch(apiPath`/organization/members/${membershipId}`, AdminMemberSchema, input),
   resetPassword: (membershipId: string) =>
     api.post(
       apiPath`/organization/members/${membershipId}/reset-password`,
@@ -68,10 +87,12 @@ export const useAdminRoles = (enabled = true) =>
     enabled
   });
 
-export const useAdminMembers = (enabled = true) =>
+/** Every member, or those of one department (server filter); the previous list stays while switching. */
+export const useAdminMembers = (enabled = true, department: Department | null = null) =>
   useQuery({
-    queryKey: qk.admin.members(),
-    queryFn: ({ signal }) => adminApi.members(signal),
+    queryKey: department ? [...qk.admin.members(), { department }] : qk.admin.members(),
+    queryFn: ({ signal }) => adminApi.members(signal, department),
+    placeholderData: keepPreviousData,
     enabled
   });
 
@@ -126,15 +147,19 @@ export const useMemberMutations = () => {
       meta: { errorMessage: false },
       onSuccess: refresh
     }),
+    /** Role / status from the row selects: errors toast (department codes worded too). */
     update: useMutation({
-      mutationFn: ({
-        membershipId,
-        input
-      }: {
-        membershipId: string;
-        input: { roleId?: string; status?: "active" | "disabled" };
-      }) => adminApi.updateMember(membershipId, input),
-      meta: { successMessage: "Đã cập nhật thành viên" },
+      mutationFn: ({ membershipId, input }: { membershipId: string; input: UpdateMemberInput }) =>
+        adminApi.updateMember(membershipId, input),
+      meta: { successMessage: "Đã cập nhật thành viên", errorMessage: false },
+      onError: (error) => toast.error(adminErrorMessage(error)),
+      onSuccess: refresh
+    }),
+    /** Departments from the edit dialog: the dialog shows the error itself. */
+    setDepartments: useMutation({
+      mutationFn: ({ membershipId, input }: { membershipId: string; input: UpdateMemberInput }) =>
+        adminApi.updateMember(membershipId, input),
+      meta: { successMessage: "Đã cập nhật phòng ban", errorMessage: false },
       onSuccess: refresh
     }),
     resetPassword: useMutation({

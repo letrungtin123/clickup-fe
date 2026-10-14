@@ -87,7 +87,9 @@ describe("navigation by role", () => {
     expect(slugs(["ACCOUNT"])).toEqual(["clients"]);
     expect(slugs(["ADMIN"])).toContain("credit-rules");
     expect(slugs(["ADMIN"])).toEqual(expect.arrayContaining(["kpi", "kpi-settlement"]));
-    expect(slugs(["ADMIN"])).toHaveLength(16);
+    expect(slugs(["ADMIN"])).toHaveLength(15);
+    // "Phân quyền Job" moved to Cài đặt → Vai trò & phân quyền (PD-042).
+    expect(slugs(["ADMIN"])).not.toContain("job-permissions");
   });
 });
 

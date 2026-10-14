@@ -10,7 +10,7 @@ import {
 
 /**
  * "Phân quyền Job" (PD-036): copy and pure helpers of the role × action matrix edited on
- * Cấu hình → Phân quyền Job. ADMIN is always "all" and never part of the stored matrix.
+ * Cài đặt → Vai trò & phân quyền (PD-042). ADMIN is always "all" and never part of the stored matrix.
  */
 
 export const jobActionLabels: Record<JobPermissionAction, string> = {
@@ -42,7 +42,7 @@ export const jobScopeMeaning: Record<
     all: "Mọi job."
   },
   create: {
-    own: "Chỉ thêm dòng việc giao cho chính mình (và job của gói mới khi “Nhập công việc”).",
+    own: "Chỉ thêm dòng việc giao cho chính mình vào job có sẵn (“Nhập công việc”).",
     all: "Tạo job (“Tạo job”) và dòng việc cho bất kỳ ai."
   },
   update: {

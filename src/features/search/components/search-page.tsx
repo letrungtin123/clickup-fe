@@ -32,6 +32,7 @@ import { chatApi } from "@/features/chat/api";
 import { useOpenDm } from "@/features/chat/hooks/use-channels";
 import { chatKeys } from "@/features/chat/keys";
 import { useDebouncedValue, useGlobalSearch } from "@/features/command/search-api";
+import { useCurrentDepartment } from "@/features/departments/hooks";
 import { ImportanceBadge, KnowledgeStatusChip } from "@/features/knowledge/components/badges";
 import { useKnowledgePermissions } from "@/features/knowledge/hooks";
 
@@ -42,7 +43,8 @@ import {
   isSearchTab,
   mapSearchResults,
   messageHref,
-  searchTabs,
+  scopeSearchItems,
+  visibleSearchTabs,
   type SearchItem,
   type SearchTab
 } from "../model";
@@ -59,20 +61,25 @@ const groupIcons: Record<SearchGroup, LucideIcon> = {
 
 const order: SearchGroup[] = ["tasks", "knowledge", "messages", "projects", "lists", "people"];
 
-/** `/search?q=&tab=` — full results with tabs, keyboard navigation (↑/↓, Enter) and highlights. */
+/**
+ * `/search?q=&tab=` — full results with tabs, keyboard navigation (↑/↓, Enter) and highlights. Scoped to the current
+ * department (PD-041): tasks, projects and lists only in Production; people, messages and knowledge everywhere.
+ */
 export const SearchPage = () => {
   const [params, setParams] = useSearchParams();
   const urlQ = params.get("q") ?? "";
   const rawTab = params.get("tab");
-  const tab: SearchTab = isSearchTab(rawTab) ? rawTab : "all";
+  // "Tri thức" only for people who can see the knowledge base (knowledge.view).
+  const knowledgeVisible = useKnowledgePermissions().view;
+  const workspace = useCurrentDepartment() === "PRODUCTION";
+  const tabs = visibleSearchTabs({ knowledge: knowledgeVisible, workspace });
+  const tab: SearchTab =
+    isSearchTab(rawTab) && tabs.some((entry) => entry.value === rawTab) ? rawTab : "all";
   const [input, setInput] = useState(urlQ);
   const debounced = useDebouncedValue(input.trim(), 250);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
   const tablistRef = useRef<HTMLDivElement | null>(null);
-  // "Tri thức" only for people who can see the knowledge base (knowledge.view).
-  const knowledgeVisible = useKnowledgePermissions().view;
-  const tabs = searchTabs.filter((entry) => entry.value !== "knowledge" || knowledgeVisible);
 
   // Phones scroll the tab row: keep the active tab (deep links, keyboard) in view.
   useEffect(() => {
@@ -109,7 +116,10 @@ export const SearchPage = () => {
 
   // All groups (counts for the tabs + the "Tất cả" overview).
   const overview = useGlobalSearch(q, undefined, 8);
-  const items = useMemo(() => mapSearchResults(overview.data), [overview.data]);
+  const items = useMemo(
+    () => scopeSearchItems(mapSearchResults(overview.data), workspace),
+    [overview.data, workspace]
+  );
   const counts = useMemo(() => countByGroup(items), [items]);
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -149,11 +159,7 @@ export const SearchPage = () => {
             type="search"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={
-              knowledgeVisible
-                ? "Tìm công việc, tri thức, tin nhắn, dự án, mọi người…"
-                : "Tìm công việc, tin nhắn, dự án, danh sách, mọi người…"
-            }
+            placeholder={searchPlaceholder(knowledgeVisible, workspace)}
             aria-label="Từ khóa tìm kiếm"
             className="h-11 w-full rounded-xl border bg-surface pr-10 pl-10 text-[15px] shadow-xs outline-none placeholder:text-foreground-subtle focus-visible:border-brand/50 focus-visible:ring-3 focus-visible:ring-ring/30"
           />
@@ -203,7 +209,7 @@ export const SearchPage = () => {
             <EmptyState
               icon={Search}
               title="Tìm trong toàn bộ không gian làm việc"
-              description={`Nhập ít nhất 2 ký tự. Kết quả chỉ gồm những gì bạn có quyền xem: công việc, ${knowledgeVisible ? "tri thức, " : ""}tin nhắn trong các cuộc trò chuyện của bạn, dự án, danh sách và đồng nghiệp.`}
+              description={`Nhập ít nhất 2 ký tự. Kết quả chỉ gồm những gì bạn có quyền xem: ${searchScope(knowledgeVisible, workspace)}.`}
             />
           ) : tab === "all" ? (
             <Overview q={q} query={overview} items={items} onTab={setTab} />
@@ -217,6 +223,26 @@ export const SearchPage = () => {
     </div>
   );
 };
+
+const searchPlaceholder = (knowledge: boolean, workspace: boolean) => {
+  if (workspace) {
+    return knowledge
+      ? "Tìm công việc, tri thức, tin nhắn, dự án, mọi người…"
+      : "Tìm công việc, tin nhắn, dự án, danh sách, mọi người…";
+  }
+  return knowledge ? "Tìm tri thức, tin nhắn, mọi người…" : "Tìm tin nhắn, mọi người…";
+};
+
+/** What the search covers, in the empty state. */
+const searchScope = (knowledge: boolean, workspace: boolean) =>
+  [
+    workspace ? "công việc" : null,
+    knowledge ? "tri thức" : null,
+    "tin nhắn trong các cuộc trò chuyện của bạn",
+    workspace ? "dự án, danh sách" : null
+  ]
+    .filter(Boolean)
+    .join(", ") + " và đồng nghiệp";
 
 const Overview = ({
   q,

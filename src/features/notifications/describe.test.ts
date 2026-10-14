@@ -31,6 +31,7 @@ const make = (overrides: Partial<Notification>): Notification => ({
     knowledgeItemId: null
   },
   payload: {},
+  department: null,
   createdAt: "2026-10-09T08:00:00.000Z",
   readAt: null,
   ...overrides

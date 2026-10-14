@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   isSectionOpen,
   parseSectionState,
-  productionSectionDefaultOpen,
+  retouchSectionDefaultOpen,
   setSidebarSectionOpen,
   sidebarSectionsKey
 } from "./sidebar-sections";
@@ -16,24 +16,28 @@ describe("sidebar sections (P2)", () => {
     expect(parseSectionState(null)).toEqual({});
     expect(parseSectionState("not json")).toEqual({});
     expect(parseSectionState("[true]")).toEqual({});
-    expect(parseSectionState('{"production":false,"projects":true,"x":false,"channels":"no"}')).toEqual({
-      production: false,
+    expect(parseSectionState('{"retouch":false,"projects":true,"x":false,"channels":"no"}')).toEqual({
+      retouch: false,
       projects: true
     });
   });
 
-  it("opens Sản xuất by default only for people holding a production role", () => {
-    expect(productionSectionDefaultOpen(["STAFF"])).toBe(true);
-    expect(productionSectionDefaultOpen(["LEADER", "QC"])).toBe(true);
-    expect(productionSectionDefaultOpen([])).toBe(false);
+  it("drops the old production section state (the Photo Retouch menu starts open again)", () => {
+    expect(parseSectionState('{"production":false,"dms":false}')).toEqual({ dms: false });
+  });
+
+  it("opens Photo Retouch by default while that department is shown", () => {
+    expect(retouchSectionDefaultOpen("PHOTO_RETOUCH")).toBe(true);
+    expect(retouchSectionDefaultOpen("PRODUCTION")).toBe(false);
+    expect(retouchSectionDefaultOpen(null)).toBe(false);
   });
 
   it("remembers a choice per user and falls back to the default otherwise", () => {
-    setSidebarSectionOpen("user-a", "production", false);
+    setSidebarSectionOpen("user-a", "retouch", false);
     setSidebarSectionOpen("user-a", "channels", true);
     const stored = parseSectionState(window.localStorage.getItem(sidebarSectionsKey("user-a")));
-    expect(stored).toEqual({ production: false, channels: true });
-    expect(isSectionOpen(stored, "production", true)).toBe(false);
+    expect(stored).toEqual({ retouch: false, channels: true });
+    expect(isSectionOpen(stored, "retouch", true)).toBe(false);
     expect(isSectionOpen(stored, "projects", true)).toBe(true);
     expect(window.localStorage.getItem(sidebarSectionsKey("user-b"))).toBeNull();
   });

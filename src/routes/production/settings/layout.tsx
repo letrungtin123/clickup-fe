@@ -53,14 +53,14 @@ export const ProductionSettingsLayoutRoute = () => {
             className="inline-flex items-center gap-1 rounded outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-sm:-my-3 max-sm:py-3 max-sm:pr-3"
           >
             <ChevronLeft className="size-3.5" aria-hidden="true" />
-            Sản xuất
+            Photo Retouch
           </Link>
         }
-        title="Cấu hình sản xuất"
+        title="Cấu hình Photo Retouch"
         description={
           breakpoint === "mobile"
             ? undefined
-            : "Danh mục, đơn giá, luồng trạng thái và quyền của bộ phận sản xuất."
+            : "Danh mục, đơn giá, luồng trạng thái và quyền của phòng ban Photo Retouch."
         }
       >
         {!desktop && pages.length > 1 ? <TabsNav pages={pages} /> : null}
@@ -83,7 +83,7 @@ export const ProductionSettingsLayoutRoute = () => {
 
 const SideNav = ({ pages }: { pages: readonly SettingsPage[] }) => (
   <nav
-    aria-label="Mục cấu hình sản xuất"
+    aria-label="Mục cấu hình Photo Retouch"
     className="w-60 shrink-0 overflow-y-auto border-r bg-canvas/40 px-2 py-4"
   >
     {groupOrder.map((group) => {
@@ -133,7 +133,7 @@ const TabsNav = ({ pages }: { pages: readonly SettingsPage[] }) => {
   return (
     <nav
       ref={ref}
-      aria-label="Mục cấu hình sản xuất"
+      aria-label="Mục cấu hình Photo Retouch"
       // Edge-to-edge row with faded edges: a cut-off tab at the border signals that the row scrolls.
       className="-mx-4 -mb-3 flex scroll-px-6 gap-1 overflow-x-auto px-4 scrollbar-none [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%-1.5rem),transparent)] md:-mx-6 md:px-6"
     >

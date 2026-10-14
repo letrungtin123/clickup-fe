@@ -119,6 +119,8 @@ export const ProductionRuntime = () => {
       if (type === "production.task_waiting_qc") {
         void client.invalidateQueries({ queryKey: productionKeys.qcQueue() });
         void client.invalidateQueries({ queryKey: productionKeys.myTasks() });
+      } else if (type === "production.job_leader_assigned") {
+        void client.invalidateQueries({ queryKey: ["production", "led-jobs"] });
       } else if (myTaskNotifications.has(type)) {
         void client.invalidateQueries({ queryKey: productionKeys.myTasks() });
       } else if (type === "production.kpi_settled") {

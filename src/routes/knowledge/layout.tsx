@@ -51,7 +51,7 @@ export const KnowledgeGateRoute = () => {
         <EmptyState
           icon={ShieldOff}
           title="Bạn chưa có quyền xem Tri thức"
-          description="Quản trị tổ chức cấp quyền “Xem tri thức” trong Cài đặt › Vai trò và quyền."
+          description="Quản trị tổ chức cấp quyền “Xem tri thức” trong Cài đặt › Vai trò & phân quyền."
         />
       </div>
     );

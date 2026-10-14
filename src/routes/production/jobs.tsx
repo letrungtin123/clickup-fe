@@ -60,7 +60,7 @@ const JobsForbidden = ({ canEnter }: { canEnter: boolean }) => {
       <EmptyState
         icon={ShieldAlert}
         title="Bạn không có quyền xem trang này"
-        description="Danh sách job chỉ mở cho người được cấp quyền xem job. Liên hệ Quản trị sản xuất nếu bạn cần quyền."
+        description="Danh sách job chỉ mở cho người được cấp quyền xem job. Liên hệ Quản trị Photo Retouch nếu bạn cần quyền."
         action={
           canEnter ? (
             <Button size="sm" onClick={() => setEntering(true)}>
@@ -142,7 +142,7 @@ const JobsPage = () => {
   return (
     <div className={`flex h-full min-h-0 flex-col ${touchTargets}`}>
       <PageHeader
-        eyebrow="Sản xuất"
+        eyebrow="Photo Retouch"
         title="Job"
         description={
           jobScopes.view === "own"

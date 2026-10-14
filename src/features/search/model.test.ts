@@ -8,7 +8,9 @@ import {
   findMatches,
   highlightSegments,
   mapSearchResults,
-  messageHref
+  messageHref,
+  scopeSearchItems,
+  visibleSearchTabs
 } from "./model";
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, "0")}`;
@@ -122,5 +124,38 @@ describe("highlighting", () => {
     expect(excerpt.startsWith("…")).toBe(true);
     expect(excerpt.endsWith("…")).toBe(true);
     expect(excerpt).toContain("điểm chính");
+  });
+});
+
+describe("department scope (PD-041)", () => {
+  it("offers the workspace tabs only in the Production department", () => {
+    expect(visibleSearchTabs({ knowledge: true, workspace: true }).map((tab) => tab.value)).toEqual([
+      "all",
+      "tasks",
+      "knowledge",
+      "messages",
+      "projects",
+      "lists",
+      "people"
+    ]);
+    expect(visibleSearchTabs({ knowledge: true, workspace: false }).map((tab) => tab.value)).toEqual([
+      "all",
+      "knowledge",
+      "messages",
+      "people"
+    ]);
+    expect(visibleSearchTabs({ knowledge: false, workspace: false }).map((tab) => tab.value)).toEqual([
+      "all",
+      "messages",
+      "people"
+    ]);
+  });
+
+  it("keeps only shared hits outside Production", () => {
+    const items = mapSearchResults(result);
+    expect(scopeSearchItems(items, true)).toEqual(items);
+    const shared = scopeSearchItems(items, false);
+    expect(shared.length).toBeGreaterThan(0);
+    expect(shared.every((item) => ["people", "messages", "knowledge"].includes(item.group))).toBe(true);
   });
 });

@@ -1,4 +1,12 @@
-import { BriefcaseBusiness, Ellipsis, KeyRound, Lock, UserCheck, UserX } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Building2,
+  Ellipsis,
+  KeyRound,
+  Lock,
+  UserCheck,
+  UserX
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -20,12 +28,12 @@ import { ConfirmDialog } from "../settings-kit";
 import type { TemporarySecret } from "./member-admin";
 
 /** Account actions of one member row. */
-export type MemberAction = "led-jobs" | "reset" | "deactivate" | "activate";
+export type MemberAction = "led-jobs" | "departments" | "reset" | "deactivate" | "activate";
 
 /**
- * "⋯" menu of a member row: "Xem job đang dẫn" for everyone; "Đặt lại mật khẩu" and "Vô hiệu hóa" /
- * "Kích hoạt lại" unless the row is protected (yourself, a superadmin, an organization admin for a
- * non-superadmin — org-admins.ts), in which case the menu says why.
+ * "⋯" menu of a member row: "Xem job đang dẫn" for everyone; "Đổi phòng ban" (PD-041), "Đặt lại mật
+ * khẩu" and "Vô hiệu hóa" / "Kích hoạt lại" unless the row is protected (yourself, a superadmin, an
+ * organization admin for a non-superadmin — org-admins.ts), in which case the menu says why.
  */
 export const MemberActionsMenu = ({
   member,
@@ -62,6 +70,10 @@ export const MemberActionsMenu = ({
         </p>
       ) : member.active ? (
         <>
+          <DropdownMenuItem onClick={() => onAction("departments")}>
+            <Building2 />
+            Đổi phòng ban
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onAction("reset")}>
             <KeyRound />
             Đặt lại mật khẩu

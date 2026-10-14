@@ -33,6 +33,7 @@ const notification = (n: number, readAt: string | null = null): Notification => 
     knowledgeItemId: null
   },
   payload: {},
+  department: null,
   createdAt: new Date(Date.UTC(2026, 9, 10, 0, 0, 0) + n * 60_000).toISOString(),
   readAt
 });
