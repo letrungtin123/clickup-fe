@@ -1,4 +1,4 @@
-import { ChartColumnBig, ChevronLeft, EyeOff, Trophy, UsersRound } from "lucide-react";
+import { ChartColumnBig, ChevronLeft, Trophy, UsersRound } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { Link } from "@/components/shared/router-link";
 
@@ -20,7 +20,6 @@ import {
   PeriodPicker,
   TeamSelect
 } from "@/features/production/scores/components/kit";
-import { isScoresPrivate } from "@/features/production/scores/errors";
 import { useScoreBoard } from "@/features/production/scores/hooks";
 import {
   emptyPeopleFilter,
@@ -30,6 +29,7 @@ import {
   withPeopleFilterParams,
   type PeopleFilter
 } from "@/features/production/scores/people-filter";
+import { personScoresPath } from "@/features/production/scores/person-link";
 import { closeDaysOf, isPeriod, periodLabel } from "@/features/production/scores/periods";
 import { kpiPeriodOfDay } from "@/contracts/production-scores";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
@@ -37,10 +37,11 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * /production/scores/board — ranking by official points for a period and team (SPEC Phase 3 §5).
- * Private board (settings.scoresPublic off, not ADMIN) → the API answers 403 and the page shows the
- * private state; money appears only where the API sent it. Excel via GET …/board/export (link).
- * ADMIN also filters people by members' custom fields (e.g. Năng lực) and tags: ?cf.<key>=…&tag=….
+ * /production/scores/board — ranking by official points for a period and team (SPEC Phase 3 §5), open to
+ * every Photo Retouch member (PD-052, whatever settings.scoresPublic says). Each person opens their "Điểm cá
+ * nhân" (/production/scores/person/:userId, your own row → /production/scores) for the same period. Money
+ * appears only where the API sent it. Excel via GET …/board/export (link). ADMIN also filters people by
+ * members' custom fields (e.g. Năng lực) and tags: ?cf.<key>=…&tag=….
  */
 export const ProductionScoreBoardRoute = () => {
   const me = useProductionMe();
@@ -60,7 +61,8 @@ export const ProductionScoreBoardRoute = () => {
   // Members' tags / custom values are Admin data (others get 403): the filter is ADMIN only.
   const people: PeopleFilter = access.isAdmin ? peopleFilterFromParams(params) : emptyPeopleFilter;
   const board = useScoreBoard(period, teamId, people);
-  const isPrivate = board.isError && isScoresPrivate(board.error);
+  const hrefOf = (userId: string) =>
+    personScoresPath(userId, session.user.id, period === current ? null : period);
 
   const update = (patch: Record<string, string | null>) =>
     setParams(
@@ -96,8 +98,8 @@ export const ProductionScoreBoardRoute = () => {
           breakpoint === "mobile"
             ? undefined
             : showMoney
-              ? "Xếp theo điểm chính thức của kỳ. Bạn đang xem cả tiền Khoán của mọi người."
-              : "Xếp theo điểm chính thức của kỳ. Điểm công khai; tiền Khoán chỉ chính chủ và Quản trị thấy."
+              ? "Xếp theo điểm chính thức của kỳ. Bấm vào một người để xem Điểm cá nhân; bạn đang xem cả tiền Khoán của mọi người."
+              : "Xếp theo điểm chính thức của kỳ. Bấm vào một người để xem Điểm cá nhân; tiền Khoán chỉ chính chủ và Quản trị thấy."
         }
         actions={
           <>
@@ -121,124 +123,112 @@ export const ProductionScoreBoardRoute = () => {
         }
       />
       <PageBody>
-        {isPrivate ? (
-          <Panel>
-            <EmptyState
-              icon={EyeOff}
-              title="Bảng xếp hạng đang ở chế độ riêng tư"
-              description="Quản trị đã tắt công khai bảng điểm chung. Bạn vẫn xem được điểm và dự báo KPI của mình."
-              action={
-                <Button render={<Link to="/production/scores" />} nativeButton={false}>
-                  <ChartColumnBig />
-                  Bảng điểm của tôi
-                </Button>
-              }
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <PeriodPicker
+              value={period}
+              onChange={(next) => update({ period: next === current ? null : next })}
+              latest={current}
+              closeDays={closeDays}
             />
-          </Panel>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <PeriodPicker
-                value={period}
-                onChange={(next) => update({ period: next === current ? null : next })}
-                latest={current}
-                closeDays={closeDays}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+              <TeamSelect
+                value={teamId}
+                onChange={(next) => update({ team: next })}
+                className="max-sm:flex-1"
               />
-              <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
-                <TeamSelect
-                  value={teamId}
-                  onChange={(next) => update({ team: next })}
+              {access.isAdmin ? (
+                <PeopleFilterButton
+                  value={people}
+                  onChange={(next) =>
+                    setParams((previous) => withPeopleFilterParams(previous, next), {
+                      replace: true
+                    })
+                  }
                   className="max-sm:flex-1"
                 />
-                {access.isAdmin ? (
-                  <PeopleFilterButton
-                    value={people}
-                    onChange={(next) =>
-                      setParams((previous) => withPeopleFilterParams(previous, next), {
-                        replace: true
-                      })
-                    }
-                    className="max-sm:flex-1"
-                  />
-                ) : null}
-                {board.isFetching && !board.isPending ? (
-                  <Spinner className="size-4 shrink-0 text-foreground-muted" />
-                ) : null}
-              </div>
+              ) : null}
+              {board.isFetching && !board.isPending ? (
+                <Spinner className="size-4 shrink-0 text-foreground-muted" />
+              ) : null}
             </div>
+          </div>
 
-            {board.isPending ? (
-              <BoardSkeleton />
-            ) : board.isError ? (
-              <Panel>
-                <ErrorState
-                  error={board.error}
-                  onRetry={() => void board.refetch()}
-                  retrying={board.isFetching}
-                />
-              </Panel>
-            ) : rows.length === 0 ? (
-              <Panel>
-                <EmptyState
-                  icon={UsersRound}
-                  title="Không có ai trong bảng"
-                  description={
-                    !isPeopleFilterEmpty(people)
-                      ? "Không có ai khớp bộ lọc nhân viên. Bỏ bớt điều kiện ở “Lọc nhân viên”."
-                      : teamId
-                        ? "Team này chưa có thành viên làm việc. Thử chọn team khác."
-                        : "Chưa có nhân viên Photo Retouch nào."
-                  }
-                />
-              </Panel>
-            ) : (
-              <>
-                <Podium rows={rows} meId={session.user.id} />
-                {own ? (
-                  <section
-                    aria-label="Vị trí của bạn"
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-brand/30 bg-brand-soft/50 px-4 py-3"
-                  >
-                    <span className="flex min-w-0 items-center gap-2.5">
-                      <UserAvatar user={own.user} size="md" />
-                      <span className="flex flex-col">
-                        <span className="text-xs text-foreground-muted">Vị trí của bạn</span>
-                        <span className="text-sm font-semibold">
-                          Hạng {own.rank}/{rows.length} · {formatCredit(own.pointsOfficial)} điểm
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted tabular-nums sm:ml-auto">
-                      <span>
-                        Khoán {formatCredit(own.pointsKhoan)} điểm · {formatInteger(own.qtyKhoan)}{" "}
-                        tấm
-                      </span>
-                      {own.money !== null ? (
-                        <span>
-                          Tiền Khoán tạm tính{" "}
-                          <span className="font-medium text-foreground">
-                            {formatMoney(own.money)}
-                          </span>
-                        </span>
-                      ) : null}
-                    </span>
-                  </section>
-                ) : null}
-                <Panel
-                  title={
-                    <span className="flex items-center gap-1.5">
-                      <Trophy className="size-4 text-foreground-muted" aria-hidden="true" />
-                      {periodLabel(period)}
-                    </span>
-                  }
-                  description={`${rows.length} người${isPeopleFilterEmpty(people) ? "" : " · đang lọc nhân viên, hạng tính trong nhóm đã lọc"}${access.isAdmin && !(me.data?.settings.scoresPublic ?? true) ? " · Bảng đang riêng tư, chỉ Quản trị xem được" : ""}`}
+          {board.isPending ? (
+            <BoardSkeleton />
+          ) : board.isError ? (
+            <Panel>
+              <ErrorState
+                error={board.error}
+                onRetry={() => void board.refetch()}
+                retrying={board.isFetching}
+              />
+            </Panel>
+          ) : rows.length === 0 ? (
+            <Panel>
+              <EmptyState
+                icon={UsersRound}
+                title="Không có ai trong bảng"
+                description={
+                  !isPeopleFilterEmpty(people)
+                    ? "Không có ai khớp bộ lọc nhân viên. Bỏ bớt điều kiện ở “Lọc nhân viên”."
+                    : teamId
+                      ? "Team này chưa có thành viên làm việc. Thử chọn team khác."
+                      : "Chưa có nhân viên Photo Retouch nào."
+                }
+              />
+            </Panel>
+          ) : (
+            <>
+              <Podium rows={rows} meId={session.user.id} hrefOf={hrefOf} />
+              {own ? (
+                <section
+                  aria-label="Vị trí của bạn"
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-brand/30 bg-brand-soft/50 px-4 py-3"
                 >
-                  <BoardTable rows={rows} meId={session.user.id} showMoney={showMoney} />
-                </Panel>
-              </>
-            )}
-          </>
-        )}
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <UserAvatar user={own.user} size="md" />
+                    <span className="flex flex-col">
+                      <span className="text-xs text-foreground-muted">Vị trí của bạn</span>
+                      <span className="text-sm font-semibold">
+                        Hạng {own.rank}/{rows.length} · {formatCredit(own.pointsOfficial)} điểm
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted tabular-nums sm:ml-auto">
+                    <span>
+                      Khoán {formatCredit(own.pointsKhoan)} điểm · {formatInteger(own.qtyKhoan)} tấm
+                    </span>
+                    {own.money !== null ? (
+                      <span>
+                        Tiền Khoán tạm tính{" "}
+                        <span className="font-medium text-foreground">
+                          {formatMoney(own.money)}
+                        </span>
+                      </span>
+                    ) : null}
+                  </span>
+                </section>
+              ) : null}
+              <Panel
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <Trophy className="size-4 text-foreground-muted" aria-hidden="true" />
+                    {periodLabel(period)}
+                  </span>
+                }
+                description={`${rows.length} người${isPeopleFilterEmpty(people) ? "" : " · đang lọc nhân viên, hạng tính trong nhóm đã lọc"}`}
+              >
+                <BoardTable
+                  rows={rows}
+                  meId={session.user.id}
+                  showMoney={showMoney}
+                  hrefOf={hrefOf}
+                />
+              </Panel>
+            </>
+          )}
+        </>
       </PageBody>
     </div>
   );

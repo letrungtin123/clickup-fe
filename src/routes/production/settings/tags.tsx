@@ -22,6 +22,7 @@ import {
   SettingsSection
 } from "@/features/production/components/settings-kit";
 import { TagChip } from "@/features/production/components/tag-picker";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import { toastProductionError } from "@/features/production/errors";
 import { useTagMutations, useTags } from "@/features/production/hooks";
 import type { Tag } from "@/features/production/types";
@@ -65,8 +66,12 @@ const ColorButton = ({
   </Popover>
 );
 
-/** Free tags for jobs, tasks, members and clients (filters in reports). */
+/**
+ * Free tags for jobs, tasks, members and clients (filters in reports). PD-050: only the organization superadmin adds,
+ * renames, recolours or archives; everyone else reads the list (search and the archived toggle still work).
+ */
 export const ProductionTagsRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const tags = useTags();
   const mutations = useTagMutations();
   const [term, setTerm] = useState("");
@@ -112,28 +117,30 @@ export const ProductionTagsRoute = () => {
           <ArchivedToggle checked={showArchived} onChange={setShowArchived} count={archivedCount} />
         }
       >
-        <QuickAdd
-          label="Tên tag mới"
-          placeholder="Tên tag, ví dụ: Gấp"
-          buttonLabel="Thêm tag"
-          maxLength={60}
-          validate={validate(null)}
-          onAdd={(name) =>
-            mutations.create.mutateAsync({ name, color }).then(
-              () => {
-                toast.success(`Đã thêm tag ${name}`);
-                setNewColor(null);
-                return true;
-              },
-              (error: unknown) => {
-                toastProductionError(error, { conflict });
-                return false;
-              }
-            )
-          }
-        >
-          <ColorButton color={color} onChange={setNewColor} label="Màu tag mới" />
-        </QuickAdd>
+        {canEdit ? (
+          <QuickAdd
+            label="Tên tag mới"
+            placeholder="Tên tag, ví dụ: Gấp"
+            buttonLabel="Thêm tag"
+            maxLength={60}
+            validate={validate(null)}
+            onAdd={(name) =>
+              mutations.create.mutateAsync({ name, color }).then(
+                () => {
+                  toast.success(`Đã thêm tag ${name}`);
+                  setNewColor(null);
+                  return true;
+                },
+                (error: unknown) => {
+                  toastProductionError(error, { conflict });
+                  return false;
+                }
+              )
+            }
+          >
+            <ColorButton color={color} onChange={setNewColor} label="Màu tag mới" />
+          </QuickAdd>
+        ) : null}
         {items.length > 8 ? (
           <div className="flex items-center gap-3 border-b px-4 py-2.5 md:px-5">
             <SearchField value={term} onChange={setTerm} placeholder="Tìm tag" label="Tìm tag" />
@@ -165,38 +172,53 @@ export const ProductionTagsRoute = () => {
                   !tag.active && "bg-muted/30"
                 )}
               >
-                <ColorButton
-                  color={tag.color}
-                  onChange={(next) => save(tag, { color: next })}
-                  label={`Màu của tag ${tag.name}`}
-                />
-                {editingId === tag.id ? (
-                  <InlineText
-                    value={tag.name}
-                    label={`Tên mới cho tag ${tag.name}`}
-                    maxLength={60}
-                    validate={validate(tag.id)}
-                    pending={mutations.update.isPending}
-                    onSubmit={(name) => save(tag, { name })}
-                    onCancel={() => setEditingId(null)}
-                  />
+                {canEdit ? (
+                  <>
+                    <ColorButton
+                      color={tag.color}
+                      onChange={(next) => save(tag, { color: next })}
+                      label={`Màu của tag ${tag.name}`}
+                    />
+                    {editingId === tag.id ? (
+                      <InlineText
+                        value={tag.name}
+                        label={`Tên mới cho tag ${tag.name}`}
+                        maxLength={60}
+                        validate={validate(tag.id)}
+                        pending={mutations.update.isPending}
+                        onSubmit={(name) => save(tag, { name })}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        title="Bấm để đổi tên"
+                        onClick={() => setEditingId(tag.id)}
+                        className="flex min-w-0 flex-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <TagChip tag={tag} className="h-6 text-xs" />
+                      </button>
+                    )}
+                    <ActiveState active={tag.active} className="hidden sm:inline-flex" />
+                    <RowMenu
+                      label={tag.name}
+                      active={tag.active}
+                      onEdit={() => setEditingId(tag.id)}
+                      onToggleActive={() => save(tag, { active: !tag.active })}
+                    />
+                  </>
                 ) : (
-                  <button
-                    type="button"
-                    title="Bấm để đổi tên"
-                    onClick={() => setEditingId(tag.id)}
-                    className="flex min-w-0 flex-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <TagChip tag={tag} className="h-6 text-xs" />
-                  </button>
+                  <>
+                    <span className="flex min-w-0 flex-1">
+                      <TagChip tag={tag} className="h-6 text-xs" />
+                    </span>
+                    {/* No row menu says "Khôi phục" here: phones show the archived state too. */}
+                    <ActiveState
+                      active={tag.active}
+                      className={cn(tag.active && "hidden sm:inline-flex")}
+                    />
+                  </>
                 )}
-                <ActiveState active={tag.active} className="hidden sm:inline-flex" />
-                <RowMenu
-                  label={tag.name}
-                  active={tag.active}
-                  onEdit={() => setEditingId(tag.id)}
-                  onToggleActive={() => save(tag, { active: !tag.active })}
-                />
               </li>
             ))}
           </ul>

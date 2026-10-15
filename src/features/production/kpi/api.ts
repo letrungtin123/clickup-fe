@@ -35,8 +35,12 @@ export const kpiApi = {
   applyDefaults: (period: string) =>
     api.post("/production/kpi-targets/apply-defaults", ApplyDefaultKpiResultSchema, { period }),
 
-  settlements: (period: string | undefined, signal?: AbortSignal) =>
-    api.get("/production/kpi/settlements", KpiSettlementListSchema, { query: { period }, signal }),
+  /** `userId`: only that member's row ("Điểm cá nhân", PD-052). */
+  settlements: (period: string | undefined, signal?: AbortSignal, userId?: string) =>
+    api.get("/production/kpi/settlements", KpiSettlementListSchema, {
+      query: { period, userId },
+      signal
+    }),
   runs: (period: string | undefined, signal?: AbortSignal) =>
     api.get("/production/kpi/settlement-runs", KpiSettlementRunCollectionSchema, {
       query: { period, limit: 50 },
@@ -46,7 +50,12 @@ export const kpiApi = {
     api.post("/production/kpi/settlements/run", KpiSettlementRunResultSchema, input),
   /** ADMIN may filter people by USER tags / custom fields (repeated parameters, see people-filter.ts). */
   report: (
-    query: { from: string; to: string; teamId?: string | undefined },
+    query: {
+      from: string;
+      to: string;
+      teamId?: string | undefined;
+      userId?: string | undefined;
+    },
     people: PeopleFilter,
     signal?: AbortSignal
   ) =>

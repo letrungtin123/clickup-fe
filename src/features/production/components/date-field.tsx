@@ -18,6 +18,8 @@ type DateFieldProps = {
   clearable?: boolean;
   /** Quick pick for "today" in the organization calendar (YYYY-MM-DD). */
   today?: string | undefined;
+  /** Earliest day that can be picked (YYYY-MM-DD); earlier days are greyed out (e.g. no leave in the past, PD-051). */
+  minDay?: string | undefined;
   disabled?: boolean | undefined;
   id?: string | undefined;
   className?: string;
@@ -34,6 +36,7 @@ export const DateField = ({
   placeholder = "Chọn ngày",
   clearable = false,
   today,
+  minDay,
   disabled,
   id,
   className,
@@ -42,6 +45,7 @@ export const DateField = ({
 }: DateFieldProps) => {
   const [open, setOpen] = useState(false);
   const selected = dayToDate(value) ?? undefined;
+  const minDate = dayToDate(minDay) ?? undefined;
   const pick = (day: string | null) => {
     onChange(day);
     setOpen(false);
@@ -75,6 +79,7 @@ export const DateField = ({
             selected={selected}
             defaultMonth={selected ?? dayToDate(today) ?? new Date()}
             onSelect={(date) => pick(date ? dateToDay(date) : null)}
+            disabled={minDate ? { before: minDate } : undefined}
             autoFocus
           />
           {today && value !== today ? (

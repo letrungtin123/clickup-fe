@@ -1,9 +1,11 @@
 import {
   MyScoresSchema,
   ScoreBoardSchema,
-  ScoreForecastSchema
+  ScoreForecastSchema,
+  UserScoreForecastSchema,
+  UserScoresSchema
 } from "@/contracts/production-scores";
-import { api } from "@/lib/api/client";
+import { api, apiPath } from "@/lib/api/client";
 
 import { searchWithPeopleFilter, type PeopleFilter } from "./people-filter";
 
@@ -24,6 +26,25 @@ export const scoresApi = {
     }),
   forecast: (period: string | undefined, signal?: AbortSignal) =>
     api.get("/production/scores/forecast", ScoreForecastSchema, { query: { period }, signal }),
+  /**
+   * "Điểm cá nhân" of any production member (PD-052): /me's content for that person, money null unless
+   * visible to the caller. 404 SCORE_USER_NOT_FOUND for someone outside Photo Retouch.
+   */
+  user: (
+    userId: string,
+    range: { from?: string | undefined; to?: string | undefined },
+    cursor?: string,
+    signal?: AbortSignal
+  ) =>
+    api.get(apiPath`/production/scores/user/${userId}`, UserScoresSchema, {
+      query: { ...range, cursor, limit: SCORE_ENTRIES_PAGE },
+      signal
+    }),
+  userForecast: (userId: string, period: string | undefined, signal?: AbortSignal) =>
+    api.get(apiPath`/production/scores/user/${userId}/forecast`, UserScoreForecastSchema, {
+      query: { period },
+      signal
+    }),
   /** ADMIN may filter people by USER tags / custom fields (repeated parameters, see people-filter.ts). */
   board: (
     query: { period?: string | undefined; teamId?: string | undefined },

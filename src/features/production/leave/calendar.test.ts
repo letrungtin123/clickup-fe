@@ -164,9 +164,14 @@ describe("request form", () => {
     expect(
       validateLeaveDraft({ ...ok, fromDate: "2026-09-08", toDate: "2026-09-08" }, today)
     ).toMatch(/đã qua/);
+    // PD-051: never in the past — yesterday is refused, today is fine.
     expect(
-      validateLeaveDraft({ ...ok, fromDate: "2026-09-09", toDate: "2026-09-09" }, today)
-    ).toBeNull();
+      validateLeaveDraft(
+        { ...ok, part: "FULL_DAY", fromDate: shiftDay(today, -1), toDate: today },
+        today
+      )
+    ).toMatch(/đã qua/);
+    expect(validateLeaveDraft({ ...ok, fromDate: today, toDate: today }, today)).toBeNull();
     expect(
       validateLeaveDraft({ ...ok, fromDate: "2027-10-11", toDate: "2027-10-11" }, today)
     ).toMatch(/trước tối đa/);

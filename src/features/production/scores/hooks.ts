@@ -1,5 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
+import type { UserScoreForecast, UserScores } from "@/contracts/production-scores";
 import { isApiError } from "@/lib/api/errors";
 
 import { scoresApi } from "./api";
@@ -24,6 +25,46 @@ export const useMyScores = (range: { from: string; to: string } | null) =>
     retry: retryUnlessClientError
   });
 
+/**
+ * What the scores page shows for its subject: GET /production/scores/me (yourself) or GET
+ * /production/scores/user/:userId (anyone, PD-052) — money null while hidden; who the person is only for others.
+ */
+export type ScoresView = Omit<UserScores, "user" | "teamId" | "teamName" | "moneyVisible"> &
+  Partial<Pick<UserScores, "user" | "teamId" | "teamName" | "moneyVisible">>;
+
+/** Scores of `userId` (null = the signed-in user, /me) for a day range; pages like useMyScores. */
+export const useScores = (
+  userId: string | null,
+  range: { from: string; to: string },
+  enabled = true
+) =>
+  useInfiniteQuery({
+    enabled,
+    queryKey: userId
+      ? scoreKeys.user(userId, range.from, range.to)
+      : scoreKeys.me(range.from, range.to),
+    queryFn: ({ pageParam, signal }): Promise<ScoresView> =>
+      userId
+        ? scoresApi.user(userId, range, pageParam, signal)
+        : scoresApi.me(range, pageParam, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+    retry: retryUnlessClientError
+  });
+
+/** KPI forecast of `userId` (null = the signed-in user) for a period (null = the current one). */
+export const useForecastOf = (userId: string | null, period: string | null) =>
+  useQuery({
+    queryKey: userId ? scoreKeys.userForecast(userId, period) : scoreKeys.forecast(period),
+    queryFn: ({ signal }): Promise<UserScoreForecast> =>
+      userId
+        ? scoresApi.userForecast(userId, period ?? undefined, signal)
+        : scoresApi.forecast(period ?? undefined, signal),
+    placeholderData: keepPreviousData,
+    retry: retryUnlessClientError
+  });
+
 /** GET /production/scores/forecast (null = the current period). */
 export const useScoreForecast = (period: string | null) =>
   useQuery({
@@ -33,7 +74,7 @@ export const useScoreForecast = (period: string | null) =>
     retry: retryUnlessClientError
   });
 
-/** GET /production/scores/board — 403 SCORES_PRIVATE when the board is private for the caller. */
+/** GET /production/scores/board — open to every production member (PD-052). */
 export const useScoreBoard = (
   period: string | null,
   teamId: string | null,

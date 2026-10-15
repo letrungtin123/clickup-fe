@@ -15,6 +15,7 @@ import type {
   ChatChannelDetail,
   NotifyLevel
 } from "@/contracts/chat";
+import type { DirectoryPurpose } from "@/contracts/work";
 import { useSessionContext } from "@/features/auth/hooks";
 
 import { chatApi, type CreateChannelInput, type UpdateChannelInput } from "../api";
@@ -260,16 +261,27 @@ export const useMemberMutations = (channelId: string) => {
   return { add, update, remove };
 };
 
-/** People search for pickers (DM, create channel, add members) or channel-scoped mention search. */
+/**
+ * People search for pickers (create channel, add members), channel-scoped mention search, or the
+ * people the viewer may message (`purpose: "dm"`, open to every member).
+ */
 export const usePeopleSearch = (
   q: string,
-  options: { channelId?: string; enabled?: boolean } = {}
+  options: { channelId?: string; purpose?: DirectoryPurpose; enabled?: boolean } = {}
 ) =>
   useQuery({
-    queryKey: chatKeys.people(q, options.channelId),
+    queryKey: chatKeys.people(q, options.purpose ?? options.channelId),
     queryFn: ({ signal }) =>
       chatApi.directory(
-        { q, limit: 20, ...(options.channelId ? { channelId: options.channelId } : {}) },
+        {
+          q,
+          limit: 20,
+          ...(options.purpose
+            ? { purpose: options.purpose }
+            : options.channelId
+              ? { channelId: options.channelId }
+              : {})
+        },
         signal
       ),
     enabled: options.enabled ?? true,

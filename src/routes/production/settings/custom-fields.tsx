@@ -47,6 +47,7 @@ import {
 import type { ColorToken } from "@/contracts/work";
 import { nextSortOrder } from "@/features/production/catalog";
 import { CustomFieldInput } from "@/features/production/components/custom-field-input";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ActiveState,
   ArchivedToggle,
@@ -97,8 +98,37 @@ const optionColors: readonly ColorToken[] = [
   "slate"
 ];
 
-/** Admin-defined fields for jobs, tasks, members and clients (SPEC Phase 1, PLAN §8/§10). */
+/** Options listed on a read-only row before "+N". */
+const optionPreviewCount = 12;
+
+/** The options of a select field, for read-only viewers who never open the edit dialog. */
+const OptionChips = ({ options }: { options: CustomField["options"] }) => (
+  <span className="flex max-w-full flex-wrap items-center gap-1">
+    {options.slice(0, optionPreviewCount).map((option) => (
+      <span
+        key={option.value}
+        className={cn(
+          toneClass(option.color ?? "slate"),
+          "inline-flex h-5 max-w-full min-w-0 items-center rounded-full bg-(--tone-soft) px-2 text-[11px] font-medium text-(--tone-text)"
+        )}
+      >
+        <span className="truncate">{option.label}</span>
+      </span>
+    ))}
+    {options.length > optionPreviewCount ? (
+      <span className="text-[11px] text-foreground-muted tabular-nums">
+        +{options.length - optionPreviewCount}
+      </span>
+    ) : null}
+  </span>
+);
+
+/**
+ * Admin-defined fields for jobs, tasks, members and clients (SPEC Phase 1, PLAN §8/§10). PD-050: only the organization
+ * superadmin adds, edits, reorders or archives; everyone else reads the list (select fields show their options inline).
+ */
 export const ProductionCustomFieldsRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const fields = useCustomFields();
   const reorder = useReorderCustomFields();
   const mutations = useCustomFieldMutations();
@@ -134,6 +164,7 @@ export const ProductionCustomFieldsRoute = () => {
 
   const row = (field: CustomField, handle?: ReactNode) => {
     const Icon = typeIcons[field.type];
+    const Body = canEdit ? "button" : "div";
     return (
       <div
         className={cn(
@@ -141,13 +172,13 @@ export const ProductionCustomFieldsRoute = () => {
           !field.active && "bg-muted/30"
         )}
       >
-        {handle ?? <span className="size-6 shrink-0" aria-hidden="true" />}
+        {/* Read-only lists have no drag handles: no spacer to line up with. */}
+        {handle ?? (canEdit ? <span className="size-6 shrink-0" aria-hidden="true" /> : null)}
         <span className="hidden size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-muted sm:flex">
           <Icon className="size-4" aria-hidden="true" />
         </span>
-        <button
-          type="button"
-          onClick={() => setDialog({ field })}
+        <Body
+          {...(canEdit ? { type: "button" as const, onClick: () => setDialog({ field }) } : {})}
           className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="flex max-w-full items-center gap-2">
@@ -175,14 +206,19 @@ export const ProductionCustomFieldsRoute = () => {
               </span>
             ) : null}
           </span>
-        </button>
+          {!canEdit && isOptionType(field.type) && field.options.length > 0 ? (
+            <OptionChips options={field.options} />
+          ) : null}
+        </Body>
         {!field.active ? <ActiveState active={false} className="hidden sm:inline-flex" /> : null}
-        <RowMenu
-          label={field.label}
-          active={field.active}
-          onEdit={() => setDialog({ field })}
-          onToggleActive={() => toggleActive(field)}
-        />
+        {canEdit ? (
+          <RowMenu
+            label={field.label}
+            active={field.active}
+            onEdit={() => setDialog({ field })}
+            onToggleActive={() => toggleActive(field)}
+          />
+        ) : null}
       </div>
     );
   };
@@ -192,10 +228,12 @@ export const ProductionCustomFieldsRoute = () => {
       <PageIntro
         slug="custom-fields"
         actions={
-          <Button onClick={() => setDialog({ field: null })}>
-            <Plus />
-            Thêm trường
-          </Button>
+          canEdit ? (
+            <Button onClick={() => setDialog({ field: null })}>
+              <Plus />
+              Thêm trường
+            </Button>
+          ) : undefined
         }
       />
       <SegmentedControl<CustomFieldEntity>
@@ -213,7 +251,11 @@ export const ProductionCustomFieldsRoute = () => {
       />
       <SettingsSection
         title={`Trường cho ${customFieldEntityLabels[entity]}`}
-        description="Kéo để sắp xếp thứ tự trong form và bảng. Trường lưu trữ giữ nguyên dữ liệu đã nhập."
+        description={
+          canEdit
+            ? "Kéo để sắp xếp thứ tự trong form và bảng. Trường lưu trữ giữ nguyên dữ liệu đã nhập."
+            : "Thứ tự trong form và bảng. Trường lưu trữ giữ nguyên dữ liệu đã nhập."
+        }
         actions={
           <ArchivedToggle
             checked={showArchived}
@@ -231,32 +273,49 @@ export const ProductionCustomFieldsRoute = () => {
             size="sm"
             icon={ListTodo}
             title={`Chưa có trường cho ${customFieldEntityLabels[entity]}`}
-            description="Ví dụ: “Mã đơn hàng” cho Job, “Năng lực” (A++, A, B) cho Thành viên."
+            description={
+              canEdit
+                ? "Ví dụ: “Mã đơn hàng” cho Job, “Năng lực” (A++, A, B) cho Thành viên."
+                : undefined
+            }
             action={
-              <Button size="sm" onClick={() => setDialog({ field: null })}>
-                <Plus />
-                Thêm trường
-              </Button>
+              canEdit ? (
+                <Button size="sm" onClick={() => setDialog({ field: null })}>
+                  <Plus />
+                  Thêm trường
+                </Button>
+              ) : undefined
             }
           />
         ) : (
           <>
-            <SortableList
-              aria-label={`Trường đang dùng của ${customFieldEntityLabels[entity]}`}
-              items={active}
-              disabled={reorder.isPending}
-              onReorder={(ordered) =>
-                reorder.mutate(ordered, {
-                  onError: (error) =>
-                    toast.error(
-                      productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
-                    )
-                })
-              }
-              renderItem={(field, handle) =>
-                row(field, handle({ label: `Kéo để sắp xếp ${field.label}` }))
-              }
-            />
+            {canEdit ? (
+              <SortableList
+                aria-label={`Trường đang dùng của ${customFieldEntityLabels[entity]}`}
+                items={active}
+                disabled={reorder.isPending}
+                onReorder={(ordered) =>
+                  reorder.mutate(ordered, {
+                    onError: (error) =>
+                      toast.error(
+                        productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
+                      )
+                  })
+                }
+                renderItem={(field, handle) =>
+                  row(field, handle({ label: `Kéo để sắp xếp ${field.label}` }))
+                }
+              />
+            ) : (
+              <ul
+                aria-label={`Trường đang dùng của ${customFieldEntityLabels[entity]}`}
+                className="divide-y"
+              >
+                {active.map((field) => (
+                  <li key={field.id}>{row(field)}</li>
+                ))}
+              </ul>
+            )}
             {showArchived && archived.length > 0 ? (
               <ul aria-label="Trường đã lưu trữ" className="divide-y border-t">
                 {archived.map((field) => (
@@ -268,14 +327,16 @@ export const ProductionCustomFieldsRoute = () => {
         )}
       </SettingsSection>
 
-      <FieldDialog
-        key={dialog?.field?.id ?? `new-${entity}`}
-        open={dialog !== null}
-        field={dialog?.field ?? null}
-        entity={dialog?.field?.entity ?? entity}
-        siblings={all.filter((item) => item.entity === (dialog?.field?.entity ?? entity))}
-        onClose={() => setDialog(null)}
-      />
+      {canEdit ? (
+        <FieldDialog
+          key={dialog?.field?.id ?? `new-${entity}`}
+          open={dialog !== null}
+          field={dialog?.field ?? null}
+          entity={dialog?.field?.entity ?? entity}
+          siblings={all.filter((item) => item.entity === (dialog?.field?.entity ?? entity))}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
     </SettingsPage>
   );
 };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MessageHistory } from "@/contracts/chat";
 
-import { makeMessage, me } from "./test-fixtures";
+import { makeMessage, me, userA, userB } from "./test-fixtures";
 import {
   appendLive,
   applyDeletion,
@@ -98,7 +98,7 @@ describe("message window", () => {
   it("turns deleted messages into tombstones", () => {
     const message = makeMessage({
       attachments: [],
-      reactions: [{ emoji: "👍", count: 1, reactedByMe: false }]
+      reactions: [{ emoji: "👍", count: 1, reactedByMe: false, users: [userA] }]
     });
     const deleted = applyDeletion(message, "2026-10-09T09:00:00Z");
     expect(deleted).toMatchObject({ isDeleted: true, body: null, text: "", reactions: [] });
@@ -106,17 +106,21 @@ describe("message window", () => {
 });
 
 describe("reactions", () => {
-  it("sets counts, keeps others' reactedByMe and removes zero counts", () => {
-    const start = [{ emoji: "👍", count: 1, reactedByMe: true }];
+  it("sets counts and people, keeps others' reactedByMe and removes zero counts", () => {
+    const start = [{ emoji: "👍", count: 1, reactedByMe: true, users: [me] }];
     expect(setReaction(start, "👍", 2, undefined)).toEqual([
-      { emoji: "👍", count: 2, reactedByMe: true }
+      { emoji: "👍", count: 2, reactedByMe: true, users: [me] }
     ]);
+    expect(setReaction(start, "👍", 2, undefined, [me, userA])[0]?.users).toEqual([me, userA]);
     expect(setReaction(start, "👍", 0, undefined)).toEqual([]);
     expect(setReaction(start, "🎉", 1, false)).toHaveLength(2);
+    expect(setReaction(start, "🎉", 1, false)[1]?.users).toEqual([]);
   });
 
-  it("applies realtime events for the viewer and for others", () => {
-    const message = makeMessage({ reactions: [{ emoji: "👍", count: 1, reactedByMe: false }] });
+  it("applies realtime events (count and who reacted) for the viewer and for others", () => {
+    const message = makeMessage({
+      reactions: [{ emoji: "👍", count: 1, reactedByMe: false, users: [userA] }]
+    });
     const base = {
       channelId: message.channelId,
       messageId: message.id,
@@ -125,23 +129,50 @@ describe("reactions", () => {
     };
     const byOther = applyReactionEvent(
       message,
-      { ...base, count: 2, userId: "other", added: true },
+      { ...base, count: 2, users: [userA, userB], userId: userB.id, added: true },
       me.id
     );
-    expect(byOther.reactions[0]).toEqual({ emoji: "👍", count: 2, reactedByMe: false });
+    expect(byOther.reactions[0]).toEqual({
+      emoji: "👍",
+      count: 2,
+      reactedByMe: false,
+      users: [userA, userB]
+    });
     const byMe = applyReactionEvent(
       byOther,
-      { ...base, count: 3, userId: me.id, added: true },
+      { ...base, count: 3, users: [userA, userB, me], userId: me.id, added: true },
       me.id
     );
-    expect(byMe.reactions[0]).toEqual({ emoji: "👍", count: 3, reactedByMe: true });
+    expect(byMe.reactions[0]).toEqual({
+      emoji: "👍",
+      count: 3,
+      reactedByMe: true,
+      users: [userA, userB, me]
+    });
+    // An event without people (older server) keeps the list it had.
+    const legacy = { ...base, count: 4, userId: "other", added: true } as unknown as Parameters<
+      typeof applyReactionEvent
+    >[1];
+    expect(applyReactionEvent(byMe, legacy, me.id).reactions[0]?.users).toEqual([userA, userB, me]);
   });
 
-  it("toggles optimistically without double counting", () => {
+  it("toggles optimistically without double counting, adding and removing the viewer", () => {
     const message = makeMessage();
-    const added = toggleReactionLocally(message, "🎉", true);
-    expect(added.reactions).toEqual([{ emoji: "🎉", count: 1, reactedByMe: true }]);
-    expect(toggleReactionLocally(added, "🎉", true).reactions[0]?.count).toBe(1);
-    expect(toggleReactionLocally(added, "🎉", false).reactions).toEqual([]);
+    const added = toggleReactionLocally(message, "🎉", true, me);
+    expect(added.reactions).toEqual([{ emoji: "🎉", count: 1, reactedByMe: true, users: [me] }]);
+    expect(toggleReactionLocally(added, "🎉", true, me).reactions[0]).toMatchObject({
+      count: 1,
+      users: [me]
+    });
+    expect(toggleReactionLocally(added, "🎉", false, me).reactions).toEqual([]);
+    const shared = makeMessage({
+      reactions: [{ emoji: "👍", count: 2, reactedByMe: true, users: [userA, me] }]
+    });
+    expect(toggleReactionLocally(shared, "👍", false, me).reactions[0]).toEqual({
+      emoji: "👍",
+      count: 1,
+      reactedByMe: false,
+      users: [userA]
+    });
   });
 });

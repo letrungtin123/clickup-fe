@@ -3,7 +3,8 @@ import type { ProductionRole } from "@/contracts/production-catalog";
 /**
  * Photo Retouch rules that are NOT configurable yet (PD-042, option A): shown read-only on Cài đặt → Vai trò &
  * phân quyền, exactly as the API enforces them today. Mirrors the API checks (production `assertProductionRole`
- * calls, where ADMIN always passes) and the menu roles in `features/production/nav.ts` — change both together.
+ * calls, where ADMIN always passes — except configuration writes, superadmin only since PD-050) and the menu roles in
+ * `features/production/nav.ts` — change both together.
  */
 
 /** A cell: has it, does not, or only partly (the note says how). */
@@ -17,7 +18,13 @@ export type RetouchRule = {
 };
 
 /** Columns of the Photo Retouch matrix, in order (ADMIN first, always everything). */
-export const retouchColumns: readonly ProductionRole[] = ["ADMIN", "ACCOUNT", "LEADER", "QC", "STAFF"];
+export const retouchColumns: readonly ProductionRole[] = [
+  "ADMIN",
+  "ACCOUNT",
+  "LEADER",
+  "QC",
+  "STAFF"
+];
 
 const only = (...roles: ProductionRole[]): Record<ProductionRole, RuleCell> => ({
   ADMIN: true,
@@ -35,9 +42,11 @@ const everyone: Record<ProductionRole, RuleCell> = {
   STAFF: true
 };
 
+/**
+ * The public settings of Cấu hình → Cài đặt chung that a fixed rule depends on. "Công khai bảng điểm"
+ * (`scores_public`) is retired (PD-052): scores are always visible to every member, so it gates nothing here.
+ */
 export type RetouchPublicSettings = {
-  /** "Công khai bảng điểm" (`scores_public`); undefined while unknown. */
-  scoresPublic?: boolean | undefined;
   /** "Công khai tiền công" (`money_public`); undefined while unknown. */
   moneyPublic?: boolean | undefined;
 };
@@ -45,14 +54,10 @@ export type RetouchPublicSettings = {
 const onOff = (value: boolean | undefined) =>
   value === undefined ? "" : value ? " (đang bật)" : " (đang tắt)";
 
-/** The fixed rules, in page order. Two depend on the public settings of Cấu hình → Cài đặt chung. */
+/** The fixed rules, in page order. Money depends on the public settings of Cấu hình → Cài đặt chung. */
 export const retouchFixedRules = (settings: RetouchPublicSettings = {}): RetouchRule[] => {
-  const { scoresPublic, moneyPublic } = settings;
-  const whenScores = { partial: "Khi bật “Công khai bảng điểm”" };
+  const { moneyPublic } = settings;
   const whenMoney = { partial: "Khi bật “Công khai tiền công”" };
-  const leaderScores = {
-    partial: "Điểm các task trong job mình lead (hoặc job chưa có leader)"
-  };
   return [
     {
       id: "qc-queue",
@@ -64,19 +69,9 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
     {
       id: "others-scores",
       label: "Xem điểm người khác",
-      description: `Bảng xếp hạng và điểm từng task của người khác. Theo cài đặt “Công khai bảng điểm”${onOff(scoresPublic)}; điểm của mình luôn xem được.`,
-      cells:
-        scoresPublic === true
-          ? everyone
-          : scoresPublic === false
-            ? { ...only(), LEADER: leaderScores }
-            : {
-                ADMIN: true,
-                ACCOUNT: whenScores,
-                LEADER: whenScores,
-                QC: whenScores,
-                STAFF: whenScores
-              }
+      description:
+        "Bảng xếp hạng, Điểm cá nhân và điểm từng task của người khác — mọi vai trò luôn xem được (PD-052). Tiền Khoán theo “Công khai tiền công”.",
+      cells: everyone
     },
     {
       id: "others-money",
@@ -132,15 +127,22 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
     {
       id: "clients",
       label: "Khách hàng",
-      description: "Trang Khách hàng: xem, tạo và sửa khách hàng đặt job.",
+      description:
+        "Trang Khách hàng: xem khách hàng đặt job. Chỉ Siêu quản trị tạo và sửa khách hàng (PD-050).",
       cells: only("ACCOUNT")
     },
     {
       id: "settings",
       label: "Cấu hình Photo Retouch",
       description:
-        "Thành viên & vai trò, danh mục, đơn giá, luồng trạng thái, KPI, cài đặt chung. Account chỉ vào mục Khách hàng.",
-      cells: { ...only(), ACCOUNT: { partial: "Chỉ mục Khách hàng" } }
+        "Cấu hình Photo Retouch: chỉ Siêu quản trị sửa; Quản trị xem mọi trang, Account xem Khách hàng, mọi vai trò xem Trạng thái & luồng chuyển.",
+      cells: {
+        ADMIN: { partial: "Chỉ xem" },
+        ACCOUNT: { partial: "Xem Khách hàng, Trạng thái & luồng chuyển" },
+        LEADER: { partial: "Chỉ xem Trạng thái & luồng chuyển" },
+        QC: { partial: "Chỉ xem Trạng thái & luồng chuyển" },
+        STAFF: { partial: "Chỉ xem Trạng thái & luồng chuyển" }
+      }
     }
   ];
 };

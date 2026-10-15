@@ -4,6 +4,7 @@ import { vi } from "date-fns/locale";
 import {
   AlertCircle,
   Ban,
+  ChevronRight,
   Copy,
   Info,
   MessageSquareReply,
@@ -29,6 +30,7 @@ import type { ChatMessage, ReactionSummary } from "@/contracts/chat";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useTouchPrimary } from "@/hooks/use-pointer";
 
+import { firstReactors, reactionTooltipText } from "../model/reactions";
 import type { DisplayMessage } from "../model/timeline";
 import { systemSentence } from "../model/system-text";
 import { timeAgo } from "../model/time";
@@ -397,15 +399,16 @@ const ReactionBar = ({
   showAdd: boolean;
   onPickerOpenChange: (open: boolean) => void;
   touch: boolean;
-  onShowPeople: (emoji: string) => void;
+  /** Who reacted (touch): one emoji, or every emoji when null. */
+  onShowPeople: (emoji: string | null) => void;
 }) => {
   const actions = useMessageActions();
+  const reactors = touch ? firstReactors(message.reactions, 3) : [];
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
       {message.reactions.map((reaction) => (
         <ReactionChip
           key={reaction.emoji}
-          messageId={message.id}
           myId={actions.myId}
           reaction={reaction}
           disabled={!canReact}
@@ -439,16 +442,32 @@ const ReactionBar = ({
           <SmilePlus className="size-3.5" aria-hidden="true" />
         </EmojiPickerPopover>
       ) : null}
+      {reactors.length > 0 ? (
+        // Touch has no hover: a visible "who reacted" button (the faces of the first reactors) opens the
+        // reactions sheet; a long press on a chip opens it on that emoji.
+        <button
+          type="button"
+          onClick={() => onShowPeople(null)}
+          aria-label="Xem ai đã thả biểu cảm"
+          className="flex h-8 items-center gap-1 rounded-full border border-transparent pr-2 pl-1 text-foreground-subtle outline-none hover:border-border hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex -space-x-1" aria-hidden="true">
+            {reactors.map((user) => (
+              <UserAvatar key={user.id} user={user} size="xs" className="ring-2 ring-background" />
+            ))}
+          </span>
+          <ChevronRight className="size-3.5" aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   );
 };
 
 /**
- * One reaction: tap / click toggles mine. Who reacted: a tooltip on hover or focus (desktop), a long
- * press opening the reactions sheet (touch).
+ * One reaction: tap / click toggles mine. Who reacted: a tooltip on hover or focus (desktop, also for
+ * read-only viewers), a long press opening the reactions sheet on this emoji (touch).
  */
 const ReactionChip = ({
-  messageId,
   myId,
   reaction,
   disabled,
@@ -456,7 +475,6 @@ const ReactionChip = ({
   onToggle,
   onShowPeople
 }: {
-  messageId: string;
   myId: string;
   reaction: ReactionSummary;
   disabled: boolean;
@@ -468,11 +486,12 @@ const ReactionChip = ({
   const chip = (
     <button
       type="button"
-      // Read-only viewers on touch keep the chip enabled so the long press still shows who reacted.
+      // Not `disabled`: read-only viewers still get the tooltip (desktop) and the long press (touch).
       onClick={disabled ? undefined : onToggle}
-      disabled={disabled && !touch}
+      aria-disabled={disabled || undefined}
       aria-pressed={reaction.reactedByMe}
-      aria-label={`${reaction.emoji} ${reaction.count} lượt${reaction.reactedByMe ? ", gồm bạn" : ""}${touch ? ". Nhấn giữ để xem ai đã thả" : ""}`}
+      // Who reacted is part of the name (screen readers do not get the tooltip).
+      aria-label={`${reactionTooltipText(reaction, myId)} (${reaction.count} lượt)${touch ? ". Nhấn giữ để xem ai đã thả" : ""}`}
       {...longPress}
       // The row's own long press (action sheet) must not start under a chip.
       onPointerDown={(event) => {
@@ -480,10 +499,14 @@ const ReactionChip = ({
         longPress.onPointerDown?.(event);
       }}
       className={cn(
-        "flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums outline-none transition-colors duration-150 select-none [-webkit-touch-callout:none] pointer-coarse:h-8 pointer-coarse:px-2.5 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+        "flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums outline-none transition-colors duration-150 select-none [-webkit-touch-callout:none] pointer-coarse:h-8 pointer-coarse:px-2.5 focus-visible:ring-2 focus-visible:ring-ring",
+        disabled && "cursor-default",
         reaction.reactedByMe
           ? "border-brand/40 bg-brand-soft font-semibold text-brand-text"
-          : "border-border bg-surface text-foreground-muted hover:border-border-strong enabled:hover:bg-surface-hover"
+          : cn(
+              "border-border bg-surface text-foreground-muted hover:border-border-strong",
+              !disabled && "hover:bg-surface-hover"
+            )
       )}
     >
       <span className="text-sm leading-none">{reaction.emoji}</span>
@@ -495,7 +518,7 @@ const ReactionChip = ({
     <Tooltip>
       <TooltipTrigger render={chip} />
       <TooltipContent>
-        <ReactionTooltipBody messageId={messageId} emoji={reaction.emoji} myId={myId} />
+        <ReactionTooltipBody reaction={reaction} myId={myId} />
       </TooltipContent>
     </Tooltip>
   );

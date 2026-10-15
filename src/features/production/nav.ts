@@ -81,26 +81,24 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production/reports", label: "Báo cáo", icon: ChartNoAxesCombined, roles: ["LEADER"] },
   { to: "/production/anomalies", label: "Bất thường", icon: ScanSearch, roles: ["LEADER"] },
   { to: "/production/clients", label: "Khách hàng", icon: Building2, roles: ["ACCOUNT"] },
-  { to: "/production/settings", label: "Cấu hình", icon: Settings2, roles: ["ADMIN"] }
+  // Every role reaches "Trạng thái & luồng chuyển" read-only (PD-049); other pages keep their roles.
+  { to: "/production/settings", label: "Cấu hình", icon: Settings2, roles: [] }
 ];
 
-/** Entries only worth showing while the score board is public (G18); Admins always see them. */
-const publicBoardOnly = new Set(["/production/scores/board"]);
-
+/**
+ * Entries for the user's roles. "Xếp hạng" is shown to every production member (PD-052: the ranking and everyone's
+ * "Điểm cá nhân" are always open; settings.scoresPublic no longer hides them).
+ */
 export const visibleNavEntries = (
   roles: readonly ProductionRole[],
-  options: { scoresPublic?: boolean; jobView?: JobPermissionScope | undefined } = {}
+  options: { jobView?: JobPermissionScope | undefined } = {}
 ) =>
   roles.length === 0
     ? []
-    : productionNavEntries.filter(
-        (entry) =>
-          (entry.byJobView && options.jobView !== undefined
-            ? options.jobView !== "none"
-            : hasAnyRole(roles, entry.roles)) &&
-          (options.scoresPublic !== false ||
-            roles.includes("ADMIN") ||
-            !publicBoardOnly.has(entry.to))
+    : productionNavEntries.filter((entry) =>
+        entry.byJobView && options.jobView !== undefined
+          ? options.jobView !== "none"
+          : hasAnyRole(roles, entry.roles)
       );
 
 export type SettingsGroup = "people" | "catalog" | "workflow" | "system";
@@ -193,7 +191,8 @@ export const settingsPages: readonly SettingsPage[] = [
     description: "Trạng thái task, cờ ghi điểm và ai được chuyển giữa các trạng thái.",
     icon: GitBranch,
     group: "workflow",
-    roles: ["ADMIN"]
+    // PD-049: everyone reads it; only the organization superadmin edits it (the API refuses the others).
+    roles: []
   },
   {
     slug: "job-statuses",
@@ -223,7 +222,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "general",
     label: "Cài đặt chung",
-    description: "Ngày chốt KPI, chính sách tiền Khoán, minh bạch điểm/tiền, cảnh báo và chat.",
+    description: "Ngày chốt KPI, chính sách tiền Khoán, công khai tiền công, cảnh báo và chat.",
     icon: SlidersHorizontal,
     group: "system",
     roles: ["ADMIN"]

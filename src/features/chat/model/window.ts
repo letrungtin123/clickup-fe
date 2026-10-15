@@ -1,11 +1,13 @@
-import type {
-  ChatMessage,
-  ChatMessageUpdatedEvent,
-  ChatReactionEvent,
-  MessageHistory,
-  ReactionSummary,
-  ThreadRootSummary
+import {
+  chatLimits,
+  type ChatMessage,
+  type ChatMessageUpdatedEvent,
+  type ChatReactionEvent,
+  type MessageHistory,
+  type ReactionSummary,
+  type ThreadRootSummary
 } from "@/contracts/chat";
+import type { UserRef } from "@/contracts/work";
 
 /**
  * A bounded, contiguous window of a channel's top-level messages (oldest → newest by `seq`).
@@ -179,27 +181,37 @@ export const applyThreadSummary = (
     : { ...message, replyCount: summary.replyCount, lastReplyAt: summary.lastReplyAt };
 
 /**
- * Sets one emoji's total. `reactedByMe` follows the event when it is about the viewer, otherwise the
- * viewer's previous state is kept. A zero count removes the chip.
+ * Sets one emoji's total and, when known, its first reactors (`users`; undefined keeps the previous
+ * list). `reactedByMe` follows the event when it is about the viewer, otherwise the viewer's previous
+ * state is kept. A zero count removes the chip.
  */
 export const setReaction = (
   reactions: readonly ReactionSummary[],
   emoji: string,
   count: number,
-  reactedByMe: boolean | undefined
+  reactedByMe: boolean | undefined,
+  users?: readonly UserRef[]
 ): ReactionSummary[] => {
   const index = reactions.findIndex((reaction) => reaction.emoji === emoji);
   if (count <= 0) {
     return index === -1 ? [...reactions] : reactions.filter((_, i) => i !== index);
   }
   if (index === -1) {
-    return [...reactions, { emoji, count, reactedByMe: reactedByMe ?? false }];
+    return [...reactions, { emoji, count, reactedByMe: reactedByMe ?? false, users: [...(users ?? [])] }];
   }
   return reactions.map((reaction, i) =>
-    i === index ? { emoji, count, reactedByMe: reactedByMe ?? reaction.reactedByMe } : reaction
+    i === index
+      ? {
+          emoji,
+          count,
+          reactedByMe: reactedByMe ?? reaction.reactedByMe,
+          users: users ? [...users] : reaction.users
+        }
+      : reaction
   );
 };
 
+/** Live reaction: the new total and the emoji's first reactors. */
 export const applyReactionEvent = (
   message: ChatMessage,
   event: ChatReactionEvent,
@@ -210,14 +222,32 @@ export const applyReactionEvent = (
     message.reactions,
     event.emoji,
     event.count,
-    event.userId === myId ? event.added : undefined
+    event.userId === myId ? event.added : undefined,
+    // Missing on events from an older server: the previous list is kept.
+    event.users
   )
 });
 
-/** Optimistic local toggle (the server echo / response then sets the authoritative count). */
-export const toggleReactionLocally = (message: ChatMessage, emoji: string, add: boolean) => {
+/**
+ * Optimistic local toggle (the server echo / response then sets the authoritative count and people).
+ * `me` joins the end of the reactors (newest) while the preview has room, and leaves it on removal.
+ */
+export const toggleReactionLocally = (
+  message: ChatMessage,
+  emoji: string,
+  add: boolean,
+  me?: UserRef
+) => {
   const current = message.reactions.find((reaction) => reaction.emoji === emoji);
   const count =
     (current?.count ?? 0) + (add ? (current?.reactedByMe ? 0 : 1) : current?.reactedByMe ? -1 : 0);
-  return { ...message, reactions: setReaction(message.reactions, emoji, count, add) };
+  const users = current?.users ?? [];
+  const nextUsers = !me
+    ? users
+    : add
+      ? users.some((user) => user.id === me.id) || users.length >= chatLimits.reactionUsersPreview
+        ? users
+        : [...users, me]
+      : users.filter((user) => user.id !== me.id);
+  return { ...message, reactions: setReaction(message.reactions, emoji, count, add, nextUsers) };
 };

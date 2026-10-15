@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   Ellipsis,
+  Lock,
   Pencil,
   Plus,
   Search,
@@ -33,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 
+import { configReadOnlyMessage, useCanEditProductionConfig } from "../config-access";
 import { settingsPageBySlug } from "../nav";
 import { touchTargets } from "../ui";
 
@@ -68,7 +70,23 @@ export const SettingsPage = ({
   </motion.div>
 );
 
-/** Heading of one settings page (label/description from nav.ts) with page-level actions. */
+/** PD-050: shown on every Cấu hình page to everyone but the organization superadmin (who alone may edit). */
+export const ConfigReadOnlyNote = ({ className }: { className?: string }) => (
+  <p
+    className={cn(
+      "flex basis-full items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-[13px] text-foreground-muted",
+      className
+    )}
+  >
+    <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+    {configReadOnlyMessage}
+  </p>
+);
+
+/**
+ * Heading of one settings page (label/description from nav.ts) with page-level actions. For everyone but the
+ * organization superadmin it also says the page is read-only (PD-050); pages hide their own edit controls.
+ */
 export const PageIntro = ({
   slug,
   actions,
@@ -79,6 +97,7 @@ export const PageIntro = ({
   children?: ReactNode;
 }) => {
   const page = settingsPageBySlug(slug);
+  const canEdit = useCanEditProductionConfig();
   return (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
       {/* basis-64: on phones the actions wrap below instead of squeezing the title column. */}
@@ -94,6 +113,7 @@ export const PageIntro = ({
         </div>
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      {canEdit ? null : <ConfigReadOnlyNote />}
     </div>
   );
 };

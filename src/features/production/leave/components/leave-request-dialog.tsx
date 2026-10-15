@@ -52,7 +52,8 @@ export const LeaveRequestDialog = ({
 }) => {
   const ids = useId();
   const create = useCreateLeave();
-  const start = initialDay ?? today;
+  // PD-051: never in the past — a past day picked on the calendar starts the request today.
+  const start = initialDay && initialDay > today ? initialDay : today;
   const [fromDate, setFromDate] = useState(start);
   const [toDate, setToDate] = useState(start);
   const [part, setPart] = useState<LeavePart>("FULL_DAY");
@@ -100,7 +101,8 @@ export const LeaveRequestDialog = ({
         <DialogHeader>
           <DialogTitle>Xin nghỉ</DialogTitle>
           <DialogDescription>
-            Đơn được Leader hoặc Quản trị duyệt; mọi người chỉ thấy tên và ngày nghỉ, không thấy ghi chú.
+            Đơn được Leader hoặc Quản trị duyệt; mọi người chỉ thấy tên và ngày nghỉ, không thấy ghi
+            chú.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -118,6 +120,7 @@ export const LeaveRequestDialog = ({
                 aria-labelledby={`${ids}-from`}
                 value={fromDate}
                 today={today}
+                minDay={today}
                 onChange={(day) => {
                   if (!day) return;
                   setFromDate(day);
@@ -132,6 +135,7 @@ export const LeaveRequestDialog = ({
                 aria-labelledby={`${ids}-to`}
                 value={toDate}
                 today={today}
+                minDay={today}
                 onChange={(day) => {
                   if (!day) return;
                   setToDate(day);
@@ -148,9 +152,10 @@ export const LeaveRequestDialog = ({
               value={draft.part}
               onChange={setPart}
               className="w-full"
-              options={(singleDay ? (["FULL_DAY", "MORNING", "AFTERNOON"] as const) : (["FULL_DAY"] as const)).map(
-                (value) => ({ value, label: leavePartLabels[value] })
-              )}
+              options={(singleDay
+                ? (["FULL_DAY", "MORNING", "AFTERNOON"] as const)
+                : (["FULL_DAY"] as const)
+              ).map((value) => ({ value, label: leavePartLabels[value] }))}
             />
             {!singleDay ? (
               <span className="text-xs text-foreground-muted">
@@ -182,12 +187,17 @@ export const LeaveRequestDialog = ({
                   {leaveWorkdays(draft) !== days ? `${KPI_WORKDAY_HINT} ` : null}
                 </>
               ) : null}
-              Tối đa {leaveLimits.maxRequestDays} ngày mỗi đơn; xin cho ngày đã qua tối đa {leaveLimits.maxPastDays} ngày.
+              Tối đa {leaveLimits.maxRequestDays} ngày mỗi đơn; chỉ xin nghỉ từ hôm nay trở đi.
             </span>
           </p>
           <FormAlert>{error}</FormAlert>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => close(false)} disabled={create.isPending}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => close(false)}
+              disabled={create.isPending}
+            >
               Hủy
             </Button>
             <Button type="submit" disabled={create.isPending}>

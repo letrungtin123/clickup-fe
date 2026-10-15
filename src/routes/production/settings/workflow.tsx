@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import type { ProductionRole, ProductionStatus } from "@/contracts/production-catalog";
 import type { ColorToken } from "@/contracts/work";
 import { RoleBadges, RoleToggleGroup } from "@/features/production/components/role-chips";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ActiveState,
   ArchivedToggle,
@@ -73,9 +74,12 @@ const Flags = ({ status }: { status: ProductionStatus }) => {
 
 /**
  * Task statuses and transitions (PLAN §4/§9). Flags decide when scores are written: `countsDone`
- * credits the worker, `countsChecked` the QC. Statuses are archived, never deleted.
+ * credits the worker, `countsChecked` the QC. Statuses are archived, never deleted. PD-049: only the organization
+ * superadmin edits this page; every other production role sees it read-only (no add / edit / reorder / archive, the
+ * transitions as a plain table) — the API refuses their writes too.
  */
 export const ProductionWorkflowRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const workflow = useWorkflow();
   const reorder = useReorderStatuses();
   const mutations = useStatusMutations();
@@ -101,58 +105,67 @@ export const ProductionWorkflowRoute = () => {
       }
     );
 
-  const row = (status: ProductionStatus, handle?: ReactNode) => (
-    <div
-      className={cn("flex items-center gap-2 px-3 py-2.5 md:px-4", !status.active && "bg-muted/30")}
-    >
-      {handle ?? <span className="size-6 shrink-0" aria-hidden="true" />}
-      <button
-        type="button"
-        onClick={() => setDialog({ status })}
-        className="flex min-w-0 flex-1 flex-col gap-1.5 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex-row md:items-center md:gap-3"
+  const row = (status: ProductionStatus, handle?: ReactNode) => {
+    const Body = canEdit ? "button" : "div";
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-2 px-3 py-2.5 md:px-4",
+          !status.active && "bg-muted/30"
+        )}
       >
-        <span className="flex min-w-0 items-center gap-2 md:w-56 md:shrink-0">
-          <span
-            className={cn(
-              toneClass(status.color),
-              "inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-(--tone-soft) px-2 text-xs font-semibold text-(--tone-text)"
-            )}
-          >
-            <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-(--tone)" />
-            <span className="truncate">{status.name}</span>
-          </span>
-          <code className="truncate font-mono text-[11px] text-foreground-subtle">
-            {status.code}
-          </code>
-        </span>
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <Flags status={status} />
-          {status.setByRoles.length > 0 ? (
-            <span className="flex items-center gap-1.5 text-xs text-foreground-muted">
-              Ai được đặt: <RoleBadges roles={status.setByRoles} />
+        {handle ?? <span className="size-6 shrink-0" aria-hidden="true" />}
+        <Body
+          {...(canEdit ? { type: "button" as const, onClick: () => setDialog({ status }) } : {})}
+          className="flex min-w-0 flex-1 flex-col gap-1.5 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex-row md:items-center md:gap-3"
+        >
+          <span className="flex min-w-0 items-center gap-2 md:w-56 md:shrink-0">
+            <span
+              className={cn(
+                toneClass(status.color),
+                "inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-(--tone-soft) px-2 text-xs font-semibold text-(--tone-text)"
+              )}
+            >
+              <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-(--tone)" />
+              <span className="truncate">{status.name}</span>
             </span>
-          ) : null}
-        </span>
-      </button>
-      {!status.active ? <ActiveState active={false} className="hidden sm:inline-flex" /> : null}
-      <RowMenu
-        label={status.name}
-        active={status.active}
-        onEdit={() => setDialog({ status })}
-        onToggleActive={() => toggleActive(status)}
-      />
-    </div>
-  );
+            <code className="truncate font-mono text-[11px] text-foreground-subtle">
+              {status.code}
+            </code>
+          </span>
+          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+            <Flags status={status} />
+            {status.setByRoles.length > 0 ? (
+              <span className="flex items-center gap-1.5 text-xs text-foreground-muted">
+                Ai được đặt: <RoleBadges roles={status.setByRoles} />
+              </span>
+            ) : null}
+          </span>
+        </Body>
+        {!status.active ? <ActiveState active={false} className="hidden sm:inline-flex" /> : null}
+        {canEdit ? (
+          <RowMenu
+            label={status.name}
+            active={status.active}
+            onEdit={() => setDialog({ status })}
+            onToggleActive={() => toggleActive(status)}
+          />
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <SettingsPage>
       <PageIntro
         slug="workflow"
         actions={
-          <Button onClick={() => setDialog({ status: null })}>
-            <Plus />
-            Thêm trạng thái
-          </Button>
+          canEdit ? (
+            <Button onClick={() => setDialog({ status: null })}>
+              <Plus />
+              Thêm trạng thái
+            </Button>
+          ) : undefined
         }
       />
       {workflow.isPending ? (
@@ -165,7 +178,11 @@ export const ProductionWorkflowRoute = () => {
         <>
           <SettingsSection
             title="Trạng thái"
-            description="Kéo để sắp xếp thứ tự trên bảng task. Cờ quyết định thời điểm ghi điểm."
+            description={
+              canEdit
+                ? "Kéo để sắp xếp thứ tự trên bảng task. Cờ quyết định thời điểm ghi điểm."
+                : "Thứ tự trên bảng task. Cờ quyết định thời điểm ghi điểm."
+            }
             actions={
               <ArchivedToggle
                 checked={showArchived}
@@ -178,22 +195,30 @@ export const ProductionWorkflowRoute = () => {
               <EmptyState size="sm" icon={Flag} title="Chưa có trạng thái" />
             ) : (
               <>
-                <SortableList
-                  aria-label="Trạng thái đang dùng"
-                  items={active}
-                  disabled={reorder.isPending}
-                  onReorder={(ordered) =>
-                    reorder.mutate(statusOrderIds(ordered, statuses), {
-                      onError: (error) =>
-                        toast.error(
-                          productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
-                        )
-                    })
-                  }
-                  renderItem={(status, handle) =>
-                    row(status, handle({ label: `Kéo để sắp xếp ${status.name}` }))
-                  }
-                />
+                {canEdit ? (
+                  <SortableList
+                    aria-label="Trạng thái đang dùng"
+                    items={active}
+                    disabled={reorder.isPending}
+                    onReorder={(ordered) =>
+                      reorder.mutate(statusOrderIds(ordered, statuses), {
+                        onError: (error) =>
+                          toast.error(
+                            productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
+                          )
+                      })
+                    }
+                    renderItem={(status, handle) =>
+                      row(status, handle({ label: `Kéo để sắp xếp ${status.name}` }))
+                    }
+                  />
+                ) : (
+                  <ul aria-label="Trạng thái đang dùng" className="divide-y">
+                    {active.map((status) => (
+                      <li key={status.id}>{row(status)}</li>
+                    ))}
+                  </ul>
+                )}
                 {showArchived && archived.length > 0 ? (
                   <ul aria-label="Trạng thái đã lưu trữ" className="divide-y border-t">
                     {archived.map((status) => (
@@ -206,7 +231,7 @@ export const ProductionWorkflowRoute = () => {
           </SettingsSection>
 
           {statuses.length >= 2 ? (
-            <TransitionsEditor workflow={workflow.data} />
+            <TransitionsEditor workflow={workflow.data} readOnly={!canEdit} />
           ) : (
             <SettingsSection title="Luồng chuyển">
               <EmptyState

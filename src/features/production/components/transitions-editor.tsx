@@ -64,8 +64,15 @@ const StatusOption = ({
  * Transitions editor: who may move a task from one status to another and whether a note is
  * required (e.g. QC fail). Edits are local until saved; PUT /production/transitions replaces the set.
  * The grid scrolls inside its card with the "from" column pinned, so phones never scroll the page.
+ * `readOnly` (PD-049, everyone but the organization superadmin): the same table without controls.
  */
-export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }) => {
+export const TransitionsEditor = ({
+  workflow,
+  readOnly = false
+}: {
+  workflow: ProductionWorkflow;
+  readOnly?: boolean;
+}) => {
   const replace = useStatusMutations().replaceTransitions;
   const compact = useBreakpoint() === "mobile";
   const [drafts, setDrafts] = useState<DraftTransition[]>(() =>
@@ -179,14 +186,16 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            onClick={add}
-            disabled={statuses.length < 2 || drafts.length >= 200}
-          >
-            <Plus />
-            Thêm luồng
-          </Button>
+          {readOnly ? null : (
+            <Button
+              variant="outline"
+              onClick={add}
+              disabled={statuses.length < 2 || drafts.length >= 200}
+            >
+              <Plus />
+              Thêm luồng
+            </Button>
+          )}
         </>
       }
     >
@@ -242,12 +251,16 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
                       error && "bg-[color-mix(in_oklch,var(--surface),var(--danger)_6%)]"
                     )}
                   >
-                    <StatusSelect
-                      statuses={statuses}
-                      value={draft.fromStatusId}
-                      onChange={(fromStatusId) => update(draft.key, { fromStatusId })}
-                      label="Từ trạng thái"
-                    />
+                    {readOnly ? (
+                      <StatusLabel status={byId.get(draft.fromStatusId)} />
+                    ) : (
+                      <StatusSelect
+                        statuses={statuses}
+                        value={draft.fromStatusId}
+                        onChange={(fromStatusId) => update(draft.key, { fromStatusId })}
+                        label="Từ trạng thái"
+                      />
+                    )}
                     {error ? (
                       <span role="alert" className="text-[11px] leading-tight text-danger">
                         {error}
@@ -258,39 +271,52 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
                     <ArrowRight className="size-3.5 text-foreground-subtle" aria-hidden="true" />
                   </div>
                   <div role="cell" className={cell}>
-                    <StatusSelect
-                      statuses={statuses}
-                      value={draft.toStatusId}
-                      onChange={(toStatusId) => update(draft.key, { toStatusId })}
-                      label="Đến trạng thái"
-                    />
+                    {readOnly ? (
+                      <StatusLabel status={byId.get(draft.toStatusId)} />
+                    ) : (
+                      <StatusSelect
+                        statuses={statuses}
+                        value={draft.toStatusId}
+                        onChange={(toStatusId) => update(draft.key, { toStatusId })}
+                        label="Đến trạng thái"
+                      />
+                    )}
                   </div>
                   <div role="cell" className={cell}>
                     <ActorChips
+                      readOnly={readOnly}
                       value={draft.actors}
                       onChange={(actors) => update(draft.key, { actors })}
                       label={`Ai được chuyển từ ${byId.get(draft.fromStatusId)?.name ?? ""} sang ${byId.get(draft.toStatusId)?.name ?? ""}`}
                     />
                   </div>
                   <div role="cell" className={cell}>
-                    <Switch
-                      checked={draft.requiresNote}
-                      onCheckedChange={(requiresNote) => update(draft.key, { requiresNote })}
-                      aria-label="Bắt buộc ghi chú"
-                    />
+                    {readOnly ? (
+                      <span className="text-[13px] text-foreground-muted">
+                        {draft.requiresNote ? "Có" : "—"}
+                      </span>
+                    ) : (
+                      <Switch
+                        checked={draft.requiresNote}
+                        onCheckedChange={(requiresNote) => update(draft.key, { requiresNote })}
+                        aria-label="Bắt buộc ghi chú"
+                      />
+                    )}
                   </div>
                   <div role="cell" className={cn(cell, "justify-center px-1")}>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Xóa luồng chuyển"
-                      className="text-foreground-subtle hover:text-danger"
-                      onClick={() =>
-                        setDrafts((items) => items.filter((item) => item.key !== draft.key))
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
+                    {readOnly ? null : (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Xóa luồng chuyển"
+                        className="text-foreground-subtle hover:text-danger"
+                        onClick={() =>
+                          setDrafts((items) => items.filter((item) => item.key !== draft.key))
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
@@ -341,6 +367,16 @@ export const TransitionsEditor = ({ workflow }: { workflow: ProductionWorkflow }
   );
 };
 
+/** A status as text (read-only table). */
+const StatusLabel = ({ status }: { status: ProductionStatus | undefined }) =>
+  status ? (
+    <span className="flex min-h-8 items-center text-[13px]">
+      <StatusOption status={status} />
+    </span>
+  ) : (
+    <span className="text-foreground-subtle">—</span>
+  );
+
 const StatusSelect = ({
   statuses,
   value,
@@ -376,41 +412,57 @@ const StatusSelect = ({
 const ActorChips = ({
   value,
   onChange,
-  label
+  label,
+  readOnly = false
 }: {
   value: readonly TransitionActor[];
   onChange: (actors: TransitionActor[]) => void;
   label: string;
-}) => (
-  <div role="group" aria-label={label} className="flex flex-wrap gap-1">
-    {transitionActors.map((actor) => {
-      const pressed = value.includes(actor);
-      return (
-        <button
+  /** Only the chosen actors, as plain chips. */
+  readOnly?: boolean;
+}) =>
+  readOnly ? (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1">
+      {value.map((actor) => (
+        <span
           key={actor}
-          type="button"
-          aria-pressed={pressed}
           title={transitionActorHints[actor]}
-          onClick={() =>
-            onChange(
-              sortActors(pressed ? value.filter((item) => item !== actor) : [...value, actor])
-            )
-          }
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium whitespace-nowrap outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring max-sm:h-9",
-            pressed
-              ? "border-transparent bg-brand-soft text-brand-text"
-              : "border-dashed border-border-strong text-foreground-subtle hover:text-foreground"
-          )}
+          className="inline-flex h-7 items-center rounded-full bg-brand-soft px-2.5 text-[11px] font-medium whitespace-nowrap text-brand-text"
         >
-          {pressed ? (
-            <Check className="size-3" strokeWidth={2.5} aria-hidden="true" />
-          ) : (
-            <Plus className="size-3 opacity-60" aria-hidden="true" />
-          )}
           {transitionActorLabels[actor]}
-        </button>
-      );
-    })}
-  </div>
-);
+        </span>
+      ))}
+    </div>
+  ) : (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1">
+      {transitionActors.map((actor) => {
+        const pressed = value.includes(actor);
+        return (
+          <button
+            key={actor}
+            type="button"
+            aria-pressed={pressed}
+            title={transitionActorHints[actor]}
+            onClick={() =>
+              onChange(
+                sortActors(pressed ? value.filter((item) => item !== actor) : [...value, actor])
+              )
+            }
+            className={cn(
+              "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium whitespace-nowrap outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring max-sm:h-9",
+              pressed
+                ? "border-transparent bg-brand-soft text-brand-text"
+                : "border-dashed border-border-strong text-foreground-subtle hover:text-foreground"
+            )}
+          >
+            {pressed ? (
+              <Check className="size-3" strokeWidth={2.5} aria-hidden="true" />
+            ) : (
+              <Plus className="size-3 opacity-60" aria-hidden="true" />
+            )}
+            {transitionActorLabels[actor]}
+          </button>
+        );
+      })}
+    </div>
+  );

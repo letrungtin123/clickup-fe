@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CustomField, CustomValues } from "@/contracts/production-catalog";
 
 import { hasDuplicateName, matchesQuery, visibleRows } from "../catalog";
+import { useCanEditProductionConfig } from "../config-access";
 import { formatCustomValue, toCustomValuesPayload, validateCustomValues } from "../custom-fields";
 import { productionErrorMessage, toastProductionError } from "../errors";
 import { todayIn } from "../format";
@@ -45,18 +46,20 @@ import { phoneSheetColumn, sheetOnPhone } from "../ui";
 const conflict = "Đã có khách hàng cùng tên (không phân biệt hoa thường).";
 
 /**
- * Clients (PLAN §2: Account creates clients, Admin manages everything) with CLIENT custom fields
- * and tags. Shown both in the Account menu and in the admin configuration area.
+ * Clients with CLIENT custom fields and tags. Shown both in the Account menu and in the admin
+ * configuration area. PD-050: only the organization superadmin adds, edits or archives them; everyone
+ * else who opens the list reads it (search, filters and the archived toggle still work; rows open nothing).
  */
 export const ClientsPanel = () => {
+  const canEdit = useCanEditProductionConfig();
   const me = useProductionMe();
   // CLIENT tags / custom fields, kept in the URL (?tag=…&cf.<key>=…) and filtered by the API.
   const listFilters = useUrlListFilters("CLIENT");
   const filtering = listFilters.count > 0;
   const clients = useClients(listFilters.ready, listFilters.query);
   // Duplicate-name check in the dialog needs every client, not just the filtered ones (same query
-  // as `clients` when nothing is filtered).
-  const allClients = useClients(true);
+  // as `clients` when nothing is filtered). Read-only viewers never open the dialog.
+  const allClients = useClients(canEdit);
   const mutations = useClientMutations();
   const [term, setTerm] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -86,7 +89,7 @@ export const ClientsPanel = () => {
     "minmax(8rem,1fr)",
     ...columns.map(() => "minmax(7rem,1fr)"),
     "6.5rem",
-    "2.25rem"
+    ...(canEdit ? ["2.25rem"] : [])
   ].join(" ");
 
   const toggleActive = (client: Client) =>
@@ -130,10 +133,12 @@ export const ClientsPanel = () => {
               <CountLabel shown={rows.length} total={items.length} noun="khách hàng" />
             ) : null}
             {/* Phones: "Thêm" keeps the filter button, the count and the action on one row. */}
-            <Button className="relative" onClick={() => setDialog({ client: null })}>
-              <Plus />
-              Thêm<span className="max-sm:sr-only"> khách hàng</span>
-            </Button>
+            {canEdit ? (
+              <Button className="relative" onClick={() => setDialog({ client: null })}>
+                <Plus />
+                Thêm<span className="max-sm:sr-only"> khách hàng</span>
+              </Button>
+            ) : null}
           </div>
         </div>
         {/* relative: keeps the absolutely positioned sr-only header inside this scroller. */}
@@ -152,7 +157,7 @@ export const ClientsPanel = () => {
                 </span>
               ))}
               <span>Trạng thái</span>
-              <span className="sr-only">Thao tác</span>
+              {canEdit ? <span className="sr-only">Thao tác</span> : null}
             </div>
             {clients.isPending ? (
               <RowsSkeleton rows={5} />
@@ -169,7 +174,9 @@ export const ClientsPanel = () => {
                 }
                 description={
                   items.length === 0 && !filtering
-                    ? "Thêm khách hàng để gắn với dự án và job."
+                    ? canEdit
+                      ? "Thêm khách hàng để gắn với dự án và job."
+                      : undefined
                     : filtering
                       ? "Thử bỏ bớt tag hoặc trường đang lọc."
                       : "Thử từ khóa khác hoặc hiện mục đã lưu trữ."
@@ -183,7 +190,7 @@ export const ClientsPanel = () => {
                     >
                       Xóa bộ lọc
                     </Button>
-                  ) : items.length === 0 ? (
+                  ) : items.length === 0 && canEdit ? (
                     <Button size="sm" onClick={() => setDialog({ client: null })}>
                       <Plus />
                       Thêm khách hàng
@@ -201,33 +208,29 @@ export const ClientsPanel = () => {
                       !client.active && "bg-muted/30"
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setDialog({ client })}
-                      className="flex min-w-0 flex-col items-start rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span
-                        className={cn(
-                          "max-w-full truncate text-[13px] font-medium hover:text-brand-text",
-                          !client.active && "text-foreground-muted"
-                        )}
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => setDialog({ client })}
+                        className="flex min-w-0 flex-col items-start rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        {client.name}
+                        <ClientName client={client} editable />
+                      </button>
+                    ) : (
+                      <div className="flex min-w-0 flex-col items-start">
+                        <ClientName client={client} editable={false} />
+                      </div>
+                    )}
+                    {canEdit ? (
+                      <span className="col-start-2 row-start-1 justify-self-end md:col-start-auto md:row-start-auto md:order-last">
+                        <RowMenu
+                          label={client.name}
+                          active={client.active}
+                          onEdit={() => setDialog({ client })}
+                          onToggleActive={() => toggleActive(client)}
+                        />
                       </span>
-                      {client.note ? (
-                        <span className="max-w-full truncate text-xs text-foreground-muted">
-                          {client.note}
-                        </span>
-                      ) : null}
-                    </button>
-                    <span className="col-start-2 row-start-1 justify-self-end md:col-start-auto md:row-start-auto md:order-last">
-                      <RowMenu
-                        label={client.name}
-                        active={client.active}
-                        onEdit={() => setDialog({ client })}
-                        onToggleActive={() => toggleActive(client)}
-                      />
-                    </span>
+                    ) : null}
                     <span className="hidden text-right text-[13px] tabular-nums md:block">
                       {client.projectCount}
                     </span>
@@ -254,18 +257,37 @@ export const ClientsPanel = () => {
         </div>
       </SettingsSection>
 
-      <ClientDialog
-        key={dialog?.client?.id ?? "new"}
-        open={dialog !== null}
-        client={dialog?.client ?? null}
-        clients={allClients.data?.items ?? items}
-        fields={clientFields}
-        tags={tagList}
-        onClose={() => setDialog(null)}
-      />
+      {canEdit ? (
+        <ClientDialog
+          key={dialog?.client?.id ?? "new"}
+          open={dialog !== null}
+          client={dialog?.client ?? null}
+          clients={allClients.data?.items ?? items}
+          fields={clientFields}
+          tags={tagList}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
     </>
   );
 };
+
+const ClientName = ({ client, editable }: { client: Client; editable: boolean }) => (
+  <>
+    <span
+      className={cn(
+        "max-w-full truncate text-[13px] font-medium",
+        editable && "hover:text-brand-text",
+        !client.active && "text-foreground-muted"
+      )}
+    >
+      {client.name}
+    </span>
+    {client.note ? (
+      <span className="max-w-full truncate text-xs text-foreground-muted">{client.note}</span>
+    ) : null}
+  </>
+);
 
 const ClientDialog = ({
   open,

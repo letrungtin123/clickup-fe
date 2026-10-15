@@ -53,7 +53,6 @@ import {
   decodeConfig,
   defaultReportConfig,
   encodeConfig,
-  privacyProblem,
   sanitizeForRole,
   viewOfConfig,
   withSort,
@@ -128,15 +127,9 @@ const ReportBuilder = () => {
     () => (debounced ? (JSON.parse(debounced) as ReportConfig) : null),
     [debounced]
   );
-  // Run-time blockers, explained inline: an incomplete config, or a breakdown the role may not see
-  // while scores are private (the API would answer 403 SCORES_PRIVATE).
-  const problem = config
-    ? (configProblem(config) ??
-      privacyProblem(config, {
-        isAdmin,
-        scoresPublic: me.data?.settings.scoresPublic ?? true
-      }))
-    : null;
+  // Run-time blocker, explained inline: an incomplete config. Points by person / job / tag are open to
+  // every report user since PD-052 (no more private-scores gate).
+  const problem = config ? configProblem(config) : null;
   const runnable = runConfig && !configProblem(runConfig) && !problem ? runConfig : null;
   const result = useReportResult(runnable);
 

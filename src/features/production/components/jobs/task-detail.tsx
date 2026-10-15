@@ -162,6 +162,19 @@ const TaskDetailBody = ({
           </Link>
           <span aria-hidden="true">·</span>
           <span className="font-mono">{task.project.code}</span>
+          {variant === "sheet" ? (
+            // The shareable page, at the top of the sheet (not after the fields).
+            <Button
+              variant="ghost"
+              size="xs"
+              className="ml-auto text-foreground-muted max-sm:min-h-10"
+              render={<Link to={`/production/tasks/${task.id}`} />}
+              nativeButton={false}
+            >
+              <ExternalLink aria-hidden="true" />
+              Mở trang riêng
+            </Button>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <TaskProcessTitle task={task} rights={rights} />
@@ -272,31 +285,17 @@ const TaskDetailBody = ({
 
       <TaskScoresSection task={task} />
 
-      {canDelete || variant === "sheet" ? (
+      {canDelete ? (
         <div className="flex flex-wrap gap-2">
-          {canDelete ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-danger hover:text-danger"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 />
-              {task.isSubtask ? "Xoá subtask" : "Xoá task"}
-            </Button>
-          ) : null}
-          {variant === "sheet" ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-foreground-muted max-sm:min-h-10"
-              render={<Link to={`/production/tasks/${task.id}`} />}
-              nativeButton={false}
-            >
-              <ExternalLink />
-              Mở trang riêng
-            </Button>
-          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-danger hover:text-danger"
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2 />
+            {task.isSubtask ? "Xoá subtask" : "Xoá task"}
+          </Button>
         </div>
       ) : null}
 

@@ -10,7 +10,6 @@ import {
   ChartColumnBig,
   Coins,
   Eye,
-  EyeOff,
   HandCoins,
   Network,
   Paperclip,
@@ -155,8 +154,9 @@ export const ProductionOverviewRoute = () => {
               <Rule icon={HandCoins} label="Tiền Khoán">
                 {khoanPolicyMeta[settings.khoanPayPolicy].label}
               </Rule>
-              <Rule icon={settings.scoresPublic ? Eye : EyeOff} label="Bảng điểm">
-                {settings.scoresPublic ? "Công khai cho mọi người" : "Riêng tư"}
+              {/* PD-052: the ranking and everyone's scores are always open to every member. */}
+              <Rule icon={Eye} label="Bảng điểm">
+                Công khai cho mọi thành viên
               </Rule>
               <Rule icon={Coins} label="Tiền công">
                 {settings.moneyPublic ? "Công khai" : "Chỉ chính chủ và Quản trị thấy"}
@@ -182,17 +182,14 @@ export const ProductionOverviewRoute = () => {
                 description="Điểm hôm nay, tuần, kỳ; tiền Khoán tạm tính và dự báo KPI."
               />
             </li>
-            {/* Like the menu: the ranking only while the board is public (Admins always). */}
-            {settings.scoresPublic || me.data.isAdmin ? (
-              <li>
-                <QuickLink
-                  to="/production/scores/board"
-                  icon={Trophy}
-                  title="Xếp hạng"
-                  description="Xếp hạng điểm chính thức theo kỳ và team."
-                />
-              </li>
-            ) : null}
+            <li>
+              <QuickLink
+                to="/production/scores/board"
+                icon={Trophy}
+                title="Xếp hạng"
+                description="Xếp hạng điểm chính thức theo kỳ và team."
+              />
+            </li>
             <li>
               <QuickLink
                 to="/production/leave"

@@ -6,8 +6,10 @@ import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JobStatus } from "@/contracts/production-catalog";
+import { SessionValueContext } from "@/features/auth/session-context";
 import { productionApi } from "@/features/production/api";
 import { ApiError } from "@/lib/api/errors";
+import type { SessionContext } from "@/lib/api/schemas";
 
 import { ProductionJobStatusesRoute } from "./job-statuses";
 
@@ -41,15 +43,19 @@ const catalog: JobStatus[] = [
   status(4, "Đã giao khách", { color: "green", isClosed: true, jobCount: 40 })
 ];
 
-const renderPage = () => {
+/** PD-050: only the organization superadmin edits; a production Admin reads the page. */
+const renderPage = ({ superadmin = true }: { superadmin?: boolean } = {}) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
+  const session = { hasFullOrganizationAuthority: superadmin } as unknown as SessionContext;
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <ProductionJobStatusesRoute />
-      </MemoryRouter>
+      <SessionValueContext value={session}>
+        <MemoryRouter>
+          <ProductionJobStatusesRoute />
+        </MemoryRouter>
+      </SessionValueContext>
     </QueryClientProvider>
   );
 };
@@ -329,6 +335,47 @@ describe("Cấu hình → Trạng thái job (PD-038 / PD-045)", () => {
     expect(screen.getByRole("button", { name: "Chuyển job và xoá" })).toBeTruthy();
     // The counts are refreshed.
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it("the superadmin sees no read-only note", async () => {
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: catalog });
+    renderPage();
+    await screen.findByRole("button", { name: /^Mới nhận/ });
+    expect(screen.queryByText(/chế độ chỉ đọc/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Kéo để sắp xếp Mới nhận" })).toBeTruthy();
+  });
+
+  it("a production Admin reads the list only (PD-050): no add form, handles, pickers, switches or row menus", async () => {
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({
+      items: [...catalog.slice(0, 3), status(5, "Đã xong", { requiresAllChecked: true }), catalog[3]!]
+    });
+    renderPage({ superadmin: false });
+    const list = await screen.findByRole("list", { name: "Trạng thái job" });
+    expect(Array.from(list.querySelectorAll("li")).map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Mới nhận"),
+      expect.stringContaining("Đang làm"),
+      expect.stringContaining("Chờ QC"),
+      expect.stringContaining("Đã xong"),
+      expect.stringContaining("Đã giao khách")
+    ]);
+    expect(
+      screen.getByText("Chỉ Siêu quản trị chỉnh sửa Cấu hình Photo Retouch. Bạn đang xem ở chế độ chỉ đọc.")
+    ).toBeTruthy();
+    // Counts and the last change stay; "Đóng" and "Cần đã check" become badges.
+    expect(screen.getByText("12 job")).toBeTruthy();
+    expect(screen.getByText(/^Sửa bởi Quản trị Thử · /)).toBeTruthy();
+    const closedRow = list.querySelectorAll("li")[4];
+    expect(closedRow?.textContent).toContain("Đóng");
+    expect(list.textContent?.match(/Cần đã check/g)).toHaveLength(1);
+    // Nothing to edit with.
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Thêm trạng thái" })).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Tùy chọn cho / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Kéo để sắp xếp / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Màu của trạng thái / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Mới nhận/ })).toBeNull();
+    expect(screen.queryByText(/Bấm vào tên để đổi tên/)).toBeNull();
   });
 
   it("the last remaining status cannot be deleted", async () => {

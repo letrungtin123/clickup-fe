@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { hasDuplicateName, matchesQuery, visibleRows } from "@/features/production/catalog";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ActiveState,
   ArchivedToggle,
@@ -24,8 +25,12 @@ import type { Team } from "@/features/production/types";
 
 const conflict = "Đã có team cùng tên (không phân biệt hoa thường).";
 
-/** Teams are report labels only (PD-011): any Leader can still assign work to anyone. */
+/**
+ * Teams are report labels only (PD-011): any Leader can still assign work to anyone. PD-050: only the
+ * organization superadmin adds, renames or archives them; everyone else reads the list.
+ */
 export const ProductionTeamsRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const teams = useTeams();
   const mutations = useTeamMutations();
   const [term, setTerm] = useState("");
@@ -76,25 +81,27 @@ export const ProductionTeamsRoute = () => {
           </>
         }
       >
-        <QuickAdd
-          label="Tên team mới"
-          placeholder="Tên team, ví dụ: Team Sáng"
-          buttonLabel="Thêm team"
-          maxLength={120}
-          validate={validate(null)}
-          onAdd={(name) =>
-            mutations.create.mutateAsync({ name }).then(
-              () => {
-                toast.success(`Đã thêm team ${name}`);
-                return true;
-              },
-              (error: unknown) => {
-                toastProductionError(error, { conflict });
-                return false;
-              }
-            )
-          }
-        />
+        {canEdit ? (
+          <QuickAdd
+            label="Tên team mới"
+            placeholder="Tên team, ví dụ: Team Sáng"
+            buttonLabel="Thêm team"
+            maxLength={120}
+            validate={validate(null)}
+            onAdd={(name) =>
+              mutations.create.mutateAsync({ name }).then(
+                () => {
+                  toast.success(`Đã thêm team ${name}`);
+                  return true;
+                },
+                (error: unknown) => {
+                  toastProductionError(error, { conflict });
+                  return false;
+                }
+              )
+            }
+          />
+        ) : null}
         {items.length > 6 ? (
           <div className="flex items-center gap-3 border-b px-4 py-2.5 md:px-5">
             <SearchField value={term} onChange={setTerm} placeholder="Tìm team" label="Tìm team" />
@@ -112,7 +119,9 @@ export const ProductionTeamsRoute = () => {
             title={items.length === 0 ? "Chưa có team" : "Không có team phù hợp"}
             description={
               items.length === 0
-                ? "Tạo team để gom nhóm thành viên khi xem báo cáo điểm và năng suất."
+                ? canEdit
+                  ? "Tạo team để gom nhóm thành viên khi xem báo cáo điểm và năng suất."
+                  : undefined
                 : "Thử từ khóa khác hoặc hiện mục đã lưu trữ."
             }
           />
@@ -129,7 +138,16 @@ export const ProductionTeamsRoute = () => {
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-muted">
                   <Network className="size-3.5" aria-hidden="true" />
                 </span>
-                {editingId === team.id ? (
+                {!canEdit ? (
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-[13px] font-medium",
+                      !team.active && "text-foreground-muted"
+                    )}
+                  >
+                    {team.name}
+                  </span>
+                ) : editingId === team.id ? (
                   <InlineText
                     value={team.name}
                     label={`Tên mới cho team ${team.name}`}
@@ -152,16 +170,24 @@ export const ProductionTeamsRoute = () => {
                     {team.name}
                   </button>
                 )}
-                <span className="hidden text-xs text-foreground-muted tabular-nums sm:inline">
+                {/* Phones: without the row menu there is room for the member count. */}
+                <span
+                  className={cn(
+                    "shrink-0 text-xs text-foreground-muted tabular-nums",
+                    canEdit && "hidden sm:inline"
+                  )}
+                >
                   {team.memberCount} thành viên
                 </span>
                 <ActiveState active={team.active} className="hidden sm:inline-flex" />
-                <RowMenu
-                  label={team.name}
-                  active={team.active}
-                  onEdit={() => setEditingId(team.id)}
-                  onToggleActive={() => save(team, { active: !team.active })}
-                />
+                {canEdit ? (
+                  <RowMenu
+                    label={team.name}
+                    active={team.active}
+                    onEdit={() => setEditingId(team.id)}
+                    onToggleActive={() => save(team, { active: !team.active })}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

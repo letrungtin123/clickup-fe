@@ -21,6 +21,7 @@ import {
   SettingsPage,
   SettingsSection
 } from "@/features/production/components/settings-kit";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import { todayIn } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
 import { KpiCellEditor } from "@/features/production/kpi/components/kpi-cell-editor";
@@ -44,9 +45,11 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 /**
  * /production/settings/kpi (ADMIN) — KPI targets (SPEC Phase 3 §5 /admin/kpi): members × the 12
  * monthly periods (+ quarters, year) of a year, cell editor with effective_from history, CSV import
- * and "Áp KPI mặc định theo role".
+ * and "Áp KPI mặc định theo role". PD-050: only the organization superadmin sets, imports or applies targets; everyone
+ * else browses the matrix and a cell opens its version history only.
  */
 export const ProductionKpiTargetsRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const me = useProductionMe();
   const breakpoint = useBreakpoint();
   const settings = me.data?.settings;
@@ -86,6 +89,7 @@ export const ProductionKpiTargetsRoute = () => {
         column={column}
         cell={value}
         versions={historyFor(data.history, row.user.id, column.periodType)}
+        readOnly={!canEdit}
         onDone={() => setCell(null)}
       />
     ) : null;
@@ -97,16 +101,18 @@ export const ProductionKpiTargetsRoute = () => {
       <PageIntro
         slug="kpi"
         actions={
-          <>
-            <Button variant="outline" onClick={() => setDefaultsOpen(true)}>
-              <Sparkles />
-              <span className="max-sm:sr-only">Áp KPI mặc định theo role</span>
-            </Button>
-            <Button onClick={() => setImportOpen(true)}>
-              <FileUp />
-              Nhập CSV
-            </Button>
-          </>
+          canEdit ? (
+            <>
+              <Button variant="outline" onClick={() => setDefaultsOpen(true)}>
+                <Sparkles />
+                <span className="max-sm:sr-only">Áp KPI mặc định theo role</span>
+              </Button>
+              <Button onClick={() => setImportOpen(true)}>
+                <FileUp />
+                Nhập CSV
+              </Button>
+            </>
+          ) : undefined
         }
       />
 
@@ -205,7 +211,11 @@ export const ProductionKpiTargetsRoute = () => {
             </span>
             <span>Nhạt = kế thừa từ phiên bản trước · — = chưa có</span>
             <span>Quý/Năm trống thì chỉ tiêu = tổng các tháng</span>
-            <span className="hidden md:inline">Phím mũi tên để di chuyển, Enter để sửa.</span>
+            <span className="hidden md:inline">
+              {canEdit
+                ? "Phím mũi tên để di chuyển, Enter để sửa."
+                : "Phím mũi tên để di chuyển, Enter để xem lịch sử."}
+            </span>
           </div>
         ) : null}
       </SettingsSection>
@@ -215,7 +225,9 @@ export const ProductionKpiTargetsRoute = () => {
           <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
             <DialogHeader className="sr-only">
               <DialogTitle>KPI</DialogTitle>
-              <DialogDescription>Đặt chỉ tiêu cho ô đã chọn.</DialogDescription>
+              <DialogDescription>
+                {canEdit ? "Đặt chỉ tiêu cho ô đã chọn." : "Lịch sử chỉ tiêu của ô đã chọn."}
+              </DialogDescription>
             </DialogHeader>
             {editor}
           </DialogContent>
@@ -250,19 +262,23 @@ export const ProductionKpiTargetsRoute = () => {
         </PopoverPrimitive.Root>
       )}
 
-      <KpiImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        year={year}
-        defaultPeriod={defaultPeriod}
-      />
-      <KpiDefaultsDialog
-        open={defaultsOpen}
-        onOpenChange={setDefaultsOpen}
-        periods={yearPeriods}
-        defaultPeriod={defaultPeriod}
-        names={names}
-      />
+      {canEdit ? (
+        <>
+          <KpiImportDialog
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            year={year}
+            defaultPeriod={defaultPeriod}
+          />
+          <KpiDefaultsDialog
+            open={defaultsOpen}
+            onOpenChange={setDefaultsOpen}
+            periods={yearPeriods}
+            defaultPeriod={defaultPeriod}
+            names={names}
+          />
+        </>
+      ) : null}
     </SettingsPage>
   );
 };

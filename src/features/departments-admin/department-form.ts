@@ -55,16 +55,16 @@ export const departmentLocks = (
       locks[department] =
         `Bạn không thuộc phòng ban ${departmentLabels[department]} nên không thêm hoặc bỏ được phòng ban này.`;
   }
-  // Cài đặt › Thành viên: Photo Retouch comes with production roles, which only a production ADMIN (or the
-  // superadmin) may grant or take away (403 PRODUCTION_ROLE_ESCALATION).
-  if (options.retouchNeedsProductionAdmin && !locks.PHOTO_RETOUCH && !caller.productionRoles?.includes("ADMIN")) {
+  // Cài đặt › Thành viên: Photo Retouch comes with production roles, which only the superadmin may grant or take away
+  // (PD-050, 403 PRODUCTION_ROLE_ESCALATION); the superadmin returned above.
+  if (options.retouchNeedsProductionAdmin && !locks.PHOTO_RETOUCH) {
     locks.PHOTO_RETOUCH = retouchAdminOnlyMessage;
   }
   return locks;
 };
 
 export const retouchAdminOnlyMessage =
-  "Chỉ Quản trị Photo Retouch hoặc superadmin mới thêm hoặc bỏ được phòng ban Photo Retouch (kèm vai trò).";
+  "Chỉ Siêu quản trị mới thêm hoặc bỏ được phòng ban Photo Retouch (kèm vai trò).";
 
 /** Adds or removes one department; result de-duplicated, stable order (Photo Retouch first). */
 export const toggleDepartment = (

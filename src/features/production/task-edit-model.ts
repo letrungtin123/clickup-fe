@@ -229,6 +229,32 @@ export const doneQtyProblem = (draft: DoneQtyDraft, noteRequired: boolean) => {
   return null;
 };
 
+// Công đoạn ---------------------------------------------------------------------------------------------------
+
+/**
+ * Processes a task (not a subtask) may switch to ("Công đoạn"): every active one, the QC ones marked, its current one
+ * kept even when archived. The same list on the task title and on the task row of the subtask tree; the API checks the
+ * rest (the people must fit the process; a task with subtasks takes neither a Checking process nor one of its
+ * subtasks' — PROCESS_INVALID, worded by the server).
+ */
+export const lineProcessOptions = (
+  processes: readonly Pick<Process, "id" | "name" | "isQc" | "active">[],
+  currentId: string
+) =>
+  processes
+    .filter((process) => process.active || process.id === currentId)
+    .map((process) => ({
+      id: process.id,
+      label: process.name,
+      hint: process.isQc ? "QC" : null
+    }));
+
+/** The note under a task's "Công đoạn" editor. */
+export const lineProcessHint = (hasSubtasks: boolean) =>
+  hasSubtasks
+    ? "Công đoạn phải hợp với người làm. Task có subtask không chuyển sang Checking hay công đoạn của subtask."
+    : "Công đoạn phải hợp với người làm (task Checking là việc của QC).";
+
 // Subtasks ----------------------------------------------------------------------------------------------------
 
 /**

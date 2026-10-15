@@ -48,10 +48,22 @@ const jobRowDescription = (action: JobPermissionAction) =>
 
 const statusChangeLabel = "Đổi trạng thái job — theo quyền Sửa (Của mình = job mình được giao)";
 
+/** PD-050: the job permission matrix is edited by the organization superadmin only. */
+export const retouchEditNote = "Chỉ Siêu quản trị chỉnh sửa phân quyền Photo Retouch.";
+
+/** Shown above the matrix to a production Admin, who reads it but no longer edits it (PD-050). */
+export const RetouchReadOnlyNote = () => (
+  <p className="flex items-start gap-2 border-b bg-muted/40 px-4 py-2.5 text-[13px] text-foreground-muted md:px-5">
+    <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+    {retouchEditNote}
+  </p>
+);
+
 /**
  * Photo Retouch view: production roles × features. The four job rows edit the `job_permissions` setting (ADMIN is
- * always "Tất cả"); "Đổi trạng thái job" follows "Sửa" (PD-038); the other rows are fixed rules (read-only).
- * `value` null = the matrix cannot be read here (only a production ADMIN reads the settings).
+ * always "Tất cả"; `editable` only for the organization superadmin, PD-050); "Đổi trạng thái job" follows "Sửa"
+ * (PD-038); the other rows are fixed rules (read-only). `value` null = the matrix cannot be read here (only a
+ * production ADMIN or the superadmin reads the settings).
  */
 export const RetouchMatrix = ({
   value,
@@ -138,7 +150,7 @@ export const RetouchMatrix = ({
                   <ScopeTextCell
                     key={role}
                     scope={value[role][action]}
-                    lockReason="Chỉ Quản trị Photo Retouch hoặc Siêu quản trị sửa được"
+                    lockReason="Chỉ Siêu quản trị sửa được"
                   />
                 )
               )}

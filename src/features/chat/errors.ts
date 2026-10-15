@@ -16,6 +16,8 @@ const chatMessages: Record<string, string> = {
   CHAT_DM_IMMUTABLE:
     "Không thể thay đổi cuộc trò chuyện trực tiếp. Hãy bắt đầu cuộc trò chuyện mới với những người bạn muốn.",
   CHAT_DM_CREATE_FAILED: "Không mở được cuộc trò chuyện. Vui lòng thử lại.",
+  CHAT_DM_GROUP_FORBIDDEN: "Bạn chỉ nhắn được 1:1; tạo nhóm cần quyền tạo kênh.",
+  CHAT_DM_NOT_COLLEAGUE: "Bạn chỉ nhắn tin 1:1 được với đồng nghiệp cùng phòng ban.",
   CHAT_MEMBER_INVALID: "Mọi người được chọn phải là thành viên đang hoạt động của tổ chức.",
   CHAT_ATTACHMENT_TYPE_BLOCKED: "Loại tệp này không được phép tải lên.",
   CHAT_ATTACHMENT_TOO_LARGE: "Tệp vượt quá dung lượng cho phép (50 MB).",

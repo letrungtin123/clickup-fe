@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { matchesQuery } from "@/features/production/catalog";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ConfirmDialog,
   CountLabel,
@@ -33,9 +34,11 @@ const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
 
 /**
  * Login whitelist (PD-012): new sign-ins — and Google sign-in once it is enabled — are accepted
- * only for listed emails. Accepts text pasted straight from a spreadsheet.
+ * only for listed emails. Accepts text pasted straight from a spreadsheet. PD-050: only the organization
+ * superadmin adds or removes emails; everyone else reads the list.
  */
 export const ProductionWhitelistRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const ids = useId();
   const emails = useAllowedEmails();
   const mutations = useAllowedEmailMutations();
@@ -79,72 +82,77 @@ export const ProductionWhitelistRoute = () => {
         có.
       </InfoNote>
 
-      <SettingsSection
-        title="Thêm email"
-        description="Dán từ bảng tính: email cách nhau bởi dấu phẩy, chấm phẩy, khoảng trắng hoặc xuống dòng."
-      >
-        <form
-          noValidate
-          className="flex flex-col gap-3 p-4 md:p-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
+      {canEdit ? (
+        <SettingsSection
+          title="Thêm email"
+          description="Dán từ bảng tính: email cách nhau bởi dấu phẩy, chấm phẩy, khoảng trắng hoặc xuống dòng."
         >
-          <label htmlFor={`${ids}-paste`} className="sr-only">
-            Danh sách email
-          </label>
-          <Textarea
-            id={`${ids}-paste`}
-            value={text}
-            rows={5}
-            placeholder={"nhanvien1@congty.vn\nnhanvien2@congty.vn; nhanvien3@congty.vn"}
-            onChange={(event) => {
-              setText(event.target.value);
-              setError(null);
+          <form
+            noValidate
+            className="flex flex-col gap-3 p-4 md:p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
             }}
-            className="max-h-64 font-mono text-[13px]"
-          />
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p className="flex-1 text-xs text-foreground-muted" aria-live="polite">
-              {text.trim() === "" ? (
-                "Mỗi lần tối đa 2.000 email."
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">{preview.valid.length}</span> email
-                  hợp lệ
-                  {preview.invalid.length > 0 ? (
-                    <>
-                      {" · "}
-                      <span className="text-danger">{preview.invalid.length} không hợp lệ</span>
-                    </>
-                  ) : null}
-                  {tooMany ? " · chỉ 2.000 mục đầu được xử lý" : null}
-                </>
-              )}
-            </p>
-            <Button type="submit" disabled={mutations.add.isPending || preview.valid.length === 0}>
-              {mutations.add.isPending ? <Spinner /> : <MailPlus />}
-              Thêm vào danh sách
-            </Button>
-          </div>
-          <FormAlert>{error}</FormAlert>
-          <AnimatePresence initial={false}>
-            {result ? (
-              <motion.div
-                key="result"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
+          >
+            <label htmlFor={`${ids}-paste`} className="sr-only">
+              Danh sách email
+            </label>
+            <Textarea
+              id={`${ids}-paste`}
+              value={text}
+              rows={5}
+              placeholder={"nhanvien1@congty.vn\nnhanvien2@congty.vn; nhanvien3@congty.vn"}
+              onChange={(event) => {
+                setText(event.target.value);
+                setError(null);
+              }}
+              className="max-h-64 font-mono text-[13px]"
+            />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <p className="flex-1 text-xs text-foreground-muted" aria-live="polite">
+                {text.trim() === "" ? (
+                  "Mỗi lần tối đa 2.000 email."
+                ) : (
+                  <>
+                    <span className="font-medium text-foreground">{preview.valid.length}</span>{" "}
+                    email hợp lệ
+                    {preview.invalid.length > 0 ? (
+                      <>
+                        {" · "}
+                        <span className="text-danger">{preview.invalid.length} không hợp lệ</span>
+                      </>
+                    ) : null}
+                    {tooMany ? " · chỉ 2.000 mục đầu được xử lý" : null}
+                  </>
+                )}
+              </p>
+              <Button
+                type="submit"
+                disabled={mutations.add.isPending || preview.valid.length === 0}
               >
-                <ResultSummary result={result} onDismiss={() => setResult(null)} />
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-        </form>
-      </SettingsSection>
+                {mutations.add.isPending ? <Spinner /> : <MailPlus />}
+                Thêm vào danh sách
+              </Button>
+            </div>
+            <FormAlert>{error}</FormAlert>
+            <AnimatePresence initial={false}>
+              {result ? (
+                <motion.div
+                  key="result"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <ResultSummary result={result} onDismiss={() => setResult(null)} />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </form>
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         title="Email được phép"
@@ -172,7 +180,7 @@ export const ProductionWhitelistRoute = () => {
             icon={MailCheck}
             title={items.length === 0 ? "Danh sách đang trống" : "Không có email phù hợp"}
             description={
-              items.length === 0
+              items.length === 0 && canEdit
                 ? "Dán email của nhân viên vào ô phía trên để cho phép đăng nhập."
                 : undefined
             }
@@ -188,15 +196,17 @@ export const ProductionWhitelistRoute = () => {
                     {item.addedBy ? ` · bởi ${item.addedBy}` : ""}
                   </span>
                 </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Xóa ${item.email} khỏi danh sách`}
-                  className="text-foreground-subtle hover:text-danger"
-                  onClick={() => setRemoving(item.email)}
-                >
-                  <Trash2 />
-                </Button>
+                {canEdit ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Xóa ${item.email} khỏi danh sách`}
+                    className="text-foreground-subtle hover:text-danger"
+                    onClick={() => setRemoving(item.email)}
+                  >
+                    <Trash2 />
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -204,7 +214,7 @@ export const ProductionWhitelistRoute = () => {
       </SettingsSection>
 
       <ConfirmDialog
-        open={removing !== null}
+        open={canEdit && removing !== null}
         onOpenChange={(open) => !open && !mutations.remove.isPending && setRemoving(null)}
         title="Xóa email khỏi danh sách?"
         description={`${removing ?? ""} sẽ không đăng nhập lần đầu được nữa. Tài khoản đã có (nếu có) vẫn giữ nguyên.`}

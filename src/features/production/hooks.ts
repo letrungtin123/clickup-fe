@@ -92,18 +92,14 @@ export const useProductionAccess = () => {
 };
 
 /**
- * Sidebar entries for the signed-in user's roles; empty for non-members (module hidden). "Xếp hạng"
- * is left out while the board is private for the viewer (G18; the page itself still explains it).
+ * Sidebar entries for the signed-in user's roles; empty for non-members (module hidden). "Xếp hạng" is
+ * there for every member (PD-052).
  */
 export const useProductionNavEntries = () => {
   const me = useProductionMe();
-  const { roles, isAdmin } = useProductionAccess();
-  const scoresPublic = me.data?.settings.scoresPublic ?? true;
+  const { roles } = useProductionAccess();
   const jobView = me.data?.jobPermissions.view;
-  return useMemo(
-    () => visibleNavEntries(roles, { scoresPublic: scoresPublic || isAdmin, jobView }),
-    [roles, isAdmin, scoresPublic, jobView]
-  );
+  return useMemo(() => visibleNavEntries(roles, { jobView }), [roles, jobView]);
 };
 
 // --- Reads ---------------------------------------------------------------------------------------

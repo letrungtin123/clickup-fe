@@ -79,7 +79,11 @@ const task = (overrides: Partial<ProductionTask> = {}): ProductionTask =>
     ...overrides
   });
 
-const renderDetail = (shown: ProductionTask, extra: ProductionTask[] = []) => {
+const renderDetail = (
+  shown: ProductionTask,
+  extra: ProductionTask[] = [],
+  variant: "sheet" | "page" = "page"
+) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } }
   });
@@ -122,7 +126,7 @@ const renderDetail = (shown: ProductionTask, extra: ProductionTask[] = []) => {
     <QueryClientProvider client={client}>
       <SessionValueContext value={session}>
         <MemoryRouter>
-          <TaskDetailView taskId={shown.id} variant="page" onOpenTask={() => undefined} />
+          <TaskDetailView taskId={shown.id} variant={variant} onOpenTask={() => undefined} />
         </MemoryRouter>
       </SessionValueContext>
     </QueryClientProvider>
@@ -199,6 +203,29 @@ describe("TaskDetailView (PD-044 / PD-047)", () => {
     unmount();
     renderDetail({ ...shown, capabilities: caps({ canEdit: true, canDelete: true }) });
     expect(screen.getByRole("button", { name: "Xoá task" })).toBeTruthy();
+  });
+
+  it("the side sheet offers “Mở trang riêng” at the top, in the header beside the job and project; the page does not", () => {
+    const shown = task({
+      lastQcFail: null,
+      qcFailCount: 0,
+      capabilities: caps({ canEdit: true, canDelete: true })
+    });
+    const { unmount } = renderDetail(shown, [], "sheet");
+    // A router link drawn as a ghost button (Base UI gives it the button role, like every Button-rendered link).
+    const open = screen.getByRole("button", { name: "Mở trang riêng" });
+    expect(open.tagName).toBe("A");
+    expect(open.getAttribute("data-to")).toBe(`/production/tasks/${shown.id}`);
+    const header = open.closest("header");
+    expect(header).toBeTruthy();
+    // Same row as the job link, before the title; the bottom keeps only “Xoá task”.
+    expect(open.parentElement).toBe(screen.getByRole("link", { name: "VD JOB-1" }).parentElement);
+    const title = screen.getByRole("heading", { name: "#3 · Retouch" });
+    expect(open.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(header?.contains(screen.getByRole("button", { name: "Xoá task" }))).toBe(false);
+    unmount();
+    renderDetail(shown);
+    expect(screen.queryByText("Mở trang riêng")).toBeNull();
   });
 
   it("asking the Leader to change “Số lượng giao” opens in place — no dialog (PD-047)", async () => {

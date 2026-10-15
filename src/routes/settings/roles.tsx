@@ -34,13 +34,14 @@ import {
   type OrgPermissionGroup
 } from "@/features/permissions/org-catalog";
 import { OrgMatrix, type OrgCellState } from "@/features/permissions/org-matrix";
-import { RetouchMatrix } from "@/features/permissions/retouch-matrix";
+import { RetouchMatrix, RetouchReadOnlyNote } from "@/features/permissions/retouch-matrix";
 import { retouchFixedRules } from "@/features/permissions/retouch-rules";
 import {
   CreateRoleDialog,
   DeleteRoleDialog,
   RenameRoleDialog
 } from "@/features/permissions/role-dialogs";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import { productionErrorMessage } from "@/features/production/errors";
 import {
   useProductionAccess,
@@ -55,8 +56,8 @@ import { qk } from "@/lib/query-keys";
 
 /**
  * Cài đặt → Vai trò & phân quyền (PD-042). One page that follows the department chosen in the header (PD-041):
- *   Photo Retouch — production roles × features: the job permission matrix (PD-036, editable by a production ADMIN
- *                   or the superadmin) and the fixed rules (read-only, retouch-rules.ts);
+ *   Photo Retouch — production roles × features: the job permission matrix (PD-036; read by a production ADMIN,
+ *                   edited by the superadmin only since PD-050) and the fixed rules (read-only, retouch-rules.ts);
  *   Production    — organization roles × project / list / task permissions;
  *   both          — "Chung": channels, knowledge, members, roles (+ where departments are set).
  * Changes are drafted (changed cells tinted) and saved together from the sticky bar. Access: role.view or
@@ -149,7 +150,9 @@ const PermissionsPage = () => {
   // --- Photo Retouch job permissions -------------------------------------------------------------
   const production = useProductionAccess();
   const me = useProductionMe();
+  // A production ADMIN (or the superadmin) reads the matrix; only the superadmin edits it (PD-050).
   const retouchAdmin = production.isAdmin || hasFullAuthority;
+  const retouchEditor = useCanEditProductionConfig();
   const settings = useProductionSettings(view === "PHOTO_RETOUCH" && retouchAdmin);
   const updateSettings = useUpdateSettings();
   const jobSaved = settings.data?.jobPermissions ?? null;
@@ -166,11 +169,7 @@ const PermissionsPage = () => {
     setJobDraft(jobSaved && sameJobPermissions(defaultJobPermissions, jobSaved) ? null : defaultJobPermissions);
 
   const rules = useMemo(
-    () =>
-      retouchFixedRules({
-        scoresPublic: me.data?.settings.scoresPublic,
-        moneyPublic: me.data?.settings.moneyPublic
-      }),
+    () => retouchFixedRules({ moneyPublic: me.data?.settings.moneyPublic }),
     [me.data]
   );
 
@@ -305,7 +304,7 @@ const PermissionsPage = () => {
         <MatrixCard
           title="Photo Retouch"
           actions={
-            retouchAdmin && jobValue ? (
+            retouchEditor && jobValue ? (
               <Button
                 type="button"
                 variant="outline"
@@ -326,9 +325,10 @@ const PermissionsPage = () => {
           description={
             retouchAdmin
               ? "Theo vai trò Photo Retouch (gán ở Cấu hình → Thành viên & vai trò). Dòng có ổ khóa đang cố định theo vai trò."
-              : "Theo vai trò Photo Retouch. Chỉ Quản trị Photo Retouch hoặc Siêu quản trị sửa được; dòng có ổ khóa đang cố định theo vai trò."
+              : "Theo vai trò Photo Retouch. Chỉ Siêu quản trị sửa được; dòng có ổ khóa đang cố định theo vai trò."
           }
         >
+          {retouchAdmin && !retouchEditor ? <RetouchReadOnlyNote /> : null}
           {settings.isError ? (
             <ErrorState size="sm" error={settings.error} onRetry={() => void settings.refetch()} />
           ) : (
@@ -336,9 +336,9 @@ const PermissionsPage = () => {
               value={retouchAdmin ? jobValue : null}
               saved={jobSaved}
               loading={retouchAdmin && settings.isPending}
-              editable={retouchAdmin}
+              editable={retouchEditor}
               disabled={saving}
-              unreadableNote="Chỉ Quản trị Photo Retouch hoặc Siêu quản trị xem và sửa phân quyền Job."
+              unreadableNote="Chỉ Quản trị Photo Retouch hoặc Siêu quản trị xem phân quyền Job; chỉ Siêu quản trị sửa."
               onScope={setScope}
               rules={rules}
             />

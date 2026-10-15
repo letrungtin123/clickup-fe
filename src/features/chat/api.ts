@@ -25,7 +25,7 @@ import {
   type NotifyLevel
 } from "@/contracts/chat";
 import type { RichTextDoc } from "@/contracts/rich-text";
-import { DirectoryCollectionSchema } from "@/contracts/work";
+import { DirectoryCollectionSchema, type DirectoryPurpose } from "@/contracts/work";
 import { api, apiPath } from "@/lib/api/client";
 
 /** Chat API (BE modules/chat/chat.routes.ts). Every response is validated against contracts/chat.ts. */
@@ -169,10 +169,21 @@ export const chatApi = {
       signal
     }),
 
-  /** People picker (mentions are scoped to channel members for private channels and DMs). */
-  directory: (params: { q?: string; channelId?: string; limit?: number }, signal?: AbortSignal) =>
+  /**
+   * People picker (mentions are scoped to channel members for private channels and DMs). `purpose: "dm"`
+   * ("Tin nhắn mới"): open to every member — the colleagues they may message.
+   */
+  directory: (
+    params: { q?: string; channelId?: string; purpose?: DirectoryPurpose; limit?: number },
+    signal?: AbortSignal
+  ) =>
     api.get("/directory/users", DirectoryCollectionSchema, {
-      query: { q: params.q?.trim(), channelId: params.channelId, limit: params.limit ?? 20 },
+      query: {
+        q: params.q?.trim(),
+        channelId: params.channelId,
+        purpose: params.purpose,
+        limit: params.limit ?? 20
+      },
       signal
     })
 };

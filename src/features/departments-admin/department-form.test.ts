@@ -34,13 +34,25 @@ describe("department locks (escalation guard)", () => {
     ).toEqual(["PHOTO_RETOUCH", "PRODUCTION"]);
   });
 
-  it("locks Photo Retouch in Cài đặt for callers who cannot grant production roles", () => {
-    const admin = { departments: ["PHOTO_RETOUCH", "PRODUCTION"] as const, hasFullOrganizationAuthority: false };
+  it("locks Photo Retouch in Cài đặt for everyone but the superadmin (PD-050)", () => {
+    const admin = {
+      departments: ["PHOTO_RETOUCH", "PRODUCTION"] as const,
+      hasFullOrganizationAuthority: false
+    };
     const options = { retouchNeedsProductionAdmin: true };
-    expect(Object.keys(departmentLocks({ ...admin, productionRoles: ["STAFF"] }, options))).toEqual([
-      "PHOTO_RETOUCH"
-    ]);
-    expect(departmentLocks({ ...admin, productionRoles: ["ADMIN"] }, options)).toEqual({});
+    expect(Object.keys(departmentLocks({ ...admin, productionRoles: ["STAFF"] }, options))).toEqual(
+      ["PHOTO_RETOUCH"]
+    );
+    // A production ADMIN no longer grants Photo Retouch roles: only the superadmin does.
+    expect(Object.keys(departmentLocks({ ...admin, productionRoles: ["ADMIN"] }, options))).toEqual(
+      ["PHOTO_RETOUCH"]
+    );
+    expect(
+      departmentLocks(
+        { ...admin, hasFullOrganizationAuthority: true, productionRoles: [] },
+        options
+      )
+    ).toEqual({});
     // The production users admin (production ADMIN only) does not ask for it.
     expect(departmentLocks({ ...admin, productionRoles: [] })).toEqual({});
   });

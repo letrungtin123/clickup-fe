@@ -3,6 +3,7 @@ import { useLocation, useSearchParams } from "react-router";
 
 import { kpiPeriodOfDay } from "@/contracts/production-scores";
 import { PageIntro, SettingsPage } from "@/features/production/components/settings-kit";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import { todayIn } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
 import { KpiReportPanel } from "@/features/production/kpi/components/kpi-report";
@@ -14,9 +15,11 @@ import { closeDaysOf, isPeriod, shiftPeriod } from "@/features/production/scores
 /**
  * /production/settings/kpi-settlement (ADMIN) — SPEC Phase 6: run the settlement of a period (reason
  * + confirmation), the run history, and the KPI report with quarter/year rollups, team totals and Excel
- * export. `?period=YYYY-MM` opens the report on that period; `#bao-cao-kpi` scrolls to it.
+ * export. `?period=YYYY-MM` opens the report on that period; `#bao-cao-kpi` scrolls to it. PD-050: only the
+ * organization superadmin runs / re-runs a period; everyone else keeps the report, its export and the history.
  */
 export const ProductionKpiSettlementRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const me = useProductionMe();
   const location = useLocation();
   const [params] = useSearchParams();
@@ -43,6 +46,7 @@ export const ProductionKpiSettlementRoute = () => {
     <SettingsPage wide className="max-w-[min(100%,80rem)]">
       <PageIntro slug="kpi-settlement" />
       <SettlementRunPanel
+        readOnly={!canEdit}
         currentPeriod={currentPeriod}
         closeDays={closeDays}
         khoanPolicy={settings?.khoanPayPolicy ?? "ALWAYS"}

@@ -22,6 +22,7 @@ import { CreditImportDialog } from "@/features/production/components/credit/cred
 import { CreditVersionDialog } from "@/features/production/components/credit/credit-version-dialog";
 import { downloadText } from "@/features/production/components/credit/download";
 import { DateField } from "@/features/production/components/date-field";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ArchivedToggle,
   PageIntro,
@@ -37,17 +38,19 @@ import {
   matrixToCsv
 } from "@/features/production/credit-matrix";
 import { formatDay, todayIn } from "@/features/production/format";
-import { useCreditMatrix, useProductionAccess, useProductionMe } from "@/features/production/hooks";
+import { useCreditMatrix, useProductionMe } from "@/features/production/hooks";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { sheetOnPhone, touchTargets } from "@/features/production/ui";
 
 /**
  * Credit rules (SPEC Phase 1): projects × processes for a chosen day, cell editor with version
- * history, "new version from…", CSV import (all-or-nothing) and export.
+ * history, "new version from…", CSV import (all-or-nothing) and export. PD-050: only the organization
+ * superadmin sets prices, deletes versions, imports or starts a new version; everyone else reads the
+ * matrix, opens a cell's history and exports the CSV.
  */
 export const ProductionCreditRulesRoute = () => {
   const me = useProductionMe();
-  const access = useProductionAccess();
+  const canEdit = useCanEditProductionConfig();
   const breakpoint = useBreakpoint();
   const timezone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const today = todayIn(timezone);
@@ -61,7 +64,6 @@ export const ProductionCreditRulesRoute = () => {
   /** Last opened cell: focus goes back to it after the editor closes (cell is null by then). */
   const lastCell = useRef<CellRef | null>(null);
   const matrix = useCreditMatrix(at);
-  const canEdit = access.isAdmin;
 
   const index = useMemo(() => indexRules(matrix.data?.rules ?? []), [matrix.data]);
   const view = useMemo(
@@ -122,7 +124,13 @@ export const ProductionCreditRulesRoute = () => {
                 Nhập CSV
               </Button>
             </>
-          ) : null
+          ) : (
+            // Read-only viewers keep the export (PD-050): alone, it keeps its label on phones too.
+            <Button variant="outline" onClick={exportCsv} disabled={coverage.filled === 0}>
+              <Download />
+              Xuất CSV
+            </Button>
+          )
         }
       />
 
@@ -187,7 +195,11 @@ export const ProductionCreditRulesRoute = () => {
           <EmptyState
             icon={Coins}
             title="Chưa có dự án hoặc quy trình"
-            description="Tạo dự án và quy trình trước, hoặc nhập CSV với tùy chọn “Tạo mới nếu chưa có” để tạo cùng lúc."
+            description={
+              canEdit
+                ? "Tạo dự án và quy trình trước, hoặc nhập CSV với tùy chọn “Tạo mới nếu chưa có” để tạo cùng lúc."
+                : "Bảng đơn giá cần có dự án và quy trình."
+            }
             action={
               <>
                 <Button
@@ -245,7 +257,11 @@ export const ProductionCreditRulesRoute = () => {
               đầu đúng ngày {formatDay(at)}
             </span>
             <span>Số trên: điểm/tấm · số dưới: tiền/tấm (— = không có tiền)</span>
-            <span className="hidden md:inline">Phím mũi tên để di chuyển, Enter để sửa.</span>
+            <span className="hidden md:inline">
+              {canEdit
+                ? "Phím mũi tên để di chuyển, Enter để sửa."
+                : "Phím mũi tên để di chuyển, Enter để xem lịch sử."}
+            </span>
           </div>
         ) : null}
       </SettingsSection>
@@ -255,7 +271,11 @@ export const ProductionCreditRulesRoute = () => {
           <DialogContent className={cn("sm:max-w-md", sheetOnPhone)}>
             <DialogHeader className="sr-only">
               <DialogTitle>Đơn giá</DialogTitle>
-              <DialogDescription>Đặt điểm và tiền mỗi tấm cho ô đã chọn.</DialogDescription>
+              <DialogDescription>
+                {canEdit
+                  ? "Đặt điểm và tiền mỗi tấm cho ô đã chọn."
+                  : "Lịch sử đơn giá của ô đã chọn."}
+              </DialogDescription>
             </DialogHeader>
             {editor}
           </DialogContent>

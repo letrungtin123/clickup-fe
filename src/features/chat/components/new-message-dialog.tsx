@@ -13,8 +13,11 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { chatLimits } from "@/contracts/chat";
 import type { UserRef } from "@/contracts/work";
+import { usePermissions } from "@/features/auth/hooks";
+import { P } from "@/features/auth/permissions";
 
 import { useOpenDm } from "../hooks/use-channels";
+import { dmPickLimit } from "../model/channels";
 import { PeoplePicker } from "./people-picker";
 
 export const NewMessageDialog = ({
@@ -40,13 +43,16 @@ const NewMessageForm = ({
   initialUsers: UserRef[];
   onDone: () => void;
 }) => {
-  const [selected, setSelected] = useState<UserRef[]>(initialUsers);
+  const { can } = usePermissions();
+  const canGroup = can(P.ChannelCreate);
+  const max = dmPickLimit(canGroup);
+  const [selected, setSelected] = useState<UserRef[]>(() => initialUsers.slice(0, max));
   const openDm = useOpenDm();
 
   const start = () => {
     if (selected.length === 0) return;
     openDm.mutate(
-      selected.map((user) => user.id),
+      selected.slice(0, max).map((user) => user.id),
       { onSuccess: onDone }
     );
   };
@@ -75,18 +81,25 @@ const NewMessageForm = ({
         <div className="flex min-w-0 flex-col gap-1">
           <DialogTitle>Tin nhắn mới</DialogTitle>
           <DialogDescription>
-            Chọn một người để nhắn riêng, hoặc tối đa {chatLimits.dmOthersMax} người cho nhóm. Nhấn
-            Ctrl/⌘ + Enter để bắt đầu.
+            {canGroup
+              ? `Chọn một người để nhắn riêng, hoặc tối đa ${chatLimits.dmOthersMax} người cho nhóm.`
+              : "Bạn nhắn được 1:1 với đồng nghiệp cùng phòng ban. Chọn một người để bắt đầu."}{" "}
+            <span className="max-sm:hidden">Nhấn Ctrl/⌘ + Enter để bắt đầu.</span>
           </DialogDescription>
         </div>
       </DialogHeader>
       <div className="px-5 py-4">
         <PeoplePicker
           autoFocus
+          purpose="dm"
           selected={selected}
           onChange={setSelected}
-          max={chatLimits.dmOthersMax}
-          maxHint={`Nhóm trò chuyện tối đa ${chatLimits.dmOthersMax + 1} người (gồm bạn).`}
+          max={max}
+          maxHint={
+            canGroup
+              ? `Nhóm trò chuyện tối đa ${chatLimits.dmOthersMax + 1} người (gồm bạn).`
+              : "Bạn nhắn được 1:1 với đồng nghiệp; tạo nhóm cần quyền tạo kênh."
+          }
         />
       </div>
       <DialogFooter className="mx-0 mb-0">

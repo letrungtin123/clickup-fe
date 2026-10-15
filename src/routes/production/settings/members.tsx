@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { FilterX, IdCard, Lock, UserCheck, UserPlus, UsersRound } from "lucide-react";
-import { useCallback, useId, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -42,6 +42,7 @@ import {
 import { inDepartment } from "@/features/departments-admin/department-form";
 import { useDepartmentLocks } from "@/features/departments-admin/use-department-locks";
 import { matchesQuery } from "@/features/production/catalog";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   CustomFieldsForm,
   CustomFieldValue
@@ -80,7 +81,7 @@ import {
   SettingsPage,
   SettingsSection
 } from "@/features/production/components/settings-kit";
-import { TagPicker } from "@/features/production/components/tag-picker";
+import { TagChips, TagPicker } from "@/features/production/components/tag-picker";
 import { toCustomValuesPayload, validateCustomValues } from "@/features/production/custom-fields";
 import { productionErrorMessage } from "@/features/production/errors";
 import { todayIn } from "@/features/production/format";
@@ -131,9 +132,11 @@ const leadsAgain = (member: ProductionMember) =>
  * Admin creates accounts, sets their departments (PD-041), grants Photo Retouch roles
  * (multi-valued), a report team, USER custom fields and tags, disables / re-enables accounts and
  * resets passwords. Tag and custom-field filters (Admin only) live in the URL; the department filter
- * is client-side.
+ * is client-side. PD-050: only the organization superadmin changes anything here; everyone else who
+ * opens the page reads it (roles, team and tags as text, the profile read-only, "Xem job đang dẫn").
  */
 export const ProductionMembersRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const access = useProductionAccess();
   const me = useProductionMe();
   const listFilters = useUrlListFilters("USER");
@@ -221,7 +224,8 @@ export const ProductionMembersRoute = () => {
   const template = [
     "minmax(14rem,1.4fr)",
     "10.5rem",
-    "27rem",
+    // Read-only: role badges instead of the five toggle chips.
+    canEdit ? "27rem" : "16rem",
     "11rem",
     "minmax(10rem,1fr)",
     ...columns.map(() => "minmax(8rem,1fr)"),
@@ -329,19 +333,22 @@ export const ProductionMembersRoute = () => {
       <PageIntro
         slug="members"
         actions={
-          <Button
-            onClick={() => {
-              setCreateKey((value) => value + 1);
-              setCreating(true);
-            }}
-          >
-            <UserPlus />
-            Thêm thành viên
-          </Button>
+          canEdit ? (
+            <Button
+              onClick={() => {
+                setCreateKey((value) => value + 1);
+                setCreating(true);
+              }}
+            >
+              <UserPlus />
+              Thêm thành viên
+            </Button>
+          ) : undefined
         }
       >
-        Tạo tài khoản, chọn phòng ban, gán vai trò Photo Retouch (một người có thể giữ nhiều vai
-        trò), team báo cáo, trường tùy chỉnh và tag; vô hiệu hóa hoặc đặt lại mật khẩu khi cần.
+        {canEdit
+          ? "Tạo tài khoản, chọn phòng ban, gán vai trò Photo Retouch (một người có thể giữ nhiều vai trò), team báo cáo, trường tùy chỉnh và tag; vô hiệu hóa hoặc đặt lại mật khẩu khi cần."
+          : "Thành viên Photo Retouch: phòng ban, vai trò (một người có thể giữ nhiều vai trò), team báo cáo, trường tùy chỉnh và tag."}
       </PageIntro>
 
       <OrphanedJobsPanel notices={orphans} onDismiss={dismissNotice} />
@@ -517,13 +524,14 @@ export const ProductionMembersRoute = () => {
                       columns={columns}
                       lock={lock}
                       lockedRoles={lockedRoles}
+                      readOnly={!canEdit}
                       activating={
                         setActive.isPending && setActive.variables.userId === member.userId
                       }
                       onOpenProfile={() => setProfileOf(member)}
                       onEditDepartments={
                         // Not yourself (you could only remove your own), a superadmin or a protected admin.
-                        lock === null ? () => editDepartments(member) : undefined
+                        canEdit && lock === null ? () => editDepartments(member) : undefined
                       }
                       onAction={(action) => runAction(member, action)}
                       onRolesSaved={(result, jobs) => afterAccountChange(result, jobs, "role")}
@@ -550,43 +558,48 @@ export const ProductionMembersRoute = () => {
         }
         fields={userFields}
         tags={tagList}
+        readOnly={!canEdit}
         onClose={() => setProfileOf(null)}
       />
-      <CreateMemberDialog
-        key={createKey}
-        open={creating}
-        onOpenChange={setCreating}
-        teams={teamList}
-        onCreated={(result, { whitelisted }) => {
-          setCreating(false);
-          setSecret({
-            kind: "created",
-            name: result.member.displayName,
-            email: result.member.email,
-            password: result.temporaryPassword,
-            whitelisted
-          });
-        }}
-      />
-      <TemporaryPasswordDialog secret={secret} onClose={() => setSecret(null)} />
-      <EditDepartmentsDialog
-        target={departmentsOf}
-        locks={departmentLocks}
-        contentClassName={sheetOnPhone}
-        describeError={(error) =>
-          memberErrorMessage(error, { fallback: "Không lưu được phòng ban. Thử lại sau." })
-        }
-        onClose={() => setDepartmentsOf(null)}
-        onSave={(change) =>
-          departmentsOf ? saveDepartments(departmentsOf, change) : Promise.resolve()
-        }
-      />
-      <MemberAccountConfirm
-        request={request}
-        onClose={() => setRequest(null)}
-        onSecret={setSecret}
-        onDeactivated={(member, jobs) => afterAccountChange(member, jobs, "deactivated")}
-      />
+      {canEdit ? (
+        <>
+          <CreateMemberDialog
+            key={createKey}
+            open={creating}
+            onOpenChange={setCreating}
+            teams={teamList}
+            onCreated={(result, { whitelisted }) => {
+              setCreating(false);
+              setSecret({
+                kind: "created",
+                name: result.member.displayName,
+                email: result.member.email,
+                password: result.temporaryPassword,
+                whitelisted
+              });
+            }}
+          />
+          <TemporaryPasswordDialog secret={secret} onClose={() => setSecret(null)} />
+          <EditDepartmentsDialog
+            target={departmentsOf}
+            locks={departmentLocks}
+            contentClassName={sheetOnPhone}
+            describeError={(error) =>
+              memberErrorMessage(error, { fallback: "Không lưu được phòng ban. Thử lại sau." })
+            }
+            onClose={() => setDepartmentsOf(null)}
+            onSave={(change) =>
+              departmentsOf ? saveDepartments(departmentsOf, change) : Promise.resolve()
+            }
+          />
+          <MemberAccountConfirm
+            request={request}
+            onClose={() => setRequest(null)}
+            onSecret={setSecret}
+            onDeactivated={(member, jobs) => afterAccountChange(member, jobs, "deactivated")}
+          />
+        </>
+      ) : null}
       <LedJobsDialog
         member={ledOf ? (items.find((item) => item.userId === ledOf.userId) ?? ledOf) : null}
         onClose={() => setLedOf(null)}
@@ -603,6 +616,7 @@ const MemberRow = ({
   columns,
   lock,
   lockedRoles,
+  readOnly,
   activating,
   onOpenProfile,
   onEditDepartments,
@@ -618,6 +632,8 @@ const MemberRow = ({
   /** Account actions unavailable on this row (yourself, superadmin, org admin), or null. */
   lock: AccountLock | null;
   lockedRoles: Partial<Record<ProductionRole, string>>;
+  /** PD-050: not the organization superadmin — roles, team and tags as text, no account actions. */
+  readOnly: boolean;
   activating: boolean;
   onOpenProfile: () => void;
   /** Absent: the departments are read-only on this row. */
@@ -632,7 +648,10 @@ const MemberRow = ({
   const noRetouch = !superadmin && outsideRetouch(member);
   const rolesLocked = (lock !== null && lock.kind !== "self") || noRetouch;
   const roleLocks = noRetouch ? outsideRetouchLocks : lockedRoles;
-  const canReactivate = !member.active && lock === null;
+  const canReactivate = !readOnly && !member.active && lock === null;
+  const teamName =
+    member.teamId === null ? null : (teams.find((team) => team.id === member.teamId)?.name ?? "—");
+  const hasTags = member.tagIds.some((id) => tags.some((tag) => tag.id === id));
   const teamChoices = teams.filter((team) => team.active || team.id === member.teamId);
   const teamItems = [
     { value: NONE, label: "Chưa có team" },
@@ -733,7 +752,7 @@ const MemberRow = ({
         >
           <IdCard />
         </Button>
-        <MemberActionsMenu member={member} lock={lock} onAction={onAction} />
+        <MemberActionsMenu member={member} lock={lock} readOnly={readOnly} onAction={onAction} />
       </div>
 
       <CustomFieldChips
@@ -754,17 +773,21 @@ const MemberRow = ({
       </div>
 
       <div className="col-span-2 flex flex-col gap-1.5 md:col-span-1 md:px-3 md:py-2">
-        <RoleToggleGroup
-          aria-label={`Vai trò Photo Retouch của ${member.displayName}`}
-          value={member.roles}
-          locked={roleLocks}
-          onChange={(roles) =>
-            save({ roles }, `Đã cập nhật vai trò của ${member.displayName}`, onRolesSaved)
-          }
-          className="max-sm:[&_button]:h-9 pointer-coarse:[&_button]:h-8"
-        />
+        {readOnly ? (
+          <RoleBadges roles={member.roles} />
+        ) : (
+          <RoleToggleGroup
+            aria-label={`Vai trò Photo Retouch của ${member.displayName}`}
+            value={member.roles}
+            locked={roleLocks}
+            onChange={(roles) =>
+              save({ roles }, `Đã cập nhật vai trò của ${member.displayName}`, onRolesSaved)
+            }
+            className="max-sm:[&_button]:h-9 pointer-coarse:[&_button]:h-8"
+          />
+        )}
         {/* Touch screens have no tooltip: say why the chips are locked. */}
-        {rolesLocked ? (
+        {rolesLocked && !readOnly ? (
           <span className="flex items-start gap-1 text-[11px] leading-snug text-foreground-subtle md:hidden">
             <Lock className="mt-px size-3 shrink-0" aria-hidden="true" />
             {noRetouch
@@ -776,43 +799,75 @@ const MemberRow = ({
         ) : null}
       </div>
 
-      <div className="col-span-2 min-w-0 md:col-span-1 md:px-3 md:py-2">
-        <Select
-          items={teamItems}
-          value={member.teamId ?? NONE}
-          onValueChange={(value: string | null) => {
-            const teamId = !value || value === NONE ? null : value;
-            if (teamId === member.teamId) return;
-            const name = teams.find((team) => team.id === teamId)?.name;
-            save(
-              { teamId },
-              name ? `${member.displayName} vào team ${name}` : `${member.displayName} đã rời team`
-            );
-          }}
-        >
-          <SelectTrigger size="sm" className="w-full" aria-label={`Team của ${member.displayName}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {teamItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {readOnly ? (
+        <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[13px] md:col-span-1 md:px-3 md:py-2">
+          {/* Phones have no column header. */}
+          <span className="shrink-0 text-xs text-foreground-muted md:hidden">Team:</span>
+          <span className={cn("truncate", teamName === null && "text-foreground-subtle")}>
+            {teamName ?? "Chưa có team"}
+          </span>
+        </div>
+      ) : (
+        <div className="col-span-2 min-w-0 md:col-span-1 md:px-3 md:py-2">
+          <Select
+            items={teamItems}
+            value={member.teamId ?? NONE}
+            onValueChange={(value: string | null) => {
+              const teamId = !value || value === NONE ? null : value;
+              if (teamId === member.teamId) return;
+              const name = teams.find((team) => team.id === teamId)?.name;
+              save(
+                { teamId },
+                name
+                  ? `${member.displayName} vào team ${name}`
+                  : `${member.displayName} đã rời team`
+              );
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-full"
+              aria-label={`Team của ${member.displayName}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {teamItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-      <div className="col-span-2 min-w-0 md:col-span-1 md:px-3 md:py-2">
-        <TagPicker
-          variant="cell"
-          tags={tags}
-          value={member.tagIds}
-          onChange={(tagIds) => save({ tagIds }, `Đã cập nhật tag của ${member.displayName}`)}
-          aria-label={`Tag của ${member.displayName}`}
-          className="max-sm:min-h-10 max-sm:border max-sm:border-input max-sm:px-2"
-        />
-      </div>
+      {readOnly ? (
+        // Phones: no empty line when the member has no tag.
+        <div
+          className={cn(
+            "col-span-2 flex min-w-0 items-center md:col-span-1 md:px-3 md:py-2",
+            !hasTags && "max-md:hidden"
+          )}
+        >
+          {hasTags ? (
+            <TagChips tags={tags} tagIds={member.tagIds} max={4} />
+          ) : (
+            <span className="text-[13px] text-foreground-subtle">—</span>
+          )}
+        </div>
+      ) : (
+        <div className="col-span-2 min-w-0 md:col-span-1 md:px-3 md:py-2">
+          <TagPicker
+            variant="cell"
+            tags={tags}
+            value={member.tagIds}
+            onChange={(tagIds) => save({ tagIds }, `Đã cập nhật tag của ${member.displayName}`)}
+            aria-label={`Tag của ${member.displayName}`}
+            className="max-sm:min-h-10 max-sm:border max-sm:border-input max-sm:px-2"
+          />
+        </div>
+      )}
 
       {columns.map((field) => (
         <div key={field.id} className="hidden min-w-0 px-3 py-2 text-[13px] md:block">
@@ -829,11 +884,14 @@ const MemberProfileDialog = ({
   member,
   fields,
   tags,
+  readOnly,
   onClose
 }: {
   member: ProductionMember | null;
   fields: readonly CustomField[];
   tags: readonly Tag[];
+  /** PD-050: everyone but the organization superadmin sees the tags and fields, no form. */
+  readOnly: boolean;
   onClose: () => void;
 }) => {
   const ids = useId();
@@ -865,6 +923,26 @@ const MemberProfileDialog = ({
     );
   };
 
+  const columnClass = "flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]";
+  const header = (
+    <DialogHeader className="border-b px-4 pt-4 pb-3">
+      <DialogTitle className="flex items-center gap-2">
+        {member ? (
+          <UserAvatar
+            user={{
+              id: member.userId,
+              displayName: member.displayName,
+              avatarUrl: member.avatarUrl
+            }}
+            size="sm"
+          />
+        ) : null}
+        <span className="truncate">Hồ sơ Photo Retouch · {member?.displayName}</span>
+      </DialogTitle>
+      <DialogDescription>{member ? <RoleBadges roles={member.roles} /> : null}</DialogDescription>
+    </DialogHeader>
+  );
+
   return (
     <Dialog open={member !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
@@ -873,74 +951,90 @@ const MemberProfileDialog = ({
           sheetOnPhone
         )}
       >
-        <form
-          noValidate
-          className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col max-sm:max-h-[92dvh]"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <DialogHeader className="border-b px-4 pt-4 pb-3">
-            <DialogTitle className="flex items-center gap-2">
-              {member ? (
-                <UserAvatar
-                  user={{
-                    id: member.userId,
-                    displayName: member.displayName,
-                    avatarUrl: member.avatarUrl
-                  }}
-                  size="sm"
-                />
-              ) : null}
-              <span className="truncate">Hồ sơ Photo Retouch · {member?.displayName}</span>
-            </DialogTitle>
-            <DialogDescription>
-              {member ? <RoleBadges roles={member.roles} /> : null}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-            <Field>
-              <FieldLabel id={`${ids}-tags`}>Tag</FieldLabel>
-              <TagPicker
-                tags={tags}
-                value={tagIds}
-                onChange={setTagIds}
-                aria-label="Tag của thành viên"
-              />
-            </Field>
-            {fields.length > 0 ? (
-              <CustomFieldsForm
-                fields={fields}
-                values={values}
-                onChange={(next) => {
-                  setValues(next);
-                  setErrors({});
-                  setFormError(null);
-                }}
-                errors={errors}
-                idPrefix={ids}
-                today={today}
-              />
-            ) : (
-              <p className="rounded-lg bg-muted px-3 py-2 text-[13px] text-foreground-muted">
-                Chưa có trường tùy chỉnh cho thành viên. Thêm trường (ví dụ “Năng lực”) trong mục
-                Trường tùy chỉnh.
-              </p>
-            )}
-            <FormAlert>{formError}</FormAlert>
+        {readOnly ? (
+          <div className={columnClass}>
+            {header}
+            <dl className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 text-[13px]">
+              <ProfileFact label="Tag">
+                {member && tags.some((tag) => member.tagIds.includes(tag.id)) ? (
+                  <TagChips tags={tags} tagIds={member.tagIds} max={50} />
+                ) : (
+                  <span className="text-foreground-subtle">Chưa có tag</span>
+                )}
+              </ProfileFact>
+              {fields.map((field) => (
+                <ProfileFact key={field.id} label={field.label}>
+                  <CustomFieldValue field={field} value={member?.customValues[field.key]} />
+                </ProfileFact>
+              ))}
+            </dl>
+            <DialogFooter className="mx-0 mb-0 px-4 py-3">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Đóng
+              </Button>
+            </DialogFooter>
           </div>
-          <DialogFooter className="mx-0 mb-0 px-4 py-3">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Hủy
-            </Button>
-            <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? <Spinner /> : null}
-              Lưu hồ sơ
-            </Button>
-          </DialogFooter>
-        </form>
+        ) : (
+          <form
+            noValidate
+            className={columnClass}
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            {header}
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+              <Field>
+                <FieldLabel id={`${ids}-tags`}>Tag</FieldLabel>
+                <TagPicker
+                  tags={tags}
+                  value={tagIds}
+                  onChange={setTagIds}
+                  aria-label="Tag của thành viên"
+                />
+              </Field>
+              {fields.length > 0 ? (
+                <CustomFieldsForm
+                  fields={fields}
+                  values={values}
+                  onChange={(next) => {
+                    setValues(next);
+                    setErrors({});
+                    setFormError(null);
+                  }}
+                  errors={errors}
+                  idPrefix={ids}
+                  today={today}
+                />
+              ) : (
+                <p className="rounded-lg bg-muted px-3 py-2 text-[13px] text-foreground-muted">
+                  Chưa có trường tùy chỉnh cho thành viên. Thêm trường (ví dụ “Năng lực”) trong mục
+                  Trường tùy chỉnh.
+                </p>
+              )}
+              <FormAlert>{formError}</FormAlert>
+            </div>
+            <DialogFooter className="mx-0 mb-0 px-4 py-3">
+              <Button type="button" variant="ghost" onClick={onClose}>
+                Hủy
+              </Button>
+              <Button type="submit" disabled={update.isPending}>
+                {update.isPending ? <Spinner /> : null}
+                Lưu hồ sơ
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
 };
+
+/** One line of the read-only profile: label above the value on phones, beside it from `sm`. */
+const ProfileFact = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="grid gap-1 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
+    <dt className="text-xs font-medium text-foreground-muted sm:pt-0.5">{label}</dt>
+    <dd className="flex min-w-0">{children}</dd>
+  </div>
+);

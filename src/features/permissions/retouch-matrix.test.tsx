@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { defaultJobPermissions } from "@/contracts/production-catalog";
 
-import { RetouchMatrix } from "./retouch-matrix";
+import { RetouchMatrix, RetouchReadOnlyNote } from "./retouch-matrix";
 import { retouchFixedRules } from "./retouch-rules";
 
 afterEach(cleanup);
@@ -19,7 +19,7 @@ const renderMatrix = (props: Partial<Parameters<typeof RetouchMatrix>[0]> = {}) 
       disabled={false}
       unreadableNote="Chỉ Quản trị xem được."
       onScope={vi.fn()}
-      rules={retouchFixedRules({ scoresPublic: true, moneyPublic: false })}
+      rules={retouchFixedRules({ moneyPublic: false })}
       {...props}
     />
   );
@@ -30,7 +30,9 @@ describe("RetouchMatrix (PD-042)", () => {
     expect(screen.getByRole("combobox", { name: "Xem job — Leader" }).textContent).toContain(
       "Tất cả"
     );
-    expect(screen.getByRole("combobox", { name: "Xoá — QC" }).textContent).toContain("Của mình");
+    // PD-051: QC no longer deletes tasks by default.
+    expect(screen.getByRole("combobox", { name: "Xoá — QC" }).textContent).toContain("Không");
+    expect(screen.getByRole("combobox", { name: "Sửa — QC" }).textContent).toContain("Của mình");
     expect(screen.queryByRole("combobox", { name: /Quản trị/ })).toBeNull();
   });
 
@@ -84,9 +86,28 @@ describe("RetouchMatrix (PD-042)", () => {
   it("is read-only without edit rights, and explains when the matrix is not readable", () => {
     const { unmount } = renderMatrix({ editable: false });
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+    // PD-050: only the superadmin edits (4 job rows × 4 roles; ADMIN is fixed).
+    expect(screen.getAllByTitle("Chỉ Siêu quản trị sửa được")).toHaveLength(16);
     unmount();
     renderMatrix({ value: null, saved: null, editable: false });
     expect(screen.getByText("Chỉ Quản trị xem được.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Đổi trạng thái job/ })).toBeNull();
+  });
+
+  it("the read-only note names the superadmin (PD-050)", () => {
+    render(<RetouchReadOnlyNote />);
+    expect(screen.getByText("Chỉ Siêu quản trị chỉnh sửa phân quyền Photo Retouch.")).toBeTruthy();
+  });
+
+  it("shows “Cấu hình Photo Retouch” as view-only for ADMIN (PD-050)", () => {
+    renderMatrix();
+    expect(
+      screen.getByRole("button", { name: "Cấu hình Photo Retouch — Quản trị: một phần — Chỉ xem" })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Cấu hình Photo Retouch — Account: một phần — Xem Khách hàng, Trạng thái & luồng chuyển"
+      })
+    ).toBeTruthy();
   });
 });

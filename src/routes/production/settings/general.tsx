@@ -35,6 +35,7 @@ import {
   SettingsPage,
   SettingsSection
 } from "@/features/production/components/settings-kit";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import { productionErrorMessage } from "@/features/production/errors";
 import {
   closeDayChange,
@@ -85,6 +86,7 @@ const formSchema = z.object({
   kpiDefaultLeader: decimalIn(0, 1_000_000, kpiMessage),
   kpiProrateLeave: z.boolean(),
   khoanPayPolicy: KhoanPayPolicySchema,
+  /** Retired (PD-052): no control; the stored value is sent back unchanged so the PATCH stays complete. */
   scoresPublic: z.boolean(),
   moneyPublic: z.boolean(),
   dueSoonHours: intIn(1, 72, "Từ 1 đến 72 giờ."),
@@ -108,8 +110,12 @@ const toForm = (settings: ProductionSettings): FormValues => ({
 
 const toNumber = (value: string) => Number(value.replace(",", "."));
 
-/** Organization-wide production settings (Admin). Timezone is fixed server-side. */
+/**
+ * Organization-wide production settings (Admin). Timezone is fixed server-side. PD-050: only the organization
+ * superadmin changes them; everyone else reads the values as text (no inputs, switches or save bar).
+ */
 export const ProductionGeneralRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const settings = useProductionSettings();
   return (
     <SettingsPage>
@@ -123,13 +129,31 @@ export const ProductionGeneralRoute = () => {
       ) : settings.isError ? (
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />
       ) : (
-        <SettingsForm settings={settings.data} />
+        <SettingsForm settings={settings.data} readOnly={!canEdit} />
       )}
     </SettingsPage>
   );
 };
 
-const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
+/** A setting's value for a read-only viewer, in place of its control. */
+const ReadOnlyValue = ({ children, muted = false }: { children: ReactNode; muted?: boolean }) => (
+  <span
+    className={cn(
+      "inline-flex min-h-8 items-center text-[13px] font-medium tabular-nums",
+      muted && "text-foreground-muted"
+    )}
+  >
+    {children}
+  </span>
+);
+
+const SettingsForm = ({
+  settings,
+  readOnly
+}: {
+  settings: ProductionSettings;
+  readOnly: boolean;
+}) => {
   const ids = useId();
   const update = useUpdateSettings();
   const { register, control, handleSubmit, formState, reset, setError } = useForm<FormValues>({
@@ -186,6 +210,21 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
     suffix: string
   ) => {
     const error = formState.errors[name]?.message;
+    if (readOnly) {
+      return (
+        <SettingRow
+          labelId={`${ids}-${name}`}
+          label={label}
+          hint={hint}
+          control={
+            <ReadOnlyValue>
+              {toForm(settings)[name].replace(".", ",")}
+              <span className="ml-1.5 font-normal text-foreground-muted">{suffix}</span>
+            </ReadOnlyValue>
+          }
+        />
+      );
+    }
     return (
       <SettingRow
         htmlFor={`${ids}-${name}`}
@@ -212,7 +251,10 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
     <form
       noValidate
       className="flex flex-col gap-4 pb-20"
-      onSubmit={(event) => void onSubmit(event)}
+      onSubmit={(event) => {
+        if (readOnly) event.preventDefault();
+        else void onSubmit(event);
+      }}
     >
       <SettingsSection
         title="KPI"
@@ -225,43 +267,51 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
             hint={<CloseDayHint plan={plan} closeDay={closeDay} />}
             error={formState.errors.kpiCloseDay?.message}
             control={
-              <Controller
-                control={control}
-                name="kpiCloseDay"
-                render={({ field }) => (
-                  <div className="flex items-center gap-2">
-                    <Select
-                      items={closeDayItems}
-                      value={field.value}
-                      onValueChange={(next: string | null) => {
-                        if (next) field.onChange(next);
-                      }}
-                    >
-                      <SelectTrigger
-                        aria-labelledby={`${ids}-kpiCloseDay`}
-                        aria-invalid={Boolean(formState.errors.kpiCloseDay)}
-                        onBlur={field.onBlur}
-                        className="w-28"
+              readOnly ? (
+                <ReadOnlyValue>
+                  {settings.kpiCloseDay === kpiCloseDayEndOfMonth
+                    ? "Cuối tháng"
+                    : `Ngày ${settings.kpiCloseDay} hằng tháng`}
+                </ReadOnlyValue>
+              ) : (
+                <Controller
+                  control={control}
+                  name="kpiCloseDay"
+                  render={({ field }) => (
+                    <div className="flex items-center gap-2">
+                      <Select
+                        items={closeDayItems}
+                        value={field.value}
+                        onValueChange={(next: string | null) => {
+                          if (next) field.onChange(next);
+                        }}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {closeDayItems.map((item) => (
-                          <Fragment key={item.value}>
-                            {item.value === String(kpiCloseDayEndOfMonth) ? (
-                              <SelectSeparator />
-                            ) : null}
-                            <SelectItem value={item.value}>{item.label}</SelectItem>
-                          </Fragment>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <span className="w-16 text-xs whitespace-nowrap text-foreground-muted">
-                      {closeDay === kpiCloseDayEndOfMonth ? "" : "hằng tháng"}
-                    </span>
-                  </div>
-                )}
-              />
+                        <SelectTrigger
+                          aria-labelledby={`${ids}-kpiCloseDay`}
+                          aria-invalid={Boolean(formState.errors.kpiCloseDay)}
+                          onBlur={field.onBlur}
+                          className="w-28"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {closeDayItems.map((item) => (
+                            <Fragment key={item.value}>
+                              {item.value === String(kpiCloseDayEndOfMonth) ? (
+                                <SelectSeparator />
+                              ) : null}
+                              <SelectItem value={item.value}>{item.label}</SelectItem>
+                            </Fragment>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="w-16 text-xs whitespace-nowrap text-foreground-muted">
+                        {closeDay === kpiCloseDayEndOfMonth ? "" : "hằng tháng"}
+                      </span>
+                    </div>
+                  )}
+                />
+              )
             }
           />
           {numberField(
@@ -277,6 +327,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
             "điểm"
           )}
           <SwitchRow
+            readOnly={readOnly}
             control={control}
             name="kpiProrateLeave"
             label="Tính KPI theo ngày nghỉ"
@@ -291,21 +342,27 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
                 value={field.value}
                 onChange={field.onChange}
                 saved={settings.khoanPayPolicy}
+                readOnly={readOnly}
               />
             )}
           />
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Minh bạch" description="Ai được xem điểm và tiền của người khác.">
+      <SettingsSection
+        title="Minh bạch"
+        description="Ai được xem tiền của người khác. Điểm luôn công khai."
+      >
         <div className="divide-y">
-          <SwitchRow
-            control={control}
-            name="scoresPublic"
+          {/* PD-052: the board, Điểm cá nhân and task scores are always open — a fixed value, not a switch. */}
+          <ReadOnlyRow
             label="Công khai bảng điểm"
-            hint="Mọi người thấy xếp hạng điểm và số tấm của nhau. Tắt để chỉ chính chủ và Quản trị xem."
+            hint="Mọi thành viên Photo Retouch luôn xem được xếp hạng, Điểm cá nhân và điểm từng task của nhau (PD-052). Tiền Khoán theo cài đặt bên dưới."
+            value="Luôn bật"
+            muted
           />
           <SwitchRow
+            readOnly={readOnly}
             control={control}
             name="moneyPublic"
             label="Công khai tiền công"
@@ -337,6 +394,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
       <SettingsSection title="Chat">
         <div className="divide-y">
           <SwitchRow
+            readOnly={readOnly}
             control={control}
             name="chatAttachmentsEnabled"
             label="Cho phép gửi tệp trong chat"
@@ -352,7 +410,7 @@ const SettingsForm = ({ settings }: { settings: ProductionSettings }) => {
       <FormAlert>{formState.errors.root?.message}</FormAlert>
 
       <AnimatePresence>
-        {dirty ? (
+        {dirty && !readOnly ? (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -441,12 +499,15 @@ const KhoanPolicyRow = ({
   labelId,
   value,
   onChange,
-  saved
+  saved,
+  readOnly
 }: {
   labelId: string;
   value: KhoanPayPolicy;
   onChange: (value: KhoanPayPolicy) => void;
   saved: KhoanPayPolicy;
+  /** PD-050: both cards stay visible (the chosen one highlighted) but cannot be picked. */
+  readOnly: boolean;
 }) => (
   <div className="flex flex-col gap-2.5 px-4 py-3.5 md:px-5">
     <div className="flex min-w-0 flex-col gap-0.5">
@@ -470,10 +531,11 @@ const KhoanPolicyRow = ({
             type="button"
             role="radio"
             aria-checked={checked}
+            disabled={readOnly}
             onClick={() => onChange(policy)}
             className={cn(
               "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
-              checked ? "border-brand/50 bg-brand-soft" : "hover:bg-surface-hover"
+              checked ? "border-brand/50 bg-brand-soft" : !readOnly && "hover:bg-surface-hover"
             )}
           >
             <span
@@ -543,33 +605,66 @@ const SettingRow = ({
   </div>
 );
 
+/** A label + hint with a value as text on the right: a read-only switch, or a setting that is no longer configurable. */
+const ReadOnlyRow = ({
+  label,
+  hint,
+  value,
+  muted = false
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  muted?: boolean;
+}) => (
+  <div className="flex items-center gap-6 px-4 py-3.5 md:px-5">
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="text-[13px] font-medium">{label}</span>
+      <span className="text-xs leading-relaxed text-foreground-muted">{hint}</span>
+    </span>
+    <ReadOnlyValue muted={muted}>{value}</ReadOnlyValue>
+  </div>
+);
+
 type BooleanField = Extract<
   FieldPath<FormValues>,
-  "kpiProrateLeave" | "scoresPublic" | "moneyPublic" | "chatAttachmentsEnabled"
+  "kpiProrateLeave" | "moneyPublic" | "chatAttachmentsEnabled"
 >;
 
 const SwitchRow = ({
   control,
   name,
   label,
-  hint
+  hint,
+  readOnly
 }: {
   control: Control<FormValues>;
   name: BooleanField;
   label: string;
   hint: string;
+  /** PD-050: "Bật" / "Tắt" as text instead of the switch. */
+  readOnly: boolean;
 }) => (
   <Controller
     control={control}
     name={name}
-    render={({ field }) => (
-      <label className="flex cursor-pointer items-center gap-6 px-4 py-3.5 md:px-5">
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-[13px] font-medium">{label}</span>
-          <span className="text-xs leading-relaxed text-foreground-muted">{hint}</span>
-        </span>
-        <Switch checked={field.value} onCheckedChange={field.onChange} onBlur={field.onBlur} />
-      </label>
-    )}
+    render={({ field }) =>
+      readOnly ? (
+        <ReadOnlyRow
+          label={label}
+          hint={hint}
+          value={field.value ? "Bật" : "Tắt"}
+          muted={!field.value}
+        />
+      ) : (
+        <label className="flex cursor-pointer items-center gap-6 px-4 py-3.5 md:px-5">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[13px] font-medium">{label}</span>
+            <span className="text-xs leading-relaxed text-foreground-muted">{hint}</span>
+          </span>
+          <Switch checked={field.value} onCheckedChange={field.onChange} onBlur={field.onBlur} />
+        </label>
+      )
+    }
   />
 );

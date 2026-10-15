@@ -19,6 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProductionProject } from "@/contracts/production-catalog";
 import { matchesQuery, visibleRows } from "@/features/production/catalog";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ActiveState,
   ArchivedToggle,
@@ -38,12 +39,17 @@ import { sheetOnPhone } from "@/features/production/ui";
 const conflict = "Mã dự án đã tồn tại (không phân biệt hoa thường). Hãy chọn mã khác.";
 const grid =
   "md:grid-cols-[6rem_minmax(0,1fr)_6.5rem_2.25rem] md:gap-3 lg:grid-cols-[7rem_minmax(0,1fr)_7rem_2.25rem] lg:gap-4";
+/** Read-only viewers have no row menu: no actions column. */
+const readOnlyGrid =
+  "md:grid-cols-[6rem_minmax(0,1fr)_6.5rem] md:gap-3 lg:grid-cols-[7rem_minmax(0,1fr)_7rem] lg:gap-4";
 
 /**
  * Projects (credit lookup is per project × process). Codes are unique case-insensitively. The form is
  * Mã · Tên dự án · Mô tả only (owner, 2026-10-13); client and QC buffer are no longer entered here.
+ * PD-050: only the organization superadmin adds, edits or archives projects; everyone else reads the list.
  */
 export const ProductionProjectsRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const projects = useProductionProjects();
   const mutations = useProjectMutations();
   const [term, setTerm] = useState("");
@@ -82,10 +88,12 @@ export const ProductionProjectsRoute = () => {
       <PageIntro
         slug="projects"
         actions={
-          <Button onClick={() => setDialog({ project: null })}>
-            <Plus />
-            Thêm dự án
-          </Button>
+          canEdit ? (
+            <Button onClick={() => setDialog({ project: null })}>
+              <Plus />
+              Thêm dự án
+            </Button>
+          ) : undefined
         }
       />
       <SettingsSection>
@@ -112,13 +120,13 @@ export const ProductionProjectsRoute = () => {
         <div
           className={cn(
             "hidden border-b px-4 py-2.5 text-xs font-medium text-foreground-muted md:grid",
-            grid
+            canEdit ? grid : readOnlyGrid
           )}
         >
           <span>Mã</span>
           <span>Tên dự án · Mô tả</span>
           <span>Trạng thái</span>
-          <span className="sr-only">Thao tác</span>
+          {canEdit ? <span className="sr-only">Thao tác</span> : null}
         </div>
         {projects.isPending ? (
           <RowsSkeleton rows={6} />
@@ -131,11 +139,13 @@ export const ProductionProjectsRoute = () => {
             title={items.length === 0 ? "Chưa có dự án" : "Không có dự án phù hợp"}
             description={
               items.length === 0
-                ? "Tạo dự án (mã viết tắt, tên, mô tả) hoặc nhập bảng đơn giá CSV với tùy chọn tạo dự án mới."
+                ? canEdit
+                  ? "Tạo dự án (mã viết tắt, tên, mô tả) hoặc nhập bảng đơn giá CSV với tùy chọn tạo dự án mới."
+                  : undefined
                 : "Thử từ khóa khác hoặc hiện mục đã lưu trữ."
             }
             action={
-              items.length === 0 ? (
+              items.length === 0 && canEdit ? (
                 <Button size="sm" onClick={() => setDialog({ project: null })}>
                   <Plus />
                   Thêm dự án
@@ -149,44 +159,40 @@ export const ProductionProjectsRoute = () => {
               <li
                 key={project.id}
                 className={cn(
-                  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-2.5",
-                  grid,
+                  "grid items-center gap-x-3 gap-y-1 px-4 py-2.5",
+                  canEdit
+                    ? "grid-cols-[auto_minmax(0,1fr)_auto]"
+                    : "grid-cols-[auto_minmax(0,1fr)]",
+                  canEdit ? grid : readOnlyGrid,
                   !project.active && "bg-muted/30"
                 )}
               >
                 <span className="justify-self-start rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold">
                   {project.code}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setDialog({ project })}
-                  className="flex min-w-0 flex-col justify-center self-stretch rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span
-                    className={cn(
-                      "truncate text-[13px] font-medium hover:text-brand-text",
-                      !project.active && "text-foreground-muted"
-                    )}
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => setDialog({ project })}
+                    className="flex min-w-0 flex-col justify-center self-stretch rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {project.name}
+                    <ProjectName project={project} editable />
+                  </button>
+                ) : (
+                  <div className="flex min-w-0 flex-col justify-center self-stretch">
+                    <ProjectName project={project} editable={false} />
+                  </div>
+                )}
+                {canEdit ? (
+                  <span className="col-start-3 row-start-1 justify-self-end md:col-start-4">
+                    <RowMenu
+                      label={project.code}
+                      active={project.active}
+                      onEdit={() => setDialog({ project })}
+                      onToggleActive={() => toggleActive(project)}
+                    />
                   </span>
-                  {project.description ? (
-                    <span
-                      className="truncate text-xs text-foreground-muted"
-                      title={project.description}
-                    >
-                      {project.description}
-                    </span>
-                  ) : null}
-                </button>
-                <span className="col-start-3 row-start-1 justify-self-end md:col-start-4">
-                  <RowMenu
-                    label={project.code}
-                    active={project.active}
-                    onEdit={() => setDialog({ project })}
-                    onToggleActive={() => toggleActive(project)}
-                  />
-                </span>
+                ) : null}
                 <ActiveState
                   active={project.active}
                   className="hidden md:col-start-3 md:row-start-1 md:inline-flex"
@@ -197,15 +203,36 @@ export const ProductionProjectsRoute = () => {
         )}
       </SettingsSection>
 
-      <ProjectDialog
-        key={dialog?.project?.id ?? "new"}
-        open={dialog !== null}
-        project={dialog?.project ?? null}
-        onClose={() => setDialog(null)}
-      />
+      {canEdit ? (
+        <ProjectDialog
+          key={dialog?.project?.id ?? "new"}
+          open={dialog !== null}
+          project={dialog?.project ?? null}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
     </SettingsPage>
   );
 };
+
+const ProjectName = ({ project, editable }: { project: ProductionProject; editable: boolean }) => (
+  <>
+    <span
+      className={cn(
+        "truncate text-[13px] font-medium",
+        editable && "hover:text-brand-text",
+        !project.active && "text-foreground-muted"
+      )}
+    >
+      {project.name}
+    </span>
+    {project.description ? (
+      <span className="truncate text-xs text-foreground-muted" title={project.description}>
+        {project.description}
+      </span>
+    ) : null}
+  </>
+);
 
 const ProjectDialog = ({
   open,

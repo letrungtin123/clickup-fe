@@ -206,7 +206,8 @@ export const validateLeaveDraft = (draft: LeaveDraft, today: string): string | n
     return `Mỗi đơn nghỉ tối đa ${leaveLimits.maxRequestDays} ngày.`;
   }
   if (draft.fromDate < shiftDay(today, -leaveLimits.maxPastDays)) {
-    return `Không thể xin nghỉ cho ngày đã qua quá ${leaveLimits.maxPastDays} ngày.`;
+    // PD-051: maxPastDays is 0 — never in the past.
+    return "Không thể xin nghỉ cho ngày đã qua — chọn từ hôm nay trở đi.";
   }
   if (draft.fromDate > shiftDay(today, leaveLimits.maxFutureDays)) {
     return `Chỉ có thể xin nghỉ trước tối đa ${leaveLimits.maxFutureDays} ngày.`;

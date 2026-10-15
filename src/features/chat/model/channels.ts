@@ -9,6 +9,13 @@ import {
 
 export type ChannelLike = Pick<ChatChannel, "kind" | "name" | "participants">;
 
+/**
+ * How many people the viewer may pick for a new DM: group conversations need the right to create
+ * channels; everyone else messages one colleague at a time (the API enforces both).
+ */
+export const dmPickLimit = (canCreateGroups: boolean) =>
+  canCreateGroups ? chatLimits.dmOthersMax : 1;
+
 /** Display name: "#name" channels use their name; DMs list the other participants. */
 export const channelTitle = (channel: ChannelLike) => {
   if (!isDirectKind(channel.kind)) {

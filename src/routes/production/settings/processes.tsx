@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Process } from "@/contracts/production-catalog";
 import { hasDuplicateName, nextSortOrder } from "@/features/production/catalog";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ActiveState,
   ArchivedToggle,
@@ -38,9 +39,11 @@ const qcConflict = "Chỉ được có một quy trình QC đang dùng. Bỏ QC 
  * process (Checking, PD-037): a normal work line done by the QC person, whose points are recorded at
  * its Done at the project's Checking rate (Khoán points on a Khoán shift). A process nobody has used
  * yet can be deleted; once tasks, rates or scores refer to it the API answers 409 PROCESS_IN_USE and
- * it can only be archived.
+ * it can only be archived. PD-050: only the organization superadmin adds, renames, reorders, flags,
+ * archives or deletes processes; everyone else reads the list (QC shown as a badge).
  */
 export const ProductionProcessesRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const processes = useProcesses();
   const mutations = useProcessMutations();
   const reorder = useReorderProcesses();
@@ -127,6 +130,35 @@ export const ProductionProcessesRoute = () => {
     });
   };
 
+  const qcBadge = (process: Process) =>
+    process.isQc ? (
+      <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-success-soft px-2 text-[11px] font-medium text-success">
+        <BadgeCheck className="size-3" aria-hidden="true" />
+        QC
+      </span>
+    ) : null;
+
+  /** Read-only viewers (PD-050): name + QC badge, no rename / switch / menu. */
+  const readOnlyRow = (process: Process) => (
+    <div
+      className={cn(
+        "flex min-h-11 items-center gap-2 px-4 py-2 md:px-5",
+        !process.active && "bg-muted/30"
+      )}
+    >
+      <span
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2 text-[13px] font-medium",
+          !process.active && "text-foreground-muted"
+        )}
+      >
+        <span className="truncate">{process.name}</span>
+        {qcBadge(process)}
+      </span>
+      {process.active ? null : <ActiveState active={false} />}
+    </div>
+  );
+
   const row = (process: Process, handle?: ReactNode) => (
     <div
       className={cn("flex items-center gap-2 px-3 py-2 md:px-4", !process.active && "bg-muted/30")}
@@ -153,12 +185,7 @@ export const ProductionProcessesRoute = () => {
           )}
         >
           <span className="truncate">{process.name}</span>
-          {process.isQc ? (
-            <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-success-soft px-2 text-[11px] font-medium text-success">
-              <BadgeCheck className="size-3" aria-hidden="true" />
-              QC
-            </span>
-          ) : null}
+          {qcBadge(process)}
         </button>
       )}
       {process.active ? (
@@ -177,8 +204,8 @@ export const ProductionProcessesRoute = () => {
             QC
           </TooltipTrigger>
           <TooltipContent className="max-w-72">
-            Task của người QC: điểm ghi khi task Done, theo đơn giá của quy trình này trong dự
-            án (ca Khoán: điểm Khoán)
+            Task của người QC: điểm ghi khi task Done, theo đơn giá của quy trình này trong dự án
+            (ca Khoán: điểm Khoán)
           </TooltipContent>
         </Tooltip>
       ) : (
@@ -223,13 +250,17 @@ export const ProductionProcessesRoute = () => {
     <SettingsPage>
       <PageIntro slug="processes" />
       <InfoNote icon={BadgeCheck} tone="brand">
-        Quy trình QC (thường là “Checking”) là một task bình thường do người QC làm: điểm QC
-        được ghi khi task Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán
-        thì là điểm Khoán. Luôn có đúng một quy trình đang dùng là QC.
+        Quy trình QC (thường là “Checking”) là một task bình thường do người QC làm: điểm QC được
+        ghi khi task Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán thì
+        là điểm Khoán. Luôn có đúng một quy trình đang dùng là QC.
       </InfoNote>
       <SettingsSection
         title="Danh sách quy trình"
-        description="Kéo để sắp xếp thứ tự hiển thị trong bảng đơn giá và form chia task."
+        description={
+          canEdit
+            ? "Kéo để sắp xếp thứ tự hiển thị trong bảng đơn giá và form chia task."
+            : "Thứ tự hiển thị trong bảng đơn giá và form chia task."
+        }
         actions={
           <ArchivedToggle
             checked={showArchived}
@@ -238,25 +269,27 @@ export const ProductionProcessesRoute = () => {
           />
         }
       >
-        <QuickAdd
-          label="Tên quy trình mới"
-          placeholder="Tên quy trình, ví dụ: Retouch nhẹ"
-          buttonLabel="Thêm quy trình"
-          maxLength={120}
-          validate={validate(null)}
-          onAdd={(name) =>
-            mutations.create.mutateAsync({ name, sortOrder: nextSortOrder(active) }).then(
-              () => {
-                toast.success(`Đã thêm quy trình ${name}`);
-                return true;
-              },
-              (error: unknown) => {
-                toastProductionError(error, { conflict: nameConflict });
-                return false;
-              }
-            )
-          }
-        />
+        {canEdit ? (
+          <QuickAdd
+            label="Tên quy trình mới"
+            placeholder="Tên quy trình, ví dụ: Retouch nhẹ"
+            buttonLabel="Thêm quy trình"
+            maxLength={120}
+            validate={validate(null)}
+            onAdd={(name) =>
+              mutations.create.mutateAsync({ name, sortOrder: nextSortOrder(active) }).then(
+                () => {
+                  toast.success(`Đã thêm quy trình ${name}`);
+                  return true;
+                },
+                (error: unknown) => {
+                  toastProductionError(error, { conflict: nameConflict });
+                  return false;
+                }
+              )
+            }
+          />
+        ) : null}
         {processes.isPending ? (
           <RowsSkeleton rows={5} />
         ) : processes.isError ? (
@@ -266,30 +299,42 @@ export const ProductionProcessesRoute = () => {
             size="sm"
             icon={Workflow}
             title="Chưa có quy trình"
-            description="Thêm các quy trình retouch (ví dụ Retouch thường, Cắt nền, Kiểm tra) rồi nhập đơn giá theo dự án."
+            description={
+              canEdit
+                ? "Thêm các quy trình retouch (ví dụ Retouch thường, Cắt nền, Kiểm tra) rồi nhập đơn giá theo dự án."
+                : undefined
+            }
           />
         ) : (
           <>
-            <SortableList
-              aria-label="Quy trình đang dùng"
-              items={active}
-              disabled={reorder.isPending}
-              onReorder={(ordered) =>
-                reorder.mutate(ordered, {
-                  onError: (error) =>
-                    toast.error(
-                      productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
-                    )
-                })
-              }
-              renderItem={(process, handle) =>
-                row(process, handle({ label: `Kéo để sắp xếp ${process.name}` }))
-              }
-            />
+            {canEdit ? (
+              <SortableList
+                aria-label="Quy trình đang dùng"
+                items={active}
+                disabled={reorder.isPending}
+                onReorder={(ordered) =>
+                  reorder.mutate(ordered, {
+                    onError: (error) =>
+                      toast.error(
+                        productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
+                      )
+                  })
+                }
+                renderItem={(process, handle) =>
+                  row(process, handle({ label: `Kéo để sắp xếp ${process.name}` }))
+                }
+              />
+            ) : (
+              <ul aria-label="Quy trình đang dùng" className="divide-y">
+                {active.map((process) => (
+                  <li key={process.id}>{readOnlyRow(process)}</li>
+                ))}
+              </ul>
+            )}
             {showArchived && archived.length > 0 ? (
               <ul aria-label="Quy trình đã lưu trữ" className="divide-y border-t">
                 {archived.map((process) => (
-                  <li key={process.id}>{row(process)}</li>
+                  <li key={process.id}>{canEdit ? row(process) : readOnlyRow(process)}</li>
                 ))}
               </ul>
             ) : null}
@@ -298,8 +343,9 @@ export const ProductionProcessesRoute = () => {
         {!processes.isPending && items.length > 0 && !currentQc ? (
           <div className="border-t p-3">
             <InfoNote icon={Info} tone="warning">
-              Chưa có quy trình QC. Đánh dấu một quy trình (thường là “Checking”) là QC để giao task
-              Checking cho người QC và ghi điểm QC khi task đó Done.
+              {canEdit
+                ? "Chưa có quy trình QC. Đánh dấu một quy trình (thường là “Checking”) là QC để giao task Checking cho người QC và ghi điểm QC khi task đó Done."
+                : "Chưa có quy trình QC: Siêu quản trị cần đánh dấu một quy trình (thường là “Checking”) là QC để giao task Checking cho người QC và ghi điểm QC khi task đó Done."}
             </InfoNote>
           </div>
         ) : null}

@@ -620,6 +620,99 @@ describe("TaskSubtasks", () => {
     expect(update).toHaveBeenCalledWith(subtask.id, { qtyAssigned: 4 });
   });
 
+  it("the task row: the name stays a label, its pencil edits the task's process in place (the title's list)", async () => {
+    const task = line({
+      capabilities: caps({ canEdit: true, canCreateSubtask: true }),
+      subtasks: [subtask],
+      qtyAssigned: 7,
+      allocatedQty: 10
+    });
+    const update = vi.spyOn(jobsApi, "updateTask").mockRejectedValue(
+      new ApiError({
+        status: 400,
+        code: "PROCESS_INVALID",
+        message: "Task có subtask không chuyển sang Checking được."
+      })
+    );
+    renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />);
+    // The name is plain text (not a button); the row keeps its columns until the editor opens.
+    expect(screen.queryByRole("button", { name: "#3 · Retouch" })).toBeNull();
+    expect(screen.getByText("#3 · Retouch")).toBeTruthy();
+    expect(textOf("Số lượng 7")).toBeTruthy();
+    expect(textOf("Tổng 10")).toBeTruthy();
+
+    await click(screen.getByRole("button", { name: "Sửa công đoạn task #3" }));
+    const editor = screen.getByRole("group", { name: "Sửa công đoạn task #3" });
+    // The editor takes the row: no count, quantities or status dot beside it.
+    expect(document.body.textContent).not.toContain("Tổng 10");
+    expect(screen.queryByTitle("Trạng thái: Đang làm")).toBeNull();
+    expect(
+      within(editor).getByText(
+        "Công đoạn phải hợp với người làm. Task có subtask không chuyển sang Checking hay công đoạn của subtask."
+      )
+    ).toBeTruthy();
+    await click(within(editor).getByRole("combobox", { name: "Công đoạn task #3" }));
+    const options = await screen.findAllByRole("option");
+    // Same list as the page title: every active process, QC marked.
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Retouch",
+      "Cắt nền",
+      "CheckingQC"
+    ]);
+    await act(async () => {
+      fireEvent.pointerDown(options[2]!);
+      fireEvent.click(options[2]!);
+      await Promise.resolve();
+    });
+    await click(within(editor).getByRole("button", { name: "Lưu" }));
+    expect(update).toHaveBeenCalledWith(task.id, { processId: CHECKING.id });
+    // The API refuses (a task with subtasks stays a work task): its message under the editor, which stays open.
+    await waitFor(() =>
+      expect(within(editor).getByRole("alert").textContent).toBe(
+        "Task có subtask không chuyển sang Checking được."
+      )
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+
+    await click(within(editor).getByRole("button", { name: "Hủy" }));
+    expect(screen.queryByRole("group", { name: "Sửa công đoạn task #3" })).toBeNull();
+    expect(textOf("Tổng 10")).toBeTruthy();
+  });
+
+  it("the task row's process is saved with a toast", async () => {
+    const task = line({ capabilities: caps({ canEdit: true, canCreateSubtask: true }) });
+    const update = vi.spyOn(jobsApi, "updateTask").mockResolvedValue(task);
+    renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />);
+    await click(screen.getByRole("button", { name: "Sửa công đoạn task #3" }));
+    await click(screen.getByRole("combobox", { name: "Công đoạn task #3" }));
+    const option = (await screen.findAllByRole("option")).find(
+      (item) => item.textContent === "Cắt nền"
+    );
+    await act(async () => {
+      fireEvent.pointerDown(option!);
+      fireEvent.click(option!);
+      await Promise.resolve();
+    });
+    await click(screen.getByRole("button", { name: "Lưu" }));
+    expect(update).toHaveBeenCalledWith(task.id, { processId: CUTOUT.id });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Đã đổi công đoạn của #3 sang Cắt nền")
+    );
+    expect(screen.queryByRole("group", { name: "Sửa công đoạn task #3" })).toBeNull();
+  });
+
+  it("no pencil on the task row without the right to edit the task, on an archived job, or after Done", () => {
+    // The worker may split (subtask pencils), but not edit the task itself.
+    const worker = line({ capabilities: caps({ canCreateSubtask: true }), subtasks: [subtask] });
+    renderWith(WORKER, <TaskSubtasks task={worker} archived={false} timeZone={TZ} />);
+    expect(screen.getByRole("button", { name: "Sửa Công đoạn subtask #3a" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sửa công đoạn task #3" })).toBeNull();
+    cleanup();
+    const editable = line({ capabilities: caps({ canEdit: true }), subtasks: [subtask] });
+    renderWith(LEADER, <TaskSubtasks task={editable} archived timeZone={TZ} />);
+    expect(screen.queryByRole("button", { name: "Sửa công đoạn task #3" })).toBeNull();
+  });
+
   it("after Done (or without rights) nothing can be changed, and an empty section is hidden", () => {
     const done = line({
       capabilities: caps({ canEdit: true, canEditQty: true }),
@@ -630,6 +723,7 @@ describe("TaskSubtasks", () => {
     expect(screen.queryByRole("button", { name: "Thêm subtask" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Xoá subtask #3a" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Sửa Số lượng của subtask/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sửa công đoạn task #3" })).toBeNull();
     // PD-048: no Done quantity (nor its editor) on a subtask row — it is corrected on the subtask's page.
     expect(screen.queryByRole("button", { name: /đã xong/ })).toBeNull();
     expect(screen.getByRole("list", { name: "Subtask của task #3" }).textContent).not.toMatch(

@@ -207,6 +207,7 @@ export const useDeleteMessage = () => {
 
 export const useToggleReaction = () => {
   const queryClient = useQueryClient();
+  const session = useSessionContext();
   return useMutation({
     mutationFn: (input: { message: ChatMessage; emoji: string; add: boolean }) =>
       input.add
@@ -214,16 +215,32 @@ export const useToggleReaction = () => {
         : chatApi.unreact(input.message.id, input.emoji),
     meta: { errorMessage: false },
     onMutate: ({ message, emoji, add }) => {
+      // The viewer shows up in "who reacted" at once; the response brings the real list.
+      const me = {
+        id: session.user.id,
+        displayName: session.user.displayName,
+        email: null,
+        avatarUrl: null
+      };
       patchMessage(queryClient, refOf(message), (current) =>
-        toggleReactionLocally(current, emoji, add)
+        toggleReactionLocally(current, emoji, add, me)
       );
       return { previous: message.reactions };
     },
-    onSuccess: (result, { message }) =>
+    onSuccess: (result, { message }) => {
       patchMessage(queryClient, refOf(message), (current) => ({
         ...current,
-        reactions: setReaction(current.reactions, result.emoji, result.count, result.reactedByMe)
-      })),
+        reactions: setReaction(
+          current.reactions,
+          result.emoji,
+          result.count,
+          result.reactedByMe,
+          result.users
+        )
+      }));
+      // An open reactions sheet refetches the full list.
+      void queryClient.invalidateQueries({ queryKey: chatKeys.reactions(message.id) });
+    },
     onError: (error, { message }, context) => {
       if (context?.previous) {
         const previous = context.previous;

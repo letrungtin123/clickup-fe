@@ -2,7 +2,7 @@ import { cn } from "cn";
 import { CircleCheck, CircleDashed, Info, TrendingUp, TriangleAlert } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import type { KpiProgress, ScoreForecast } from "@/contracts/production-scores";
+import type { KpiProgress, UserScoreForecast } from "@/contracts/production-scores";
 
 import { formatCredit, formatNumber } from "../../format";
 import {
@@ -41,7 +41,7 @@ const toneText: Record<ToneFamily, string> = {
  * KPI forecast for one period: tone (API-decided) as colour + icon + words, points vs. target with
  * a progress bar, and the month / quarter / year KPI percentages.
  */
-export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
+export const ForecastPanel = ({ forecast }: { forecast: UserScoreForecast }) => {
   const info = forecastToneInfo[forecast.tone];
   const Icon = toneIcons[info.family];
   const prorated =
@@ -54,7 +54,10 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
   return (
     <section
       aria-label={`Dự báo KPI ${formatPeriod(forecast.period)}`}
-      className={cn("flex flex-col gap-3 rounded-xl border p-4 shadow-xs", toneSurface[info.family])}
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border p-4 shadow-xs",
+        toneSurface[info.family]
+      )}
     >
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
@@ -67,7 +70,9 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
             <Icon className="size-4" aria-hidden="true" />
           </span>
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className={cn("text-xs font-semibold", toneText[info.family])}>{forecastLabel(forecast)}</p>
+            <p className={cn("text-xs font-semibold", toneText[info.family])}>
+              {forecastLabel(forecast)}
+            </p>
             <p className="text-[15px] leading-snug font-medium text-foreground" aria-live="polite">
               {forecastSentence(forecast)}
             </p>
@@ -89,8 +94,12 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
         />
         <p className="flex flex-wrap justify-between gap-x-3 text-xs text-foreground-muted tabular-nums">
           <span>
-            <span className="font-medium text-foreground">{formatCredit(forecast.pointsOfficial)}</span>
-            {forecast.target !== null ? ` / ${formatCredit(forecast.target)} điểm chính thức` : " điểm chính thức"}
+            <span className="font-medium text-foreground">
+              {formatCredit(forecast.pointsOfficial)}
+            </span>
+            {forecast.target !== null
+              ? ` / ${formatCredit(forecast.target)} điểm chính thức`
+              : " điểm chính thức"}
           </span>
           {forecast.daysLeft > 0 ? (
             <span>
@@ -99,7 +108,9 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
                 : `Chốt ngày ${forecast.to.slice(8, 10)}/${forecast.to.slice(5, 7)} · trong đó ${forecast.workingDaysLeft} ngày làm việc`}
             </span>
           ) : (
-            <span>Kỳ đã kết thúc ngày {forecast.to.slice(8, 10)}/{forecast.to.slice(5, 7)}</span>
+            <span>
+              Kỳ đã kết thúc ngày {forecast.to.slice(8, 10)}/{forecast.to.slice(5, 7)}
+            </span>
           )}
         </p>
       </div>
@@ -117,13 +128,18 @@ export const ForecastPanel = ({ forecast }: { forecast: ScoreForecast }) => {
   );
 };
 
-const KpiChips = ({ forecast }: { forecast: ScoreForecast }) => {
+const KpiChips = ({ forecast }: { forecast: UserScoreForecast }) => {
   const { kpi, period } = forecast;
   // The month chip repeats the headline: same (leave-prorated) target and percent, never two numbers.
   const month: KpiProgress =
     forecast.target === null
       ? kpi.month
-      : { ...kpi.month, points: forecast.pointsOfficial, target: forecast.target, percent: forecast.percent };
+      : {
+          ...kpi.month,
+          points: forecast.pointsOfficial,
+          target: forecast.target,
+          percent: forecast.percent
+        };
   const chips: { key: string; label: string; progress: KpiProgress }[] = [
     { key: "month", label: periodLabel(period), progress: month },
     { key: "quarter", label: rollupLabel(quarterOfPeriod(period)), progress: kpi.quarter },

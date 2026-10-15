@@ -73,11 +73,15 @@ export const useApplyDefaultKpi = () => {
   });
 };
 
-/** null period = the latest closed period (API default). */
-export const useKpiSettlements = (period: string | null, enabled = true) =>
+/** null period = the latest closed period (API default). `userId`: one member's row (PD-052). */
+export const useKpiSettlements = (
+  period: string | null,
+  enabled = true,
+  userId: string | null = null
+) =>
   useQuery({
-    queryKey: kpiKeys.settlements(period),
-    queryFn: ({ signal }) => kpiApi.settlements(period ?? undefined, signal),
+    queryKey: kpiKeys.settlements(period, userId),
+    queryFn: ({ signal }) => kpiApi.settlements(period ?? undefined, signal, userId ?? undefined),
     placeholderData: keepPreviousData,
     retry: retryUnlessClientError,
     enabled
@@ -100,16 +104,28 @@ export const useRunKpiSettlement = () => {
   });
 };
 
+/** `range.userId`: only that member ("Điểm cá nhân", PD-052). */
 export const useKpiReport = (
-  range: { from: string; to: string; teamId: string | null },
+  range: { from: string; to: string; teamId: string | null; userId?: string | null | undefined },
   people: PeopleFilter = emptyPeopleFilter,
   enabled = true
 ) =>
   useQuery({
-    queryKey: kpiKeys.report(range.from, range.to, range.teamId, peopleFilterKey(people)),
+    queryKey: kpiKeys.report(
+      range.from,
+      range.to,
+      range.teamId,
+      peopleFilterKey(people),
+      range.userId ?? null
+    ),
     queryFn: ({ signal }) =>
       kpiApi.report(
-        { from: range.from, to: range.to, teamId: range.teamId ?? undefined },
+        {
+          from: range.from,
+          to: range.to,
+          teamId: range.teamId ?? undefined,
+          userId: range.userId ?? undefined
+        },
         people,
         signal
       ),

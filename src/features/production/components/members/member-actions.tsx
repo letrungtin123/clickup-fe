@@ -34,14 +34,17 @@ export type MemberAction = "led-jobs" | "departments" | "reset" | "deactivate" |
  * "⋯" menu of a member row: "Xem job đang dẫn" for everyone; "Đổi phòng ban" (PD-041), "Đặt lại mật
  * khẩu" and "Vô hiệu hóa" / "Kích hoạt lại" unless the row is protected (yourself, a superadmin, an
  * organization admin for a non-superadmin — org-admins.ts), in which case the menu says why.
+ * `readOnly` (PD-050: everyone but the organization superadmin): only "Xem job đang dẫn".
  */
 export const MemberActionsMenu = ({
   member,
   lock,
+  readOnly = false,
   onAction
 }: {
   member: ProductionMember;
   lock: AccountLock | null;
+  readOnly?: boolean;
   onAction: (action: MemberAction) => void;
 }) => (
   <DropdownMenu>
@@ -62,8 +65,8 @@ export const MemberActionsMenu = ({
         <BriefcaseBusiness />
         Xem job đang dẫn
       </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      {lock ? (
+      {readOnly ? null : <DropdownMenuSeparator />}
+      {readOnly ? null : lock ? (
         <p className="flex items-start gap-2 px-1.5 py-1.5 text-xs leading-relaxed text-foreground-muted">
           <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>{lock.reason}</span>

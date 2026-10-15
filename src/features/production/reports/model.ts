@@ -212,41 +212,6 @@ export const sanitizeForRole = (
   };
 };
 
-const pointMeasures: ReadonlySet<ReportMeasure> = new Set<ReportMeasure>([
-  "points",
-  "points_khoan"
-]);
-
-/**
- * Why the role cannot run this config, mirroring the API (PR-11), so the builder explains it inline instead
- * of failing with 403 SCORES_PRIVATE: while settings.scoresPublic is off, non-admins cannot break points
- * down by person — no `user` / `job` dimension, no `user` / `job` / `tag` filter and no job or task custom
- * field (they single out a job's work) together with a point measure. null = allowed.
- */
-export const privacyProblem = (
-  config: Pick<ReportConfig, "dimensions" | "measures" | "filters">,
-  access: { isAdmin: boolean; scoresPublic: boolean }
-): string | null => {
-  if (access.isAdmin || access.scoresPublic) return null;
-  if (!config.measures.some((measure) => pointMeasures.has(measure))) return null;
-  const reasons: string[] = [];
-  const dims = config.dimensions as readonly string[];
-  if (dims.includes("user")) reasons.push("chiều Nhân viên");
-  if (dims.includes("job")) reasons.push("chiều Job");
-  for (const key of ["user", "job", "tag"] as const) {
-    if ((config.filters[key]?.length ?? 0) > 0) reasons.push(`bộ lọc ${filterLabels[key]}`);
-  }
-  const fields = [
-    ...config.dimensions.filter((dimension) => /^cf_(job|task):/.test(dimension)),
-    ...(config.filters.customFields ?? [])
-      .map((filter) => filter.field)
-      .filter((field) => /^cf_(job|task):/.test(field))
-  ];
-  if (fields.length > 0) reasons.push("trường tùy chỉnh của job/task");
-  if (reasons.length === 0) return null;
-  return `Bảng điểm đang để riêng tư nên không xem được Điểm theo từng người hay từng job (đang dùng ${reasons.join(", ")}). Bỏ các mục đó, hoặc chọn chỉ số khác như Số tấm, Số task.`;
-};
-
 // Sources -------------------------------------------------------------------------------------------
 
 export const usesSource = (measures: readonly ReportMeasure[], source: "SCORES" | "TASKS") =>

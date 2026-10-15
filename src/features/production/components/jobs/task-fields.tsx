@@ -31,6 +31,8 @@ import {
   doneQtyWithSubtasks,
   lineDraftOf,
   lineFieldProblem,
+  lineProcessHint,
+  lineProcessOptions,
   ownQtyOfTotal,
   qtyRequestMessage,
   qtyRequestProblems,
@@ -75,13 +77,7 @@ export const TaskProcessTitle = ({ task, rights }: Omit<FieldProps, "timeZone">)
   const items = processes.data?.items ?? [];
   const options = task.isSubtask
     ? subtaskProcessOptions(items, parent.data?.process.id ?? null, task.process.id)
-    : items
-        .filter((process) => process.active || process.id === task.process.id)
-        .map((process) => ({
-          id: process.id,
-          label: process.name,
-          hint: process.isQc ? "QC" : null
-        }));
+    : lineProcessOptions(items, task.process.id);
   return (
     <InlineField
       variant="inline"
@@ -116,7 +112,7 @@ export const TaskProcessTitle = ({ task, rights }: Omit<FieldProps, "timeZone">)
       hint={
         task.isSubtask
           ? "Subtask làm công đoạn khác task gốc (không phải QC)."
-          : "Công đoạn phải hợp với người làm (task Checking là việc của QC)."
+          : lineProcessHint(task.subtasks.length > 0)
       }
     >
       <h2 className="text-lg font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]">

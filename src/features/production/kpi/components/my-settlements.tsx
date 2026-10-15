@@ -33,21 +33,31 @@ const dateTime = new Intl.DateTimeFormat("vi-VN", {
 /**
  * "Kết quả chốt" on /production/scores: the caller's latest settled period (Phase 6 §1–§2) and
  * their KPI report for the last 12 periods with quarter/year rollups. ADMIN gets everyone from the
- * API; only the caller's own rows are shown here. `khoanPolicy` (settings, PD-033) words the hints;
- * a settled period is explained with the policy of its own run.
+ * API; only the caller's own rows are shown here. `self` false: another member's "Điểm cá nhân"
+ * (PD-052) — the API is asked for that `userId` only and sends money only when the caller may see it.
+ * `khoanPolicy` (settings, PD-033) words the hints; a settled period is explained with the policy of
+ * its own run.
  */
 export const MySettlements = ({
   userId,
+  self = true,
   currentPeriod,
   khoanPolicy
 }: {
   userId: string;
+  self?: boolean;
   currentPeriod: string;
   khoanPolicy: KhoanPayPolicy;
 }) => {
   const [view, setView] = useState<View>("MONTH");
-  const latest = useKpiSettlements(null);
-  const range = { from: shiftPeriod(currentPeriod, -11), to: currentPeriod, teamId: null };
+  const subject = self ? null : userId;
+  const latest = useKpiSettlements(null, true, subject);
+  const range = {
+    from: shiftPeriod(currentPeriod, -11),
+    to: currentPeriod,
+    teamId: null,
+    userId: subject
+  };
   const report = useKpiReport(range);
   const own = latest.data?.items.find((item) => item.user.id === userId) ?? null;
 
@@ -113,7 +123,7 @@ export const MySettlements = ({
               khoanPolicy === "ALWAYS"
                 ? "Ngày chốt KPI hằng tháng, hệ thống tính KPI và chốt tiền Khoán (luôn được trả)."
                 : "Ngày chốt KPI hằng tháng, hệ thống quyết định tiền Khoán được nhận hay quy về điểm."
-            } Kỳ gần nhất (${periodLabel(latest.data.period)}) chưa có kết quả cho bạn.`}
+            } Kỳ gần nhất (${periodLabel(latest.data.period)}) chưa có kết quả cho ${self ? "bạn" : "người này"}.`}
           />
         </Panel>
       )}
@@ -136,8 +146,8 @@ export const MySettlements = ({
             />
             <ExportButton
               path="/production/kpi/export"
-              query={{ from: range.from, to: range.to }}
-              fallbackName={`kpi-cua-toi-${range.from}-${range.to}.xlsx`}
+              query={{ from: range.from, to: range.to, userId: subject }}
+              fallbackName={`${self ? "kpi-cua-toi" : "kpi-ca-nhan"}-${range.from}-${range.to}.xlsx`}
               size="sm"
             />
           </>

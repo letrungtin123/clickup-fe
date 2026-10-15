@@ -8,6 +8,7 @@ import { productionErrorMessage } from "../errors";
  */
 const messages: Record<string, string> = {
   SCORES_PRIVATE: "Bảng điểm chung đang để riêng tư.",
+  SCORE_USER_NOT_FOUND: "Không tìm thấy nhân viên này trong Photo Retouch.",
   INVALID_RANGE: "Khoảng thời gian không hợp lệ.",
   KPI_PERIOD_INVALID:
     "KPI quý phải bắt đầu từ kỳ tháng 1, 4, 7 hoặc 10; KPI năm bắt đầu từ kỳ tháng 1.",
@@ -45,9 +46,3 @@ export const scoreErrorMessage = (error: unknown, fallback?: string) => {
   }
   return productionErrorMessage(error, { fallback });
 };
-
-/** The board is private for this user (settings.scoresPublic off and not ADMIN). */
-export const isScoresPrivate = (error: unknown) =>
-  isApiError(error) &&
-  (error.code === "SCORES_PRIVATE" ||
-    (error.status === 403 && error.code !== "CUSTOM_FIELDS_FORBIDDEN"));

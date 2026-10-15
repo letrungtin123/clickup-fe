@@ -46,25 +46,23 @@ describe("navigation by role", () => {
     ];
     expect(paths(["STAFF"])).toEqual(expect.arrayContaining(everyone));
     expect(paths(["STAFF"])).not.toContain("/production/clients");
-    expect(paths(["STAFF"])).not.toContain("/production/settings");
+    // PD-049: everyone reaches Cấu hình to read "Trạng thái & luồng chuyển".
+    expect(paths(["STAFF"])).toContain("/production/settings");
     expect(paths(["ACCOUNT", "QC"])).toEqual(
       expect.arrayContaining([...everyone, "/production/clients"])
     );
-    expect(paths(["ACCOUNT", "QC"])).not.toContain("/production/settings");
+    expect(paths(["ACCOUNT", "QC"])).toContain("/production/settings");
     expect(paths(["ADMIN"])).toEqual(
       expect.arrayContaining([...everyone, "/production/clients", "/production/settings"])
     );
   });
 
-  it("hides the ranking while the board is private, except for Admins (G18)", () => {
-    const privately = (roles: Parameters<typeof visibleNavEntries>[0]) =>
-      visibleNavEntries(roles, { scoresPublic: false }).map((entry) => entry.to);
-    expect(privately(["STAFF", "LEADER"])).not.toContain("/production/scores/board");
-    expect(privately(["STAFF"])).toContain("/production/scores");
-    expect(privately(["ADMIN"])).toContain("/production/scores/board");
-    expect(visibleNavEntries(["STAFF"], { scoresPublic: true }).map((entry) => entry.to)).toContain(
-      "/production/scores/board"
-    );
+  it("shows the ranking to every production role (PD-052, no longer hidden by scoresPublic)", () => {
+    for (const role of ["STAFF", "QC", "LEADER", "ACCOUNT", "ADMIN"] as const) {
+      expect(paths([role])).toEqual(
+        expect.arrayContaining(["/production/scores", "/production/scores/board"])
+      );
+    }
   });
 
   it("shows jobs, my tasks and the QC queue by role (Phase 2)", () => {
@@ -83,8 +81,9 @@ describe("navigation by role", () => {
   });
 
   it("limits settings pages to the right roles", () => {
-    expect(slugs(["LEADER", "QC"])).toEqual([]);
-    expect(slugs(["ACCOUNT"])).toEqual(["clients"]);
+    // PD-049: "Trạng thái & luồng chuyển" is readable by every role (only the superadmin edits it).
+    expect(slugs(["LEADER", "QC"])).toEqual(["workflow"]);
+    expect(slugs(["ACCOUNT"])).toEqual(["clients", "workflow"]);
     expect(slugs(["ADMIN"])).toContain("credit-rules");
     expect(slugs(["ADMIN"])).toEqual(expect.arrayContaining(["kpi", "kpi-settlement"]));
     expect(slugs(["ADMIN"])).toHaveLength(15);

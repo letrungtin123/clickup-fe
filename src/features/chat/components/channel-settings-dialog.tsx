@@ -65,7 +65,8 @@ import {
   type NamedChannelKind
 } from "@/contracts/chat";
 import type { UserRef } from "@/contracts/work";
-import { useSessionContext } from "@/features/auth/hooks";
+import { usePermissions, useSessionContext } from "@/features/auth/hooks";
+import { P } from "@/features/auth/permissions";
 import { useDebouncedValue } from "@/features/command/search-api";
 import { isApiError } from "@/lib/api/errors";
 
@@ -346,9 +347,13 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
   );
 };
 
-/** DM "about": participants are fixed; adding people starts a new group conversation. */
+/**
+ * DM "about": participants are fixed; adding people starts a new group conversation (for people who
+ * may create groups, i.e. create channels).
+ */
 const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: () => void }) => {
   const session = useSessionContext();
+  const { can } = usePermissions();
   const openDm = useOpenDm();
   const [adding, setAdding] = useState<UserRef[]>([]);
   const existing = useMemo(
@@ -372,45 +377,48 @@ const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: 
           ))}
         </ul>
       </div>
-      <div className="flex flex-col gap-2 border-t pt-4">
-        <span className="text-sm font-medium">Thêm người vào cuộc trò chuyện</span>
-        <p className="text-xs text-foreground-muted">
-          Người tham gia của tin nhắn trực tiếp là cố định. Thêm người sẽ tạo một nhóm trò chuyện
-          mới gồm {channelTitle(channel)} và những người bạn chọn.
-        </p>
-        {room > 0 ? (
-          <>
-            <PeoplePicker
-              selected={adding}
-              onChange={setAdding}
-              excludeIds={existing}
-              max={room}
-              listClassName="max-h-44"
-            />
-            <div className="flex justify-end">
-              <Button
-                disabled={adding.length === 0 || openDm.isPending}
-                onClick={() =>
-                  openDm.mutate(
-                    [
-                      ...channel.participants.map((user) => user.id),
-                      ...adding.map((user) => user.id)
-                    ],
-                    { onSuccess: onDone }
-                  )
-                }
-              >
-                {openDm.isPending ? <Spinner /> : <UserPlus />}
-                Tạo nhóm trò chuyện
-              </Button>
-            </div>
-          </>
-        ) : (
+      {can(P.ChannelCreate) ? (
+        <div className="flex flex-col gap-2 border-t pt-4">
+          <span className="text-sm font-medium">Thêm người vào cuộc trò chuyện</span>
           <p className="text-xs text-foreground-muted">
-            Nhóm đã đạt tối đa {chatLimits.dmOthersMax + 1} người.
+            Người tham gia của tin nhắn trực tiếp là cố định. Thêm người sẽ tạo một nhóm trò chuyện
+            mới gồm {channelTitle(channel)} và những người bạn chọn.
           </p>
-        )}
-      </div>
+          {room > 0 ? (
+            <>
+              <PeoplePicker
+                purpose="dm"
+                selected={adding}
+                onChange={setAdding}
+                excludeIds={existing}
+                max={room}
+                listClassName="max-h-44"
+              />
+              <div className="flex justify-end">
+                <Button
+                  disabled={adding.length === 0 || openDm.isPending}
+                  onClick={() =>
+                    openDm.mutate(
+                      [
+                        ...channel.participants.map((user) => user.id),
+                        ...adding.map((user) => user.id)
+                      ],
+                      { onSuccess: onDone }
+                    )
+                  }
+                >
+                  {openDm.isPending ? <Spinner /> : <UserPlus />}
+                  Tạo nhóm trò chuyện
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-foreground-muted">
+              Nhóm đã đạt tối đa {chatLimits.dmOthersMax + 1} người.
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 };

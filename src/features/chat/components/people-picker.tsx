@@ -6,9 +6,10 @@ import { useRef, useState } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/components/ui/command";
 import { Spinner } from "@/components/ui/spinner";
-import type { UserRef } from "@/contracts/work";
+import type { DirectoryPurpose, UserRef } from "@/contracts/work";
 import { useDebouncedValue } from "@/features/command/search-api";
-import { useSessionContext } from "@/features/auth/hooks";
+import { usePermissions, useSessionContext } from "@/features/auth/hooks";
+import { P } from "@/features/auth/permissions";
 
 import { chatErrorMessage } from "../errors";
 import { usePeopleSearch } from "../hooks/use-channels";
@@ -24,28 +25,36 @@ type PeoplePickerProps = {
   /** Extra hint under the list when `max` is reached. */
   maxHint?: string;
   listClassName?: string;
+  /** "dm": the people the viewer may message (open to every member), not the member directory. */
+  purpose?: DirectoryPurpose;
 };
 
 /**
  * Multi-select people search: chips + type-ahead list (↑/↓ to move, Enter to toggle, Backspace on
  * an empty query removes the last chip). Results come from the server directory (never a full list).
+ * With `max` = 1 it picks one person: choosing someone else replaces the choice.
  */
 export const PeoplePicker = ({
   selected,
   onChange,
   excludeIds,
   max,
-  placeholder = "Tìm theo tên hoặc email…",
+  placeholder,
   autoFocus = false,
   maxHint,
-  listClassName
+  listClassName,
+  purpose
 }: PeoplePickerProps) => {
   const session = useSessionContext();
+  const { can } = usePermissions();
+  // E-mails are only searchable (and shown) with member.view.
+  const label = placeholder ?? (can(P.MemberView) ? "Tìm theo tên hoặc email…" : "Tìm theo tên…");
   const [q, setQ] = useState("");
   const debounced = useDebouncedValue(q, 180);
-  const people = usePeopleSearch(debounced);
+  const people = usePeopleSearch(debounced, purpose ? { purpose } : {});
   const inputRef = useRef<HTMLInputElement | null>(null);
   const selectedIds = new Set(selected.map((user) => user.id));
+  const single = max === 1;
   const atMax = max !== undefined && selected.length >= max;
 
   const results = (people.data?.items ?? []).filter(
@@ -55,6 +64,9 @@ export const PeoplePicker = ({
   const toggle = (user: UserRef) => {
     if (selectedIds.has(user.id)) {
       onChange(selected.filter((entry) => entry.id !== user.id));
+    } else if (single) {
+      onChange([user]);
+      setQ("");
     } else if (!atMax) {
       onChange([...selected, user]);
       setQ("");
@@ -92,8 +104,8 @@ export const PeoplePicker = ({
               onChange(selected.slice(0, -1));
             }
           }}
-          placeholder={selected.length === 0 ? placeholder : "Thêm người…"}
-          aria-label={placeholder}
+          placeholder={selected.length === 0 ? label : single ? "Đổi người…" : "Thêm người…"}
+          aria-label={label}
           className="h-7 min-w-32 flex-1 bg-transparent text-sm outline-none placeholder:text-foreground-subtle"
         />
         {people.isFetching ? <Spinner className="size-3.5 text-foreground-subtle" /> : null}
@@ -115,7 +127,7 @@ export const PeoplePicker = ({
               key={user.id}
               value={user.id}
               data-checked={checked}
-              disabled={!checked && atMax}
+              disabled={!checked && atMax && !single}
               onSelect={() => toggle(user)}
               className="gap-2.5 py-1.5"
             >

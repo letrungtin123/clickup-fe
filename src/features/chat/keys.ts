@@ -26,6 +26,7 @@ export const chatKeys = {
   attachmentUrl: (attachmentId: string) => ["chat", "attachment-url", attachmentId] as const,
   mentions: () => ["chat", "mentions"] as const,
   search: (q: string) => ["chat", "search", q.trim().toLocaleLowerCase()] as const,
-  people: (q: string, channelId?: string) =>
-    ["chat", "people", channelId ?? "org", q.trim().toLocaleLowerCase()] as const
+  /** People search: org-wide, in a channel, or for a DM ("dm"). */
+  people: (q: string, scope?: string) =>
+    ["chat", "people", scope ?? "org", q.trim().toLocaleLowerCase()] as const
 } as const;

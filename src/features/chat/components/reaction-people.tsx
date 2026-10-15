@@ -6,35 +6,31 @@ import { ActionSheet } from "@/components/shared/action-sheet";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ChatMessage } from "@/contracts/chat";
+import type { ChatMessage, ReactionSummary } from "@/contracts/chat";
 
 import { useReactionPeople } from "../hooks/use-reaction-people";
-import { describeReactors, reactionPeople } from "../model/reactions";
-
-/** Desktop tooltip body for one reaction chip. */
-export const ReactionTooltipBody = ({
-  messageId,
-  emoji,
-  myId
-}: {
-  messageId: string;
-  emoji: string;
-  myId: string;
-}) => {
-  const query = useReactionPeople(messageId, true);
-  const item = query.data?.items.find((entry) => entry.emoji === emoji);
-  if (query.isPending) return <span className="text-foreground-muted">Đang tải…</span>;
-  if (!item || item.users.length === 0) return <span>Chưa có ai thả {emoji}</span>;
-  return (
-    <span className="block max-w-64">
-      <span className="font-semibold">{describeReactors(item.users, myId)}</span> đã thả {emoji}
-    </span>
-  );
-};
+import { describeReactors, reactionPeople, reactionUsersPreview } from "../model/reactions";
 
 /**
- * Touch: who reacted, per emoji (opened by a long press on a reaction chip, or from the message's
- * action sheet). Tabs: "Tất cả" plus one per emoji with its count.
+ * Desktop tooltip body for one reaction chip: "An, Bình và 3 người khác đã thả 👍", straight from the
+ * message (each reaction carries its first reactors), so it shows instantly and follows live updates.
+ */
+export const ReactionTooltipBody = ({ reaction, myId }: { reaction: ReactionSummary; myId: string }) => (
+  <span className="block max-w-64">
+    <span className="font-semibold">
+      {describeReactors(reaction.users, myId, {
+        total: reaction.count,
+        reactedByMe: reaction.reactedByMe
+      })}
+    </span>{" "}
+    đã thả {reaction.emoji}
+  </span>
+);
+
+/**
+ * Touch: who reacted, per emoji (opened by the avatar stack after the reaction chips, a long press on a
+ * chip, or the message's action sheet). Tabs: "Tất cả" plus one per emoji with its count. The message's
+ * own first reactors show at once; the full list replaces them when it arrives.
  */
 export const ReactionPeopleSheet = ({
   message,
@@ -49,7 +45,11 @@ export const ReactionPeopleSheet = ({
   initialEmoji: string | null;
   onOpenChange: (open: boolean) => void;
 }) => {
-  const query = useReactionPeople(message.id, open);
+  const preview = useMemo(
+    () => reactionUsersPreview(message.id, message.reactions),
+    [message.id, message.reactions]
+  );
+  const query = useReactionPeople(message.id, open, preview);
   const [picked, setPicked] = useState<{ emoji: string | null } | null>(null);
   // Each opening starts on the emoji it was opened for.
   const [openedFor, setOpenedFor] = useState({ open, initialEmoji });

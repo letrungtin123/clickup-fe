@@ -52,6 +52,7 @@ import type { ColorToken } from "@/contracts/work";
 import type { JobStatusUpdateInput } from "@/features/production/api";
 import { hasDuplicateName } from "@/features/production/catalog";
 import { JobStatusChip } from "@/features/production/components/jobs/job-bits";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   FormAlert,
   InfoNote,
@@ -148,11 +149,15 @@ const auditTitle = (status: JobStatus, timeZone: string) =>
  * the row menu, a "Cần đã check" badge on the row) and delete; every write answers the whole catalog. A status jobs use
  * is deleted together with moving those jobs to a replacement (one request).
  *
+ * PD-050: only the organization superadmin edits; everyone else (production Admin) reads the list — no add form, drag
+ * handles, colour pickers, "Đóng" switches or row menus ("Đóng" becomes a badge next to the name).
+ *
  * Rows are one grid per status sized by the list's own width (container query, not the viewport):
  * narrow lists put the job count and the last change under the name, wide ones give them aligned
  * columns. The same elements move between both (no hidden duplicates).
  */
 export const ProductionJobStatusesRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const statuses = useJobStatuses();
   const mutations = useJobStatusMutations();
   const me = useProductionMe();
@@ -263,51 +268,18 @@ export const ProductionJobStatusesRoute = () => {
             <span className="flex min-w-0 items-center gap-1.5">
               <JobStatusChip status={status} />
               {status.requiresAllChecked ? <RequiresCheckedBadge /> : null}
-              {index === 0 ? (
-                // Narrow lists: the name keeps the room (the line below says "Job mới" instead).
-                <span
-                  title="Job mới tạo bắt đầu ở trạng thái này"
-                  className="hidden h-5 shrink-0 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-foreground-muted @2xl:inline-flex"
-                >
-                  Job mới
-                </span>
-              ) : null}
+              {index === 0 ? <NewJobBadge /> : null}
             </span>
           </button>
         )}
-        <span
-          className={cn(
-            "col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-foreground-muted @max-2xl:pointer-events-none @2xl:contents",
-            editing && "@max-2xl:hidden"
-          )}
-        >
-          {index === 0 ? (
-            <span
-              title="Job mới tạo bắt đầu ở trạng thái này"
-              className="shrink-0 font-medium @2xl:hidden"
-            >
-              Job mới ·
-            </span>
-          ) : null}
-          <span
-            title="Job đang ở trạng thái này (không tính job đã xoá)"
-            className={cn(
-              "shrink-0 tabular-nums @2xl:col-start-4 @2xl:row-start-1 @2xl:text-right @2xl:text-xs",
-              status.jobCount === 0 && "text-foreground-subtle"
-            )}
-          >
-            {jobCountLabel(status.jobCount)}
-          </span>
-          <span aria-hidden="true" className="text-foreground-subtle @2xl:hidden">
-            ·
-          </span>
-          <span
-            title={auditTitle(status, timeZone)}
-            className="min-w-0 truncate text-foreground-subtle @2xl:col-start-5 @2xl:row-start-1 @2xl:text-xs"
-          >
-            {auditLabel(status, timeZone)}
-          </span>
-        </span>
+        <RowFacts
+          status={status}
+          first={index === 0}
+          timeZone={timeZone}
+          className={cn("col-start-3", editing && "@max-2xl:hidden")}
+          countClassName="@2xl:col-start-4"
+          auditClassName="@2xl:col-start-5"
+        />
         <span className="col-start-4 row-span-2 row-start-1 flex @2xl:col-start-6 @2xl:row-span-1">
           <ClosedToggle
             checked={status.isClosed}
@@ -389,6 +361,32 @@ export const ProductionJobStatusesRoute = () => {
     );
   };
 
+  // PD-050 read-only row: the chip with its rule badges, then the job count and the last change.
+  const readOnlyRow = (status: JobStatus, index: number) => (
+    <div
+      className={cn(
+        "grid items-center gap-x-3 gap-y-0.5 px-3 py-2 md:px-4",
+        "grid-cols-[minmax(0,1fr)] grid-rows-[1.5rem_auto]",
+        "@2xl:grid-cols-[minmax(0,1fr)_4.5rem_11rem] @2xl:grid-rows-1"
+      )}
+    >
+      <span className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5">
+        <JobStatusChip status={status} />
+        {status.isClosed ? <ClosedBadge /> : null}
+        {status.requiresAllChecked ? <RequiresCheckedBadge /> : null}
+        {index === 0 ? <NewJobBadge /> : null}
+      </span>
+      <RowFacts
+        status={status}
+        first={index === 0}
+        timeZone={timeZone}
+        className="col-start-1"
+        countClassName="@2xl:col-start-2"
+        auditClassName="@2xl:col-start-3"
+      />
+    </div>
+  );
+
   return (
     <SettingsPage>
       <PageIntro slug="job-statuses" />
@@ -413,7 +411,11 @@ export const ProductionJobStatusesRoute = () => {
       <SettingsSection
         className="@container"
         title="Danh sách trạng thái"
-        description="Kéo để sắp xếp (hoặc dùng menu ⋯ của từng dòng). Bấm vào tên để đổi tên."
+        description={
+          canEdit
+            ? "Kéo để sắp xếp (hoặc dùng menu ⋯ của từng dòng). Bấm vào tên để đổi tên."
+            : "Thứ tự hiển thị khi chọn trạng thái cho job."
+        }
         actions={
           items.length >= jobStatusLimit - 5 ? (
             <span className="text-xs whitespace-nowrap text-foreground-muted tabular-nums">
@@ -422,34 +424,36 @@ export const ProductionJobStatusesRoute = () => {
           ) : null
         }
       >
-        {/* Phones: the name gets its own line, colour / "Đóng" / add button share the next one. */}
-        <div className="max-sm:[&_form_[data-slot=input]]:basis-full">
-          <QuickAdd
-            label="Tên trạng thái mới"
-            placeholder="Tên trạng thái, ví dụ: Chờ duyệt"
-            buttonLabel="Thêm trạng thái"
-            maxLength={jobStatusNameMaxLength}
-            validate={(name) =>
-              items.length >= jobStatusLimit ? limitReached : validate(null)(name)
-            }
-            onAdd={add}
-          >
-            <ColorButton color={color} onChange={setNewColor} label="Màu trạng thái mới" />
-            <ClosedToggle
-              checked={newClosed}
-              onChange={setNewClosed}
-              label="Trạng thái mới là trạng thái đóng"
-            />
-            <RuleToggle
-              checked={newRequiresChecked}
-              onChange={setNewRequiresChecked}
-              label="Trạng thái mới cần mọi task đã check"
-              text="Cần đã check"
-              hint={checkedHint}
-              className="max-sm:mr-auto"
-            />
-          </QuickAdd>
-        </div>
+        {canEdit ? (
+          // Phones: the name gets its own line, colour / "Đóng" / add button share the next one.
+          <div className="max-sm:[&_form_[data-slot=input]]:basis-full">
+            <QuickAdd
+              label="Tên trạng thái mới"
+              placeholder="Tên trạng thái, ví dụ: Chờ duyệt"
+              buttonLabel="Thêm trạng thái"
+              maxLength={jobStatusNameMaxLength}
+              validate={(name) =>
+                items.length >= jobStatusLimit ? limitReached : validate(null)(name)
+              }
+              onAdd={add}
+            >
+              <ColorButton color={color} onChange={setNewColor} label="Màu trạng thái mới" />
+              <ClosedToggle
+                checked={newClosed}
+                onChange={setNewClosed}
+                label="Trạng thái mới là trạng thái đóng"
+              />
+              <RuleToggle
+                checked={newRequiresChecked}
+                onChange={setNewRequiresChecked}
+                label="Trạng thái mới cần mọi task đã check"
+                text="Cần đã check"
+                hint={checkedHint}
+                className="max-sm:mr-auto"
+              />
+            </QuickAdd>
+          </div>
+        ) : null}
         {statuses.isPending ? (
           <RowsSkeleton rows={6} />
         ) : statuses.isError ? (
@@ -459,9 +463,13 @@ export const ProductionJobStatusesRoute = () => {
             size="sm"
             icon={CircleDot}
             title="Chưa có trạng thái job"
-            description="Thêm các trạng thái như Mới nhận, Đang làm, Đã giao khách để cả team cập nhật tiến độ job."
+            description={
+              canEdit
+                ? "Thêm các trạng thái như Mới nhận, Đang làm, Đã giao khách để cả team cập nhật tiến độ job."
+                : undefined
+            }
           />
-        ) : (
+        ) : canEdit ? (
           <SortableList
             aria-label="Trạng thái job"
             items={rows}
@@ -471,34 +479,43 @@ export const ProductionJobStatusesRoute = () => {
               row(status, rows.indexOf(status), handle({ label: `Kéo để sắp xếp ${status.name}` }))
             }
           />
+        ) : (
+          <ul aria-label="Trạng thái job" className="divide-y">
+            {rows.map((status, index) => (
+              <li key={status.id}>{readOnlyRow(status, index)}</li>
+            ))}
+          </ul>
         )}
         {first?.isClosed ? (
           <div className="border-t p-3">
             <InfoNote icon={TriangleAlert} tone="warning">
               Trạng thái đầu tiên (“{first.name}”) đang là trạng thái đóng: job mới tạo sẽ được coi
-              là đã xong. Kéo một trạng thái đang mở lên đầu.
+              là đã xong.{canEdit ? " Kéo một trạng thái đang mở lên đầu." : null}
             </InfoNote>
           </div>
         ) : null}
         <div className="flex flex-col gap-2 border-t p-3">
           <InfoNote icon={CircleCheck}>{closedHint}</InfoNote>
           <InfoNote icon={ListChecks}>
-            {checkedHint} Bật / tắt trong menu ⋯ của từng trạng thái.
+            {checkedHint}
+            {canEdit ? " Bật / tắt trong menu ⋯ của từng trạng thái." : null}
           </InfoNote>
         </div>
       </SettingsSection>
 
-      <DeleteStatusDialog
-        status={deleting}
-        statuses={items}
-        remove={mutations.remove}
-        onClose={() => setDeleting(null)}
-        onDeleted={(id) => {
-          setDeleting(null);
-          if (editingId === id) setEditingId(null);
-        }}
-        onRefresh={() => void statuses.refetch()}
-      />
+      {canEdit ? (
+        <DeleteStatusDialog
+          status={deleting}
+          statuses={items}
+          remove={mutations.remove}
+          onClose={() => setDeleting(null)}
+          onDeleted={(id) => {
+            setDeleting(null);
+            if (editingId === id) setEditingId(null);
+          }}
+          onRefresh={() => void statuses.refetch()}
+        />
+      ) : null}
     </SettingsPage>
   );
 };
@@ -569,6 +586,82 @@ const RequiresCheckedBadge = () => (
   >
     <ListChecks className="size-3" aria-hidden="true" />
     <span className="sr-only @2xl:not-sr-only">Cần đã check</span>
+  </span>
+);
+
+/** "Đóng" as text, where a read-only viewer has no switch (PD-050). */
+const ClosedBadge = () => (
+  <span
+    title={closedHint}
+    className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-[11px] font-medium text-foreground-muted"
+  >
+    <CircleCheck className="size-3" aria-hidden="true" />
+    Đóng
+  </span>
+);
+
+/** Wide lists only: narrow ones say "Job mới" on the line below, so the name keeps the room. */
+const NewJobBadge = () => (
+  <span
+    title="Job mới tạo bắt đầu ở trạng thái này"
+    className="hidden h-5 shrink-0 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-foreground-muted @2xl:inline-flex"
+  >
+    Job mới
+  </span>
+);
+
+/**
+ * "N job · Sửa bởi …" under the name on narrow lists; on wide ones (`contents`) the count and the last change land in
+ * their own grid columns (`countClassName` / `auditClassName` say which).
+ */
+const RowFacts = ({
+  status,
+  first,
+  timeZone,
+  className,
+  countClassName,
+  auditClassName
+}: {
+  status: JobStatus;
+  first: boolean;
+  timeZone: string;
+  className: string;
+  countClassName: string;
+  auditClassName: string;
+}) => (
+  <span
+    className={cn(
+      "row-start-2 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-foreground-muted @max-2xl:pointer-events-none @2xl:contents",
+      className
+    )}
+  >
+    {first ? (
+      <span title="Job mới tạo bắt đầu ở trạng thái này" className="shrink-0 font-medium @2xl:hidden">
+        Job mới ·
+      </span>
+    ) : null}
+    <span
+      title="Job đang ở trạng thái này (không tính job đã xoá)"
+      className={cn(
+        "shrink-0 tabular-nums @2xl:row-start-1 @2xl:text-right @2xl:text-xs",
+        countClassName,
+        status.jobCount === 0 && "text-foreground-subtle"
+      )}
+    >
+      {jobCountLabel(status.jobCount)}
+    </span>
+    <span aria-hidden="true" className="text-foreground-subtle @2xl:hidden">
+      ·
+    </span>
+    <span
+      title={auditTitle(status, timeZone)}
+      className={cn(
+        "min-w-0 truncate text-foreground-subtle @2xl:row-start-1 @2xl:text-xs",
+        auditClassName
+      )}
+    >
+      {auditLabel(status, timeZone)}
+    </span>
   </span>
 );
 

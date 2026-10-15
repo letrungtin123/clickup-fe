@@ -13,6 +13,8 @@ import {
   isQcSendBack,
   lineDraftOf,
   lineFieldProblem,
+  lineProcessHint,
+  lineProcessOptions,
   lineQtyLeft,
   ownQtyOfTotal,
   qtyChangeLabel,
@@ -251,6 +253,32 @@ describe("Done quantity after Done", () => {
     expect(doneQtyProblem({ qty: "6", note: "" }, false)).toBeNull();
     expect(doneQtyProblem({ qty: "6,5", note: "x" }, false)).toBe("Nhập số tấm nguyên ≥ 0.");
     expect(doneQtyProblem({ qty: "0", note: "" }, false)).toBeNull();
+  });
+});
+
+describe("Công đoạn of a task", () => {
+  it("offers every active process, QC ones marked, keeping the task's own when archived", () => {
+    const processes = [
+      { id: id(20), name: "Retouch", isQc: false, active: true },
+      { id: id(22), name: "Checking", isQc: true, active: true },
+      { id: id(23), name: "Cũ", isQc: false, active: false }
+    ];
+    expect(lineProcessOptions(processes, id(20))).toEqual([
+      { id: id(20), label: "Retouch", hint: null },
+      { id: id(22), label: "Checking", hint: "QC" }
+    ]);
+    expect(lineProcessOptions(processes, id(23)).map((option) => option.label)).toEqual([
+      "Retouch",
+      "Checking",
+      "Cũ"
+    ]);
+  });
+
+  it("warns a task with subtasks off Checking and its subtasks' processes", () => {
+    expect(lineProcessHint(true)).toContain("Task có subtask không chuyển sang Checking");
+    expect(lineProcessHint(false)).toBe(
+      "Công đoạn phải hợp với người làm (task Checking là việc của QC)."
+    );
   });
 });
 

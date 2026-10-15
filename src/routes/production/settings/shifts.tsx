@@ -20,6 +20,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { PayMode, Shift } from "@/contracts/production-catalog";
 import { hasDuplicateName, nextSortOrder } from "@/features/production/catalog";
+import { useCanEditProductionConfig } from "@/features/production/config-access";
 import {
   ArchivedToggle,
   ActiveState,
@@ -48,8 +49,12 @@ const payModeHelp: Record<PayMode, string> = {
     "Hiện song song điểm và tiền tạm tính; khi chốt KPI, tiền được trả theo chính sách Khoán ở Cài đặt chung (luôn trả, hoặc chỉ khi đạt KPI)."
 };
 
-/** Work shifts and how they pay (PLAN §5): points, or Khoán money (paid per settings.khoanPayPolicy, PD-033). */
+/**
+ * Work shifts and how they pay (PLAN §5): points, or Khoán money (paid per settings.khoanPayPolicy, PD-033).
+ * PD-050: only the organization superadmin adds, edits, reorders or archives shifts; everyone else reads them.
+ */
 export const ProductionShiftsRoute = () => {
+  const canEdit = useCanEditProductionConfig();
   const shifts = useShifts();
   const mutations = useShiftMutations();
   const reorder = useReorderShifts();
@@ -75,47 +80,49 @@ export const ProductionShiftsRoute = () => {
       }
     );
 
+  const details = (shift: Shift) => (
+    <>
+      <span
+        className={cn("truncate text-[13px] font-medium", !shift.active && "text-foreground-muted")}
+      >
+        {shift.name}
+      </span>
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium",
+            shift.payMode === "POINTS"
+              ? "bg-brand-soft text-brand-text"
+              : "bg-warning-soft text-foreground"
+          )}
+        >
+          {shift.payMode === "POINTS" ? (
+            <Sparkles className="size-3" aria-hidden="true" />
+          ) : (
+            <Coins className="size-3 text-warning" aria-hidden="true" />
+          )}
+          {payModeLabels[shift.payMode]}
+        </span>
+        {shift.requiresOtHours ? (
+          <span className="inline-flex h-5 items-center gap-1 rounded-full bg-muted px-2 text-[11px] font-medium text-foreground-muted">
+            <Clock className="size-3" aria-hidden="true" />
+            Nhập giờ OT
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+
+  const detailsClass =
+    "flex min-w-0 flex-1 flex-col items-start gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-3";
+
   const row = (shift: Shift, handle?: ReactNode) => (
     <div
       className={cn("flex items-center gap-2 px-3 py-2.5 md:px-4", !shift.active && "bg-muted/30")}
     >
       {handle ?? <span className="size-6 shrink-0" aria-hidden="true" />}
-      <button
-        type="button"
-        onClick={() => setDialog({ shift })}
-        className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-3"
-      >
-        <span
-          className={cn(
-            "truncate text-[13px] font-medium",
-            !shift.active && "text-foreground-muted"
-          )}
-        >
-          {shift.name}
-        </span>
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span
-            className={cn(
-              "inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium",
-              shift.payMode === "POINTS"
-                ? "bg-brand-soft text-brand-text"
-                : "bg-warning-soft text-foreground"
-            )}
-          >
-            {shift.payMode === "POINTS" ? (
-              <Sparkles className="size-3" aria-hidden="true" />
-            ) : (
-              <Coins className="size-3 text-warning" aria-hidden="true" />
-            )}
-            {payModeLabels[shift.payMode]}
-          </span>
-          {shift.requiresOtHours ? (
-            <span className="inline-flex h-5 items-center gap-1 rounded-full bg-muted px-2 text-[11px] font-medium text-foreground-muted">
-              <Clock className="size-3" aria-hidden="true" />
-              Nhập giờ OT
-            </span>
-          ) : null}
-        </span>
+      <button type="button" onClick={() => setDialog({ shift })} className={detailsClass}>
+        {details(shift)}
       </button>
       {!shift.active ? <ActiveState active={false} className="hidden sm:inline-flex" /> : null}
       <RowMenu
@@ -127,20 +134,39 @@ export const ProductionShiftsRoute = () => {
     </div>
   );
 
+  /** Read-only viewers (PD-050): no drag handle, dialog or menu. */
+  const readOnlyRow = (shift: Shift) => (
+    <div
+      className={cn(
+        "flex min-h-11 items-center gap-2 px-4 py-2.5 md:px-5",
+        !shift.active && "bg-muted/30"
+      )}
+    >
+      <div className={detailsClass}>{details(shift)}</div>
+      {!shift.active ? <ActiveState active={false} /> : null}
+    </div>
+  );
+
   return (
     <SettingsPage>
       <PageIntro
         slug="shifts"
         actions={
-          <Button onClick={() => setDialog({ shift: null })}>
-            <Plus />
-            Thêm ca
-          </Button>
+          canEdit ? (
+            <Button onClick={() => setDialog({ shift: null })}>
+              <Plus />
+              Thêm ca
+            </Button>
+          ) : undefined
         }
       />
       <SettingsSection
         title="Danh sách ca"
-        description="Kéo để sắp xếp thứ tự trong form chia task."
+        description={
+          canEdit
+            ? "Kéo để sắp xếp thứ tự trong form chia task."
+            : "Thứ tự hiển thị trong form chia task."
+        }
         actions={
           <ArchivedToggle
             checked={showArchived}
@@ -158,36 +184,50 @@ export const ProductionShiftsRoute = () => {
             size="sm"
             icon={CalendarClock}
             title="Chưa có ca làm"
-            description="Thêm ca chính thức, OT (tính điểm) và ca khoán (có tiền, trả theo chính sách Khoán)."
+            description={
+              canEdit
+                ? "Thêm ca chính thức, OT (tính điểm) và ca khoán (có tiền, trả theo chính sách Khoán)."
+                : undefined
+            }
             action={
-              <Button size="sm" onClick={() => setDialog({ shift: null })}>
-                <Plus />
-                Thêm ca
-              </Button>
+              canEdit ? (
+                <Button size="sm" onClick={() => setDialog({ shift: null })}>
+                  <Plus />
+                  Thêm ca
+                </Button>
+              ) : undefined
             }
           />
         ) : (
           <>
-            <SortableList
-              aria-label="Ca đang dùng"
-              items={active}
-              disabled={reorder.isPending}
-              onReorder={(ordered) =>
-                reorder.mutate(ordered, {
-                  onError: (error) =>
-                    toast.error(
-                      productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
-                    )
-                })
-              }
-              renderItem={(shift, handle) =>
-                row(shift, handle({ label: `Kéo để sắp xếp ${shift.name}` }))
-              }
-            />
+            {canEdit ? (
+              <SortableList
+                aria-label="Ca đang dùng"
+                items={active}
+                disabled={reorder.isPending}
+                onReorder={(ordered) =>
+                  reorder.mutate(ordered, {
+                    onError: (error) =>
+                      toast.error(
+                        productionErrorMessage(error, { fallback: "Không lưu được thứ tự." })
+                      )
+                  })
+                }
+                renderItem={(shift, handle) =>
+                  row(shift, handle({ label: `Kéo để sắp xếp ${shift.name}` }))
+                }
+              />
+            ) : (
+              <ul aria-label="Ca đang dùng" className="divide-y">
+                {active.map((shift) => (
+                  <li key={shift.id}>{readOnlyRow(shift)}</li>
+                ))}
+              </ul>
+            )}
             {showArchived && archived.length > 0 ? (
               <ul aria-label="Ca đã lưu trữ" className="divide-y border-t">
                 {archived.map((shift) => (
-                  <li key={shift.id}>{row(shift)}</li>
+                  <li key={shift.id}>{canEdit ? row(shift) : readOnlyRow(shift)}</li>
                 ))}
               </ul>
             ) : null}
@@ -195,14 +235,16 @@ export const ProductionShiftsRoute = () => {
         )}
       </SettingsSection>
 
-      <ShiftDialog
-        key={dialog?.shift?.id ?? "new"}
-        open={dialog !== null}
-        shift={dialog?.shift ?? null}
-        shifts={items}
-        onClose={() => setDialog(null)}
-        sortOrder={nextSortOrder(active)}
-      />
+      {canEdit ? (
+        <ShiftDialog
+          key={dialog?.shift?.id ?? "new"}
+          open={dialog !== null}
+          shift={dialog?.shift ?? null}
+          shifts={items}
+          onClose={() => setDialog(null)}
+          sortOrder={nextSortOrder(active)}
+        />
+      ) : null}
     </SettingsPage>
   );
 };

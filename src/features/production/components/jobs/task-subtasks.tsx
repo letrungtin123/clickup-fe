@@ -14,9 +14,11 @@ import { toneClass } from "@/lib/colors";
 
 import { formatInteger } from "../../format";
 import { useProcesses } from "../../hooks";
-import { useSubtaskMutations } from "../../jobs-hooks";
+import { useSubtaskMutations, useTaskMutations } from "../../jobs-hooks";
 import { formatDateTime } from "../../jobs-model";
 import {
+  lineProcessHint,
+  lineProcessOptions,
   lineQtyLeft,
   subtaskDraftProblems,
   subtaskProcessOptions,
@@ -24,6 +26,7 @@ import {
   subtaskQtyProblem,
   subtaskReasonValue,
   taskEditErrorMessage,
+  taskEditRights,
   wholeNumber,
   type SubtaskDraft
 } from "../../task-edit-model";
@@ -40,7 +43,8 @@ const sectionTitle = "text-[11px] font-medium tracking-[0.04em] text-foreground-
  * worker, with an optional reason (PD-045). The quantity is taken from the task (the total the Leader gave stays the
  * same) and the status follows the task; its code is the task's number + a letter ("#1216a"). Shown as a small file tree
  * (owner, 2026-10-14): the task is the folder (collapsible, count, "Số lượng 11 · Tổng 20": its own part, then the
- * total with its subtasks — PD-048), each subtask a leaf with only its "Số lượng", the task's status colour and its
+ * total with its subtasks — PD-048; the pencil after its name edits the task's process in place, same rule and list as
+ * the page title), each subtask a leaf with only its "Số lượng", the task's status colour and its
  * actions on hover, "Thêm subtask" the last leaf. Before Done a subtask's process and quantity are edited in place
  * (click the number; the name opens the subtask, its pencil edits the process) and it can be deleted (its images go
  * back to the task). Its Done quantity is not shown here (PD-048: the task's "Số tấm đã xong" counts it); it is
@@ -59,11 +63,18 @@ export const TaskSubtasks = ({
 }) => {
   const titleId = useId();
   const mutations = useSubtaskMutations();
+  const taskMutations = useTaskMutations();
+  const processes = useProcesses();
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<ProductionSubtask | null>(null);
   const [open, setOpen] = useState(true);
+  const processKey = `task-${task.id}-process`;
+  const editingProcess = useInlineEditActive(processKey);
   const caps = task.capabilities;
   const done = task.doneAt !== null;
+  // The task's own "Công đoạn": the task page title's rule (canEdit, before Done, not archived) and list.
+  const rights = taskEditRights(task, { archived });
+  const processOptions = lineProcessOptions(processes.data?.items ?? [], task.process.id);
   const canCreate = !archived && !done && caps.canCreateSubtask;
   // Without loading each subtask, the task's rights stand for its subtasks (the API checks each one again). Never the
   // task's own canDelete: staff may not delete a task the Leader split, yet they delete their own subtasks before Done
@@ -105,60 +116,118 @@ export const TaskSubtasks = ({
         </p>
       </div>
       <div className="rounded-xl border bg-surface p-1.5 shadow-xs">
-        {/* The task itself: the tree's folder (collapsible). */}
-        <div className="flex min-h-10 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg px-1.5 py-1">
-          <button
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            aria-controls={listId}
-            aria-label={
-              open ? `Thu gọn subtask của task #${task.code}` : `Mở subtask của task #${task.code}`
-            }
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtle outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-sm:size-10"
-          >
-            <ChevronRight
-              aria-hidden="true"
-              className={cn("size-4 transition-transform duration-150", open && "rotate-90")}
-            />
-          </button>
-          {open ? (
-            <FolderOpen aria-hidden="true" className="size-4 shrink-0 text-warning" />
-          ) : (
-            <Folder aria-hidden="true" className="size-4 shrink-0 text-warning" />
+        {/* The task itself: the tree's folder (collapsible). Its process is edited in place, like a subtask's. */}
+        <div
+          className={cn(
+            "flex min-h-10 flex-wrap gap-x-1.5 gap-y-1 rounded-lg px-1.5 py-1",
+            editingProcess ? "items-start" : "items-center"
           )}
+        >
+          {/* While the process is edited the editor takes the row: these stay centred on its select. */}
           <span
-            className="min-w-0 truncate text-[13px] font-semibold"
-            title={`#${task.code} · ${task.process.name}`}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              editingProcess && "h-9 pointer-coarse:h-11"
+            )}
           >
-            #{task.code} · {task.process.name}
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              aria-controls={listId}
+              aria-label={
+                open
+                  ? `Thu gọn subtask của task #${task.code}`
+                  : `Mở subtask của task #${task.code}`
+              }
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtle outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-sm:size-10"
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className={cn("size-4 transition-transform duration-150", open && "rotate-90")}
+              />
+            </button>
+            {open ? (
+              <FolderOpen aria-hidden="true" className="size-4 shrink-0 text-warning" />
+            ) : (
+              <Folder aria-hidden="true" className="size-4 shrink-0 text-warning" />
+            )}
           </span>
-          <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] font-medium text-foreground-muted tabular-nums">
-            {count}
-          </span>
-          {/* PD-048: its own part, then the total with its subtasks ("Số lượng 11 · Tổng 20"), in the shared columns. */}
-          <div className={rowColumns}>
-            <span className="flex items-center justify-end whitespace-nowrap text-foreground-muted">
-              {/* One inline run: a flex container would drop the space before the number. */}
-              <span>
-                Số lượng{" "}
-                <span className="font-medium text-foreground">{formatInteger(task.qtyAssigned)}</span>
+          {/* The name stays a label; its pencil changes the task's process (same rule and list as the page title). */}
+          <InlineField
+            variant="inline"
+            trigger="pencil"
+            editKey={processKey}
+            label={`Công đoạn task #${task.code}`}
+            editLabel={`Sửa công đoạn task #${task.code}`}
+            canEdit={rights.process}
+            // Editing: fill the row beside the chevron and folder instead of wrapping under them.
+            className={editingProcess ? "grow basis-0" : undefined}
+            initial={(): string | null => task.process.id}
+            renderEditor={({ id, value, onChange, invalid, disabled, label }) => (
+              <OptionSelect
+                id={id}
+                aria-label={label}
+                options={processOptions}
+                value={value}
+                onChange={onChange}
+                invalid={invalid}
+                disabled={disabled}
+                placeholder="Chọn công đoạn"
+              />
+            )}
+            validate={(value) => (value ? null : "Chọn công đoạn.")}
+            isUnchanged={(value) => value === task.process.id}
+            onSave={(value) =>
+              taskMutations.update.mutateAsync({
+                taskId: task.id,
+                input: { processId: value ?? task.process.id }
+              })
+            }
+            successMessage={(value) =>
+              `Đã đổi công đoạn của #${task.code} sang ${processOptions.find((option) => option.id === value)?.label ?? "công đoạn mới"}`
+            }
+            hint={lineProcessHint(count > 0)}
+          >
+            <span
+              className="block truncate text-[13px] font-semibold"
+              title={`#${task.code} · ${task.process.name}`}
+            >
+              #{task.code} · {task.process.name}
+            </span>
+          </InlineField>
+          {editingProcess ? null : (
+            <>
+              <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] font-medium text-foreground-muted tabular-nums">
+                {count}
               </span>
-              {canManage && count > 0 ? <PencilRoom /> : null}
-            </span>
-            <span className="text-right whitespace-nowrap text-foreground-muted">
-              {count > 0 ? (
-                <>
-                  Tổng{" "}
-                  <span className="font-medium text-foreground">
-                    {formatInteger(task.allocatedQty)}
+              {/* PD-048: its own part, then the total with its subtasks ("Số lượng 11 · Tổng 20"), in the shared columns. */}
+              <div className={rowColumns}>
+                <span className="flex items-center justify-end whitespace-nowrap text-foreground-muted">
+                  {/* One inline run: a flex container would drop the space before the number. */}
+                  <span>
+                    Số lượng{" "}
+                    <span className="font-medium text-foreground">
+                      {formatInteger(task.qtyAssigned)}
+                    </span>
                   </span>
-                </>
-              ) : null}
-            </span>
-            <StatusDot status={task.status} title={`Trạng thái: ${task.status.name}`} />
-            <span aria-hidden="true" />
-          </div>
+                  {canManage && count > 0 ? <PencilRoom /> : null}
+                </span>
+                <span className="text-right whitespace-nowrap text-foreground-muted">
+                  {count > 0 ? (
+                    <>
+                      Tổng{" "}
+                      <span className="font-medium text-foreground">
+                        {formatInteger(task.allocatedQty)}
+                      </span>
+                    </>
+                  ) : null}
+                </span>
+                <StatusDot status={task.status} title={`Trạng thái: ${task.status.name}`} />
+                <span aria-hidden="true" />
+              </div>
+            </>
+          )}
         </div>
         {open ? (
           <div id={listId} className="ml-[1.375rem] max-sm:ml-[1.625rem]">

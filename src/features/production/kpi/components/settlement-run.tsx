@@ -36,13 +36,25 @@ import { khoanPolicyMeta, khoanPolicyRule } from "../khoan-policy";
  * period's current results are replaced (idempotent: same inputs give the same numbers) and members
  * plus admins are notified. The run uses the Khoán pay policy of the settings (PD-033): to compare
  * both, switch it in Cài đặt chung and run the period again — the history keeps every run's policy.
+ *
+ * PD-050: only the organization superadmin runs it; `readOnly` keeps the automatic schedule and the policy in force,
+ * without the form.
  */
 export const SettlementRunPanel = ({
-  currentPeriod,
-  closeDays,
-  khoanPolicy,
-  onDone
-}: {
+  readOnly = false,
+  ...props
+}: SettlementRunProps & { readOnly?: boolean }) =>
+  readOnly ? (
+    <SettlementSchedulePanel
+      currentPeriod={props.currentPeriod}
+      closeDays={props.closeDays}
+      khoanPolicy={props.khoanPolicy}
+    />
+  ) : (
+    <SettlementRunForm {...props} />
+  );
+
+type SettlementRunProps = {
   currentPeriod: string;
   /** settings.kpiCloseDays (closeDaysOf): each period keeps the close day in force for it. */
   closeDays: KpiCloseDays;
@@ -50,7 +62,36 @@ export const SettlementRunPanel = ({
   khoanPolicy: KhoanPayPolicy;
   /** Called with the settled period (the page shows its report). */
   onDone: (period: string) => void;
-}) => {
+};
+
+const autoCloseNote = (closeDays: KpiCloseDays, currentPeriod: string) =>
+  `Hệ thống tự chốt lúc 23:59 ngày chốt của mỗi kỳ (kỳ đang chạy: ${closeDayLabel(closeDayOfPeriod(closeDays, currentPeriod))}).`;
+
+/** Read-only viewers: when the period closes and with which Khoán policy, no run form. */
+const SettlementSchedulePanel = ({
+  currentPeriod,
+  closeDays,
+  khoanPolicy
+}: Omit<SettlementRunProps, "onDone">) => (
+  <Panel
+    title="Chốt KPI"
+    description={autoCloseNote(closeDays, currentPeriod)}
+    bodyClassName="flex flex-col gap-4 p-4"
+  >
+    <InfoNote icon={HandCoins}>
+      Tiền Khoán:{" "}
+      <span className="font-medium text-foreground">{khoanPolicyMeta[khoanPolicy].label}</span> —{" "}
+      {khoanPolicyRule(khoanPolicy)}.
+    </InfoNote>
+  </Panel>
+);
+
+const SettlementRunForm = ({
+  currentPeriod,
+  closeDays,
+  khoanPolicy,
+  onDone
+}: SettlementRunProps) => {
   const ids = useId();
   const run = useRunKpiSettlement();
   const periods = periodsBetween(shiftPeriod(currentPeriod, -23), currentPeriod).reverse();
@@ -65,7 +106,6 @@ export const SettlementRunPanel = ({
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<KpiSettlementRunResult | null>(null);
   const range = kpiPeriodRange(period, closeDays);
-  const closeDay = closeDayOfPeriod(closeDays, currentPeriod);
 
   const review = () => {
     const trimmed = reason.trim();
@@ -103,7 +143,7 @@ export const SettlementRunPanel = ({
   return (
     <Panel
       title="Chạy chốt KPI"
-      description={`Hệ thống tự chốt lúc 23:59 ngày chốt của mỗi kỳ (kỳ đang chạy: ${closeDayLabel(closeDay)}). Chạy tay khi cần sửa kết quả của một kỳ.`}
+      description={`${autoCloseNote(closeDays, currentPeriod)} Chạy tay khi cần sửa kết quả của một kỳ.`}
       bodyClassName="flex flex-col gap-4 p-4"
     >
       <InfoNote icon={HandCoins}>

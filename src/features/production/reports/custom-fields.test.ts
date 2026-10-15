@@ -19,7 +19,6 @@ import {
   activeFilterCount,
   customFieldFilterValues,
   placeChip,
-  privacyProblem,
   sanitizeForRole,
   withCustomFieldFilter,
   withZones,
@@ -208,34 +207,6 @@ describe("custom fields in the builder model", () => {
     ]);
     expect(ReportConfigSchema.safeParse(result.config).success).toBe(true);
     expect(sanitizeForRole(admin, true)).toEqual({ config: admin, removed: [], removedFields: [] });
-  });
-
-  it("explains the private-scores rule inline (PR-11) instead of a 403", () => {
-    const leader = { isAdmin: false, scoresPublic: false };
-    const byPriority = config({ dimensions: ["cf_job:uu_tien"], measures: ["points"] });
-    expect(privacyProblem(byPriority, leader)).toContain("trường tùy chỉnh của job/task");
-    expect(privacyProblem(byPriority, { isAdmin: false, scoresPublic: true })).toBeNull();
-    expect(privacyProblem(byPriority, { isAdmin: true, scoresPublic: false })).toBeNull();
-    // Images or task counts are not personal points; client fields are always allowed.
-    expect(
-      privacyProblem(config({ dimensions: ["cf_job:uu_tien"], measures: ["qty_done"] }), leader)
-    ).toBeNull();
-    expect(
-      privacyProblem(config({ dimensions: ["cf_client:kenh"], measures: ["points"] }), leader)
-    ).toBeNull();
-    expect(
-      privacyProblem(
-        config({
-          dimensions: ["team"],
-          measures: ["points_khoan"],
-          filters: { customFields: [{ field: "cf_task:do_kho", values: ["kho"] }] }
-        }),
-        leader
-      )
-    ).not.toBeNull();
-    expect(
-      privacyProblem(config({ dimensions: ["user"], measures: ["points"] }), leader)
-    ).toContain("chiều Nhân viên");
   });
 });
 

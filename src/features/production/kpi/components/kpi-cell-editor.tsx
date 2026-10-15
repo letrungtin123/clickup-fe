@@ -48,13 +48,15 @@ const versionLabel = (periodType: KpiTarget["periodType"], period: string) => {
 /**
  * Editor for one person × period cell (SPEC Phase 3 §5 /admin/kpi): set the target from this period
  * on (a version at the same start replaces it), with the full effective_from history and deletion of
- * a mistaken version. Popover on desktop/tablet, bottom sheet on phones.
+ * a mistaken version. Popover on desktop/tablet, bottom sheet on phones. `readOnly` (PD-050: everyone but the
+ * organization superadmin) shows the history only, without the form or the delete buttons.
  */
 export const KpiCellEditor = ({
   row,
   column,
   cell,
   versions,
+  readOnly = false,
   onDone
 }: {
   row: MatrixRow;
@@ -62,12 +64,13 @@ export const KpiCellEditor = ({
   cell: KpiTargetCell;
   /** This person's versions of the column's period type, newest first. */
   versions: readonly KpiTarget[];
+  readOnly?: boolean;
   onDone: () => void;
 }) => {
   const ids = useId();
   const save = usePutKpiTargets();
   const remove = useDeleteKpiTarget();
-  const [tab, setTab] = useState<"edit" | "history">("edit");
+  const [tab, setTab] = useState<"edit" | "history">(readOnly ? "history" : "edit");
   const [value, setValue] = useState(targetText(cell.targetPoints));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -153,19 +156,26 @@ export const KpiCellEditor = ({
         )}
       </p>
 
-      <SegmentedControl<"edit" | "history">
-        aria-label="Chế độ"
-        size="sm"
-        value={tab}
-        onChange={setTab}
-        className="w-full"
-        options={[
-          { value: "edit", label: "Đặt chỉ tiêu", icon: PencilLine },
-          { value: "history", label: `Lịch sử (${versions.length})`, icon: History }
-        ]}
-      />
+      {readOnly ? (
+        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground-muted">
+          <History className="size-3.5" aria-hidden="true" />
+          Lịch sử ({versions.length})
+        </p>
+      ) : (
+        <SegmentedControl<"edit" | "history">
+          aria-label="Chế độ"
+          size="sm"
+          value={tab}
+          onChange={setTab}
+          className="w-full"
+          options={[
+            { value: "edit", label: "Đặt chỉ tiêu", icon: PencilLine },
+            { value: "history", label: `Lịch sử (${versions.length})`, icon: History }
+          ]}
+        />
+      )}
 
-      {tab === "edit" ? (
+      {tab === "edit" && !readOnly ? (
         <form
           noValidate
           className="flex flex-col gap-3"
@@ -286,7 +296,7 @@ export const KpiCellEditor = ({
                 <span className="text-[13px] font-semibold tabular-nums">
                   {formatTarget(version.targetPoints)}
                 </span>
-                {confirmDelete === version.id ? (
+                {readOnly ? null : confirmDelete === version.id ? (
                   <Button
                     size="sm"
                     variant="destructive"

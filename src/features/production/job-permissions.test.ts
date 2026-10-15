@@ -56,7 +56,7 @@ describe("job permission matrix helpers (PD-036)", () => {
     expect(jobScopeChanges(copy, defaultJobPermissions)).toEqual([]);
 
     const edited = withJobScope(
-      withJobScope(defaultJobPermissions, "QC", "delete", "none"),
+      withJobScope(defaultJobPermissions, "QC", "delete", "own"),
       "ACCOUNT",
       "update",
       "own"
@@ -64,12 +64,12 @@ describe("job permission matrix helpers (PD-036)", () => {
     expect(sameJobPermissions(edited, defaultJobPermissions)).toBe(false);
     expect(jobScopeChanges(defaultJobPermissions, edited)).toEqual([
       { role: "ACCOUNT", action: "update", from: "all", to: "own" },
-      { role: "QC", action: "delete", from: "own", to: "none" }
+      { role: "QC", action: "delete", from: "none", to: "own" }
     ]);
     // Setting a cell back to its saved value is not a change.
     expect(
       sameJobPermissions(
-        withJobScope(edited, "QC", "delete", "own"),
+        withJobScope(edited, "QC", "delete", "none"),
         withJobScope(defaultJobPermissions, "ACCOUNT", "update", "own")
       )
     ).toBe(true);

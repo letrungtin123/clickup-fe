@@ -7,17 +7,19 @@ import { SegmentedControl } from "@/components/shared/radio-controls";
 import { EmptyState, LoadMoreError } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import type { ScoreEntry } from "@/contracts/production-scores";
+import type { ScoreEntryView } from "@/contracts/production-scores";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { formatCredit, formatInteger, formatMoney, formatNumber } from "../../format";
 import { formatSignedCredit } from "../forecast";
 
 /**
- * Score ledger of the signed-in user (SPEC Phase 3 §5 "bảng score_entries có link task"). Entries are
- * immutable; a quantity corrected after Done shows as a separate correction row carrying the signed
- * delta. Table on tablet/desktop, stacked cards on phones (one tree per tier). The API pages the
- * ledger (newest first); "Tải thêm" loads older rows, the filters count the rows loaded so far.
+ * Score ledger of one person (SPEC Phase 3 §5 "bảng score_entries có link task"): the signed-in user, or
+ * another member on their "Điểm cá nhân" (PD-052, `self` false). Entries are immutable; a quantity corrected
+ * after Done shows as a separate correction row carrying the signed delta. Tasks show their display code
+ * ("#1237", subtask "#1237a"). Table on tablet/desktop, stacked cards on phones (one tree per tier). The API
+ * pages the ledger (newest first); "Tải thêm" loads older rows, the filters count the rows loaded so far.
+ * `showMoney` false (someone else's money is private) drops the money column.
  */
 
 export type EntriesPaging = {
@@ -31,7 +33,7 @@ type Filter = "all" | "worker" | "qc" | "khoan" | "adjust";
 
 const PAGE = 50;
 
-const matches = (entry: ScoreEntry, filter: Filter) => {
+const matches = (entry: ScoreEntryView, filter: Filter) => {
   switch (filter) {
     case "worker":
       return entry.role === "WORKER";
@@ -48,16 +50,21 @@ const matches = (entry: ScoreEntry, filter: Filter) => {
 
 const dayMonth = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
 /** Khoán marker unless the shift name already says it (seed shift "Khoán" → no "Khoán Khoán"). */
-const showKhoanMark = (entry: ScoreEntry) =>
+const showKhoanMark = (entry: ScoreEntryView) =>
   entry.payMode === "MONEY_IF_KPI" && !entry.shift.name.toLocaleLowerCase("vi").includes("khoán");
-const taskHref = (entry: ScoreEntry) => `/production/tasks/${entry.task.id}`;
+const taskHref = (entry: ScoreEntryView) => `/production/tasks/${entry.task.id}`;
 
 export const EntriesList = ({
   entries,
-  paging
+  paging,
+  self = true,
+  showMoney = true
 }: {
-  entries: readonly ScoreEntry[];
+  entries: readonly ScoreEntryView[];
   paging: EntriesPaging;
+  /** The ledger is the signed-in user's own (wording). */
+  self?: boolean;
+  showMoney?: boolean;
 }) => {
   const breakpoint = useBreakpoint();
   const [filter, setFilter] = useState<Filter>("all");
@@ -91,7 +98,7 @@ export const EntriesList = ({
         size="sm"
         icon={ListX}
         title="Chưa có điểm trong kỳ này"
-        description="Điểm được ghi ngay khi task của bạn chuyển sang Done — task Checking ghi điểm QC."
+        description={`Điểm được ghi ngay khi task của ${self ? "bạn" : "người này"} chuyển sang Done — task Checking ghi điểm QC.`}
       />
     );
   }
@@ -114,12 +121,14 @@ export const EntriesList = ({
       {breakpoint === "mobile" ? (
         <ul className="divide-y">
           {visible.map((entry) => (
-            <EntryCard key={entry.id} entry={entry} />
+            <EntryCard key={entry.id} entry={entry} showMoney={showMoney} />
           ))}
         </ul>
       ) : (
         <div className="overflow-x-auto overscroll-x-contain">
-          <table className="w-full min-w-[46rem] text-[13px]">
+          <table
+            className={cn("w-full text-[13px]", showMoney ? "min-w-[46rem]" : "min-w-[40rem]")}
+          >
             <thead>
               <tr className="border-b text-left text-xs text-foreground-muted">
                 <th scope="col" className="py-2.5 pr-3 pl-4 font-medium">
@@ -140,17 +149,22 @@ export const EntriesList = ({
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">
                   Đơn giá
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <th
+                  scope="col"
+                  className={cn("py-2.5 pl-3 text-right font-medium", showMoney ? "px-3" : "pr-4")}
+                >
                   Điểm
                 </th>
-                <th scope="col" className="py-2.5 pr-4 pl-3 text-right font-medium">
-                  Tiền
-                </th>
+                {showMoney ? (
+                  <th scope="col" className="py-2.5 pr-4 pl-3 text-right font-medium">
+                    Tiền
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-border/70">
               {visible.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} />
+                <EntryRow key={entry.id} entry={entry} showMoney={showMoney} />
               ))}
             </tbody>
           </table>
@@ -192,15 +206,15 @@ export const EntriesList = ({
   );
 };
 
-const isAdjustment = (entry: ScoreEntry) => entry.adjustsEntryId !== null;
+const isAdjustment = (entry: ScoreEntryView) => entry.adjustsEntryId !== null;
 
 /** Quantity; corrections carry a sign (+2 / −1). */
-const qtyText = (entry: ScoreEntry) =>
+const qtyText = (entry: ScoreEntryView) =>
   isAdjustment(entry) && entry.qty !== 0
     ? `${entry.qty > 0 ? "+" : "−"}${formatInteger(Math.abs(entry.qty))}`
     : formatInteger(entry.qty);
 
-const Tags = ({ entry }: { entry: ScoreEntry }) => (
+const Tags = ({ entry }: { entry: ScoreEntryView }) => (
   <>
     {entry.role === "QC" ? (
       <span className="inline-flex items-center gap-0.5 rounded bg-success-soft px-1 py-px text-[10px] font-semibold text-success">
@@ -229,7 +243,7 @@ const Tags = ({ entry }: { entry: ScoreEntry }) => (
   </>
 );
 
-const PointsValue = ({ entry, className }: { entry: ScoreEntry; className?: string }) => (
+const PointsValue = ({ entry, className }: { entry: ScoreEntryView; className?: string }) => (
   <span
     className={cn(
       "font-medium tabular-nums",
@@ -242,14 +256,14 @@ const PointsValue = ({ entry, className }: { entry: ScoreEntry; className?: stri
   </span>
 );
 
-const MoneyValue = ({ entry }: { entry: ScoreEntry }) =>
-  entry.payMode === "MONEY_IF_KPI" && entry.money !== 0 ? (
+const MoneyValue = ({ entry }: { entry: ScoreEntryView }) =>
+  entry.payMode === "MONEY_IF_KPI" && entry.money !== null && entry.money !== 0 ? (
     <span className="tabular-nums">{formatMoney(entry.money)}</span>
   ) : (
     <span className="text-foreground-subtle">—</span>
   );
 
-const EntryRow = ({ entry }: { entry: ScoreEntry }) => {
+const EntryRow = ({ entry, showMoney }: { entry: ScoreEntryView; showMoney: boolean }) => {
   const adjustment = isAdjustment(entry);
   return (
     <tr className={cn("align-top", adjustment && "bg-warning-soft/35")}>
@@ -266,7 +280,7 @@ const EntryRow = ({ entry }: { entry: ScoreEntry }) => {
               to={taskHref(entry)}
               className="rounded font-medium text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
             >
-              #{entry.task.number}
+              #{entry.task.code}
             </Link>
             <Tags entry={entry} />
           </span>
@@ -302,17 +316,19 @@ const EntryRow = ({ entry }: { entry: ScoreEntry }) => {
       <td className="px-3 py-2.5 text-right text-foreground-muted tabular-nums">
         {formatCredit(entry.unitCredits)}
       </td>
-      <td className="px-3 py-2.5 text-right">
+      <td className={cn("py-2.5 pl-3 text-right", showMoney ? "px-3" : "pr-4")}>
         <PointsValue entry={entry} />
       </td>
-      <td className="py-2.5 pr-4 pl-3 text-right whitespace-nowrap">
-        <MoneyValue entry={entry} />
-      </td>
+      {showMoney ? (
+        <td className="py-2.5 pr-4 pl-3 text-right whitespace-nowrap">
+          <MoneyValue entry={entry} />
+        </td>
+      ) : null}
     </tr>
   );
 };
 
-const EntryCard = ({ entry }: { entry: ScoreEntry }) => {
+const EntryCard = ({ entry, showMoney }: { entry: ScoreEntryView; showMoney: boolean }) => {
   const adjustment = isAdjustment(entry);
   return (
     <li className={cn("flex items-start gap-3 px-4 py-3", adjustment && "bg-warning-soft/35")}>
@@ -325,7 +341,7 @@ const EntryCard = ({ entry }: { entry: ScoreEntry }) => {
             to={taskHref(entry)}
             className="-my-2 inline-flex min-h-10 items-center rounded font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            #{entry.task.number}
+            #{entry.task.code}
           </Link>
           <span className="text-xs text-foreground-muted tabular-nums">
             {dayMonth(entry.businessDay)}
@@ -345,7 +361,10 @@ const EntryCard = ({ entry }: { entry: ScoreEntry }) => {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
         <PointsValue entry={entry} className="text-sm" />
-        {entry.payMode === "MONEY_IF_KPI" && entry.money !== 0 ? (
+        {showMoney &&
+        entry.payMode === "MONEY_IF_KPI" &&
+        entry.money !== null &&
+        entry.money !== 0 ? (
           <span className="text-xs">
             <MoneyValue entry={entry} />
           </span>
