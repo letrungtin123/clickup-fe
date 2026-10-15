@@ -13,6 +13,7 @@ import { DepartmentBadge } from "@/features/departments/components/department-ba
 import { useHasSeveralDepartments } from "@/features/departments/hooks";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useTouchPrimary } from "@/hooks/use-pointer";
+import { toneClass } from "@/lib/colors";
 
 import { timeAgo } from "@/features/chat/model/time";
 
@@ -108,7 +109,18 @@ export const NotificationItem = memo(function NotificationItem({
           )}
         >
           {description.segments.map((segment, index) =>
-            segment.strong ? (
+            segment.color ? (
+              // A status chip (job status change, PD-045): the colour of the status, readable in both themes.
+              <span
+                key={index}
+                className={cn(
+                  toneClass(segment.color),
+                  "rounded-full bg-(--tone-soft) px-1.5 py-px font-medium text-(--tone-text) [box-decoration-break:clone]"
+                )}
+              >
+                {segment.text}
+              </span>
+            ) : segment.strong ? (
               <strong key={index} className="font-semibold text-foreground">
                 {segment.text}
               </strong>

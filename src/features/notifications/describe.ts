@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import type { Notification, NotificationType } from "@/contracts/notifications";
+import type { ColorToken } from "@/contracts/work";
 
 import { describeKnowledgeNotification, knowledgePath } from "./describe-knowledge";
 import { describeProductionNotification, productionPath } from "./describe-production";
@@ -28,7 +29,12 @@ import { mentionTypeList } from "./feeds";
  *   "Minh đã nhắc đến bạn trong #thiết-kế".
  * Rendering is split into segments so the actor / target can be emphasised.
  */
-export type SentenceSegment = { text: string; strong?: boolean };
+export type SentenceSegment = {
+  text: string;
+  strong?: boolean;
+  /** Shown as a chip of this colour (e.g. the job statuses of a status change, PD-045). */
+  color?: ColorToken;
+};
 
 export type NotificationDescription = {
   segments: SentenceSegment[];

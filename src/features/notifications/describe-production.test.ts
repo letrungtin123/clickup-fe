@@ -56,9 +56,66 @@ describe("production notifications", () => {
         payload: { jobCode: "VD JOB-1", taskNumber: 3, note: "Còn bụi" }
       })
     );
-    expect(sentenceText(failed)).toBe("Leader Mẫu đánh giá VD JOB-1 #3 không đạt QC");
+    expect(sentenceText(failed)).toBe("Leader Mẫu yêu cầu sửa lại task VD JOB-1 #3");
     expect(failed.excerpt).toBe("Còn bụi");
     expect(failed.tone).toBe("danger");
+    expect(
+      sentenceText(describeNotification(make({ type: "production.task_checked", actor: null })))
+    ).toBe("Task VD JOB-1 #3 đã qua QC (Đã check)");
+  });
+
+  it("words quantity change requests and their decisions (PD-044)", () => {
+    const task = { jobCode: "VD JOB-1", taskNumber: 3, processName: "Retouch", qty: 10 };
+    const requested = describeNotification(
+      make({
+        type: "production.qty_change_requested",
+        payload: { ...task, requestId: id(30), fromQty: 10, toQty: 12, reason: "Thêm 2 ảnh góc" }
+      })
+    );
+    expect(sentenceText(requested)).toBe(
+      "Leader Mẫu đề nghị sửa số tấm giao của task VD JOB-1 #3: 10 → 12"
+    );
+    expect(requested.excerpt).toBe("Thêm 2 ảnh góc");
+    expect(requested.tone).toBe("warning");
+    expect(requested.subject).toBe("Retouch · 10 tấm");
+
+    const approved = describeNotification(
+      make({
+        type: "production.qty_change_decided",
+        payload: { ...task, requestId: id(30), fromQty: 10, toQty: 12, approved: true, decisionNote: "OK" }
+      })
+    );
+    expect(sentenceText(approved)).toBe(
+      "Leader Mẫu đã duyệt đề nghị sửa số tấm của task VD JOB-1 #3: 10 → 12"
+    );
+    expect(approved.excerpt).toBe("OK");
+    expect(approved.tone).toBe("success");
+
+    const rejected = describeNotification(
+      make({
+        type: "production.qty_change_decided",
+        payload: { ...task, fromQty: 10, toQty: 12, approved: false, decisionNote: "Giữ 10 tấm" }
+      })
+    );
+    expect(sentenceText(rejected)).toBe(
+      "Leader Mẫu đã từ chối đề nghị sửa số tấm của task VD JOB-1 #3: 10 → 12"
+    );
+    expect(rejected.excerpt).toBe("Giữ 10 tấm");
+    expect(rejected.tone).toBe("danger");
+
+    // A payload without numbers still reads, without the change.
+    expect(
+      sentenceText(
+        describeNotification(
+          make({ type: "production.qty_change_requested", payload: { jobCode: "VD JOB-1", taskNumber: 3 } })
+        )
+      )
+    ).toBe("Leader Mẫu đề nghị sửa số tấm giao của task VD JOB-1 #3");
+    // Both open the line.
+    expect(notificationTarget(make({ type: "production.qty_change_decided", payload: task }))).toEqual({
+      kind: "path",
+      path: `/production/tasks/${id(10)}`
+    });
   });
 
   it("words quantity changes, feedback and comments", () => {
@@ -90,6 +147,63 @@ describe("production notifications", () => {
       )
     ).toBe("Leader Mẫu đã bình luận trong job VD JOB-1");
     expect(mentionTypes.has("production.mentioned")).toBe(true);
+  });
+
+  it("names a task by its code (PD-045), the number on older notifications", () => {
+    const subtask = make({
+      payload: { jobCode: "VD JOB-1", taskCode: "1216a", taskNumber: 1301, processName: "Retouch" }
+    });
+    expect(sentenceText(describeNotification(subtask))).toBe(
+      "Leader Mẫu đã giao cho bạn task VD JOB-1 #1216a"
+    );
+    expect(
+      sentenceText(
+        describeNotification(
+          make({
+            type: "production.mentioned",
+            payload: { jobCode: "VD JOB-1", taskCode: "1216" }
+          })
+        )
+      )
+    ).toBe("Leader Mẫu đã nhắc đến bạn trong VD JOB-1 #1216");
+  });
+
+  it("words a job status change with coloured from → to chips and opens the job (PD-045)", () => {
+    const changed = make({
+      type: "production.job_status_changed",
+      title: "VD JOB-1",
+      target: { ...make({}).target, productionTaskId: null, jobId: id(20) },
+      payload: {
+        jobId: id(20),
+        jobCode: "VD JOB-1",
+        jobName: "Lô thử",
+        from: { id: id(70), name: "Đang làm", color: "blue" },
+        to: { id: id(71), name: "Đã xong", color: "green" }
+      }
+    });
+    const description = describeNotification(changed);
+    expect(sentenceText(description)).toBe(
+      "Leader Mẫu đổi trạng thái job VD JOB-1: Đang làm → Đã xong"
+    );
+    expect(description.tone).toBe("brand");
+    expect(description.subject).toBe("Lô thử");
+    expect(description.segments.filter((segment) => segment.color)).toEqual([
+      { text: "Đang làm", strong: true, color: "blue" },
+      { text: "Đã xong", strong: true, color: "green" }
+    ]);
+    expect(notificationTarget(changed)).toEqual({
+      kind: "path",
+      path: `/production/jobs/${id(20)}`
+    });
+    // An unknown colour (or a malformed payload) still reads, as plain text.
+    const odd = describeNotification(
+      make({
+        type: "production.job_status_changed",
+        payload: { jobCode: "VD JOB-1", from: { name: "A", color: "neon" }, to: null }
+      })
+    );
+    expect(sentenceText(odd)).toBe("Leader Mẫu đổi trạng thái job VD JOB-1: A → ?");
+    expect(odd.segments.some((segment) => segment.color)).toBe(false);
   });
 
   it("opens the task page, the job page, leave and scores", () => {

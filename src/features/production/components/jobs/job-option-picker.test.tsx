@@ -22,6 +22,7 @@ const status = (n: number, name: string, isClosed = false): JobStatus => ({
   color: isClosed ? "green" : "blue",
   position: n,
   isClosed,
+  requiresAllChecked: false,
   jobCount: null,
   updatedAt: "2026-10-01T00:00:00.000Z",
   updatedBy: null
@@ -37,7 +38,8 @@ const option = (n: number, code: string, closed = false): JobOption => ({
     id: closed ? id(52) : id(51),
     name: closed ? "Đã giao khách" : "Đang làm",
     color: closed ? "green" : "blue",
-    isClosed: closed
+    isClosed: closed,
+    requiresAllChecked: false
   }
 });
 

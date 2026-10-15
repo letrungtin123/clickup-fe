@@ -29,13 +29,20 @@ const option = (n: number, code: string, projectId = id(2)): JobOption => ({
   code,
   projectId,
   deadline: "2026-10-20T16:59:00.000Z",
-  jobStatus: { id: id(50), name: "Đang làm", color: "blue", isClosed: false }
+  jobStatus: {
+    id: id(50),
+    name: "Đang làm",
+    color: "blue",
+    isClosed: false,
+    requiresAllChecked: false
+  }
 });
 
 const JOB = option(1, "Batch A/Folder 01");
 
 const valid = (patch: Partial<WorkEntryDraft> = {}): WorkEntryDraft => ({
   ...newWorkEntryDraft(TODAY, { assigneeId: id(1), projectId: id(2), job: JOB }),
+  qcId: id(5),
   processId: id(3),
   shiftId: id(4),
   qty: "25",
@@ -118,15 +125,39 @@ describe("workEntryProblems", () => {
       { checking: false, assigneeRoles: null, self: false }
     );
     expect(Object.keys(problems).sort()).toEqual(
-      ["assignee", "dueDay", "job", "process", "project", "qty", "receivedDay", "shift"].sort()
+      [
+        "assignee",
+        "dueDay",
+        "job",
+        "process",
+        "project",
+        "qc",
+        "qty",
+        "receivedDay",
+        "shift"
+      ].sort()
     );
+  });
+
+  it("needs a QC other than the worker, except on a Checking task (PD-047)", () => {
+    expect(workEntryProblems(valid({ qcId: null }), staffContext).qc).toBe("Chọn QC.");
+    expect(workEntryProblems(valid({ qcId: id(1) }), staffContext).qc).toBe(
+      "QC phải khác người làm."
+    );
+    expect(
+      workEntryProblems(valid({ qcId: null }), {
+        checking: true,
+        assigneeRoles: ["QC"],
+        self: true
+      }).qc
+    ).toBeUndefined();
   });
 
   it("needs a job picked from the project", () => {
     expect(workEntryProblems(valid({ job: null }), staffContext).job).toBe("Chọn gói công việc.");
-    expect(
-      workEntryProblems(valid({ job: option(2, "Gói khác", id(9)) }), staffContext).job
-    ).toBe("Gói công việc không thuộc dự án đã chọn.");
+    expect(workEntryProblems(valid({ job: option(2, "Gói khác", id(9)) }), staffContext).job).toBe(
+      "Gói công việc không thuộc dự án đã chọn."
+    );
   });
 
   it("refuses a Ngày giao before the Ngày nhận, accepts the same day", () => {
@@ -155,7 +186,7 @@ describe("workEntryProblems", () => {
   it("needs QC or Leader for a Checking line and Staff or Leader otherwise (PD-037)", () => {
     expect(
       workEntryProblems(valid(), { checking: true, assigneeRoles: ["STAFF"], self: true }).assignee
-    ).toBe("Dòng Checking cần vai trò QC hoặc Leader — bạn chưa có.");
+    ).toBe("Task Checking cần vai trò QC hoặc Leader — bạn chưa có.");
     expect(
       workEntryProblems(valid(), { checking: true, assigneeRoles: ["QC"], self: false }).assignee
     ).toBeUndefined();
@@ -177,6 +208,7 @@ describe("workEntryPayload", () => {
     expect(payload).toEqual({
       projectId: id(2),
       jobId: id(101),
+      qcId: id(5),
       processId: id(3),
       shiftId: id(4),
       qtyAssigned: 25,
@@ -218,11 +250,29 @@ describe("workEntryPayload", () => {
     expect(nextWorkEntryDraft(valid({ workLink: "Y:\\Client" })).workLink).toBe("");
   });
 
+  it("sends no QC for a Checking task, and needs one otherwise (PD-047)", () => {
+    const checking = workEntryPayload(valid(), {
+      timeZone: VN,
+      sendAssignee: false,
+      checking: true
+    });
+    expect(checking).not.toBeNull();
+    expect(checking).not.toHaveProperty("qcId");
+    expect(
+      workEntryPayload(valid({ qcId: null }), { timeZone: VN, sendAssignee: false, checking: true })
+    ).not.toBeNull();
+    expect(
+      workEntryPayload(valid({ qcId: null }), { timeZone: VN, sendAssignee: false })
+    ).toBeNull();
+  });
+
   it("is null while something required is missing or the job is of another project", () => {
     expect(
       workEntryPayload(valid({ shiftId: null }), { timeZone: VN, sendAssignee: false })
     ).toBeNull();
-    expect(workEntryPayload(valid({ job: null }), { timeZone: VN, sendAssignee: false })).toBeNull();
+    expect(
+      workEntryPayload(valid({ job: null }), { timeZone: VN, sendAssignee: false })
+    ).toBeNull();
     expect(
       workEntryPayload(valid({ job: option(2, "Gói khác", id(9)) }), {
         timeZone: VN,
@@ -266,7 +316,10 @@ describe("shortPackage / withoutLinePrefix", () => {
     expect(short.endsWith("/Folder 99")).toBe(true);
   });
 
-  it("drops the API's line prefix of a single row", () => {
+  it("drops the API's task prefix of a single row (PD-047 “Task 1: …”, older “Dòng 1: …”)", () => {
+    expect(withoutLinePrefix("Task 1: Chọn QC cho task. Task 1: Ca làm không tồn tại.")).toBe(
+      "Chọn QC cho task. Ca làm không tồn tại."
+    );
     expect(
       withoutLinePrefix(
         "Dòng 1: Người làm phải có vai trò Nhân viên hoặc Leader. Dòng 1: Ca làm không tồn tại."

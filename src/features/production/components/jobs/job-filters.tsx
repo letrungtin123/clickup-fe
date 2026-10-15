@@ -191,6 +191,7 @@ const FilterControls = ({
           onChange={(projectId) => set({ projectId })}
           placeholder="Dự án"
           noneLabel="Mọi dự án"
+          searchPlaceholder="Tìm dự án…"
           aria-label="Lọc theo dự án"
           className={width}
         />

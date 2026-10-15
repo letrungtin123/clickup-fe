@@ -17,17 +17,19 @@ import type {
 } from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
 import type { QueryValue } from "@/lib/api/client";
+import { isApiError } from "@/lib/api/errors";
 
 import {
   jobsApi,
   type AssignInput,
   type CreateJobInput,
-  type FeedbackInput,
+  type CreateSubtaskInput,
+  type DecideQtyRequestInput,
   type JobListQuery,
   type JobOptionsInput,
   type MyTasksRole,
   type QtyInput,
-  type ReassignInput,
+  type QtyRequestInput,
   type TaskLineInput,
   type TimelineEntity,
   type TransitionInput,
@@ -153,8 +155,8 @@ export const useProductionTimeline = (entity: TimelineEntity, id: string) =>
 // --- Cache helpers ---------------------------------------------------------------------------------------
 
 /**
- * Views derived from a write on a job or several of its tasks (split, reassign, bulk move,
- * feedback): refetched only while on screen (TanStack's default), others are marked stale.
+ * Views derived from a write on a job or several of its tasks (split, work entry, delete): refetched only while on
+ * screen (TanStack's default), others are marked stale.
  */
 export const invalidateProductionViews = (
   client: QueryClient,
@@ -220,6 +222,15 @@ export const applyTask = (
   void client.invalidateQueries({ queryKey: productionKeys.jobs() });
   void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", task.jobId) });
   void client.invalidateQueries({ queryKey: productionKeys.timeline("tasks", task.id) });
+  // PD-044: a subtask's edit changes its line (quantity, `subtasks`, SUBTASK history row); a line's write moves,
+  // re-assigns and re-dates its subtasks (their pages refetch while open, scores included).
+  if (task.isSubtask && task.parentTaskId) {
+    void client.invalidateQueries({ queryKey: productionKeys.task(task.parentTaskId), exact: true });
+    void client.invalidateQueries({ queryKey: productionKeys.timeline("tasks", task.parentTaskId) });
+  }
+  for (const subtask of task.subtasks ?? []) {
+    void client.invalidateQueries({ queryKey: productionKeys.task(subtask.id) });
+  }
 };
 
 // --- Job writes ---------------------------------------------------------------------------------------
@@ -256,8 +267,10 @@ export const useUpdateJob = (jobId: string) => {
 };
 
 /**
- * The manual job status (PD-038): the answer is stored (detail + list rows); filtered lists (by status), the job picker,
- * the timeline (history row) and led jobs refresh. The line workflow is untouched, so no task view changes.
+ * The manual job status (PD-038 / PD-045, the job's only status): the answer is stored (detail + list rows); filtered
+ * lists (by status), the job picker, the timeline (history row) and led jobs refresh. The line workflow is untouched,
+ * so no task view changes. A refusal because lines are not checked yet (409 JOB_NOT_READY) means the cached job's
+ * counts are stale: it refetches, so the menu shows the status blocked with the current count.
  */
 export const useChangeJobStatus = (jobId: string) => {
   const client = useQueryClient();
@@ -270,6 +283,11 @@ export const useChangeJobStatus = (jobId: string) => {
       void client.invalidateQueries({ queryKey: productionKeys.jobOptions() });
       void client.invalidateQueries({ queryKey: productionKeys.timeline("jobs", jobId) });
       void client.invalidateQueries({ queryKey: ["production", "led-jobs"] });
+    },
+    onError: (error) => {
+      if (isApiError(error) && error.code === "JOB_NOT_READY") {
+        void client.invalidateQueries({ queryKey: productionKeys.job(jobId) });
+      }
     }
   });
 };
@@ -304,69 +322,6 @@ export const useCreateTasks = (jobId: string) => {
     mutationFn: (tasks: TaskLineInput[]) => jobsApi.createTasks(jobId, tasks),
     meta: { errorMessage: false },
     onSuccess: () => void invalidateProductionViews(client, jobId)
-  });
-};
-
-export const useReassignFeedback = (jobId: string) => {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ feedbackId, input }: { feedbackId: string; input: ReassignInput }) =>
-      jobsApi.reassign(feedbackId, input),
-    meta: { errorMessage: false },
-    onSuccess: () => void invalidateProductionViews(client, jobId)
-  });
-};
-
-export const useJobTransition = (jobId: string) => {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (toStatusId: string) => jobsApi.transition(jobId, toStatusId),
-    meta: { errorMessage: false },
-    onSuccess: (result) => {
-      storeJob(client, result.job);
-      void invalidateProductionViews(
-        client,
-        jobId,
-        result.job.tasks.map((task) => task.id)
-      );
-      requestScoresRefresh(client);
-    }
-  });
-};
-
-export const useCreateFeedback = (jobId: string) => {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: FeedbackInput) => jobsApi.feedback(jobId, input),
-    meta: { errorMessage: false },
-    onSuccess: (job) => {
-      storeJob(client, job);
-      void invalidateProductionViews(
-        client,
-        jobId,
-        job.tasks.map((task) => task.id)
-      );
-      requestScoresRefresh(client);
-    }
-  });
-};
-
-/** Closes an open client feedback without rework; the parked tasks leave Feedback (API rules). */
-export const useCloseFeedback = (jobId: string) => {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ feedbackId, note }: { feedbackId: string; note: string }) =>
-      jobsApi.closeFeedback(feedbackId, note),
-    meta: { errorMessage: false },
-    onSuccess: (job) => {
-      storeJob(client, job);
-      void invalidateProductionViews(
-        client,
-        jobId,
-        job.tasks.map((task) => task.id)
-      );
-      requestScoresRefresh(client);
-    }
   });
 };
 
@@ -451,10 +406,78 @@ export const useTaskMutations = () => {
       mutationFn: (taskId: string) => jobsApi.removeTask(taskId),
       meta: { errorMessage: false },
       onSuccess: (result) => {
+        // A deleted subtask gives its quantity back to its line (PD-044): refresh the line too.
+        const parentId = client.getQueryData<ProductionTask>(productionKeys.task(result.taskId))
+          ?.parentTaskId;
         client.removeQueries({ queryKey: productionKeys.task(result.taskId), exact: true });
-        void invalidateProductionViews(client, result.jobId);
+        void invalidateProductionViews(client, result.jobId, parentId ? [parentId] : []);
         requestScoresRefresh(client);
       }
+    })
+  };
+};
+
+/**
+ * PD-044 subtasks of a line. Creating answers the line (with its `subtasks`); editing a subtask answers the subtask
+ * (applyTask refreshes its line); deleting one refreshes its line (`lineId`), whose quantity grows back.
+ */
+export const useSubtaskMutations = () => {
+  const client = useQueryClient();
+  const myId = useSessionContext().user.id;
+  const onSuccess = (task: ProductionTask) => applyTask(client, task, myId);
+  return {
+    create: useMutation({
+      mutationFn: ({ taskId, input }: { taskId: string; input: CreateSubtaskInput }) =>
+        jobsApi.createSubtask(taskId, input),
+      meta: { errorMessage: false },
+      onSuccess
+    }),
+    /** Công đoạn / Số tấm giao / Ghi chú / Hình lỗi of a subtask (before Done). */
+    update: useMutation({
+      mutationFn: ({ subtaskId, input }: { subtaskId: string; input: UpdateTaskInput }) =>
+        jobsApi.updateTask(subtaskId, input),
+      meta: { errorMessage: false },
+      onSuccess
+    }),
+    // A subtask's Done quantity is corrected on its own page (useTaskMutations().setQty, PD-048).
+    remove: useMutation({
+      mutationFn: ({ subtaskId }: { subtaskId: string; lineId: string }) =>
+        jobsApi.removeTask(subtaskId),
+      meta: { errorMessage: false },
+      onSuccess: (result, { lineId }) => {
+        client.removeQueries({ queryKey: productionKeys.task(result.taskId), exact: true });
+        void invalidateProductionViews(client, result.jobId, [lineId]);
+        requestScoresRefresh(client);
+      }
+    })
+  };
+};
+
+/**
+ * PD-044 "Số lượng giao" requests: the worker asks (new total + reason), the Leader / "update: all" approves or
+ * rejects, the worker may cancel. Each answers the line; it is stored where cached (task, job, my tasks).
+ */
+export const useQtyRequestMutations = () => {
+  const client = useQueryClient();
+  const myId = useSessionContext().user.id;
+  const onSuccess = (task: ProductionTask) => applyTask(client, task, myId);
+  return {
+    request: useMutation({
+      mutationFn: ({ taskId, input }: { taskId: string; input: QtyRequestInput }) =>
+        jobsApi.requestQty(taskId, input),
+      meta: { errorMessage: false },
+      onSuccess
+    }),
+    decide: useMutation({
+      mutationFn: ({ requestId, input }: { requestId: string; input: DecideQtyRequestInput }) =>
+        jobsApi.decideQtyRequest(requestId, input),
+      meta: { errorMessage: false },
+      onSuccess
+    }),
+    cancel: useMutation({
+      mutationFn: (requestId: string) => jobsApi.cancelQtyRequest(requestId),
+      meta: { errorMessage: false },
+      onSuccess
     })
   };
 };

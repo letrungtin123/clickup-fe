@@ -1,5 +1,6 @@
 import {
   AlarmClock,
+  ArrowRightLeft,
   AtSign,
   BadgeCheck,
   CalendarCheck2,
@@ -7,6 +8,7 @@ import {
   CircleX,
   ClipboardCheck,
   Crown,
+  FilePenLine,
   MessageCircleWarning,
   MessageSquare,
   SlidersHorizontal,
@@ -17,13 +19,17 @@ import {
 } from "lucide-react";
 
 import type { Notification } from "@/contracts/notifications";
+import { colorTokens, type ColorToken } from "@/contracts/work";
 
 import type { NotificationDescription, SentenceSegment } from "./describe";
 
 /**
  * Vietnamese sentences for the production (Photo Retouch) notification types — PLAN §8. Payloads come
- * from BE modules/production/notifications.ts: { jobCode, taskNumber, processName, qty, deadline,
- * note, from, to, feedbackType, requesterName, fromDate, toDate, status, period, points, target, … }.
+ * from BE modules/production/notifications.ts: { jobCode, taskCode, taskNumber, processName, qty, deadline,
+ * note, from, to, feedbackType, requesterName, fromDate, toDate, status, period, points, target, … };
+ * quantity change requests (PD-044) add { requestId, fromQty, toQty, reason, approved, decisionNote }; a job
+ * status change (PD-045) is { jobId, jobCode, jobName, from: { id, name, color }, to: { id, name, color } }.
+ * A task is named by its code ("#1216" / "#1216a", PD-045); notifications sent before codes only hold the number.
  */
 
 const str = (value: unknown) => (typeof value === "string" && value.length > 0 ? value : null);
@@ -47,10 +53,37 @@ const formatDay = (value: unknown) => {
   return match ? `${match[3]}/${match[2]}` : null;
 };
 
+/** The task's display code (PD-045), else its number (older notifications); null for a job-level notification. */
+const taskCodeOf = (notification: Notification) => {
+  const code = str(notification.payload.taskCode);
+  if (code) return code;
+  const number = num(notification.payload.taskNumber);
+  return number !== null ? String(number) : null;
+};
+
 const taskRef = (notification: Notification): SentenceSegment => {
   const job = str(notification.payload.jobCode) ?? notification.title;
-  const number = num(notification.payload.taskNumber);
-  return { text: number !== null ? `${job} #${number}` : job, strong: true };
+  const code = taskCodeOf(notification);
+  return { text: code !== null ? `${job} #${code}` : job, strong: true };
+};
+
+const isColorToken = (value: unknown): value is ColorToken =>
+  typeof value === "string" && (colorTokens as readonly string[]).includes(value);
+
+/** A job status of a payload ({ id, name, color }) as a coloured chip; plain strong text without a known colour. */
+const statusChip = (value: unknown): SentenceSegment => {
+  const status = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const name = str(status.name) ?? "?";
+  return isColorToken(status.color)
+    ? { text: name, strong: true, color: status.color }
+    : { text: name, strong: true };
+};
+
+/** "10 → 12" of a quantity change request (PD-044), null when the payload lacks a number. */
+const qtyChange = (notification: Notification) => {
+  const from = num(notification.payload.fromQty);
+  const to = num(notification.payload.toQty);
+  return from !== null && to !== null ? `${from} → ${to}` : null;
 };
 
 const taskSubject = (notification: Notification) => {
@@ -102,8 +135,9 @@ export const describeProductionNotification = (
         tone: "brand"
       };
     case "production.qc_failed":
+      // PD-044: a QC fail sends the line to "Cần sửa lại" with the QC's reason.
       return {
-        segments: [actor, { text: " đánh giá " }, ref, { text: " không đạt QC" }],
+        segments: [actor, { text: " yêu cầu sửa lại task " }, ref],
         subject,
         excerpt: note ?? excerpt,
         icon: CircleX,
@@ -111,12 +145,49 @@ export const describeProductionNotification = (
       };
     case "production.task_checked":
       return {
-        segments: [ref, { text: " đã qua QC (Checked)" }],
+        segments: [{ text: "Task " }, ref, { text: " đã qua QC (Đã check)" }],
         subject,
         excerpt: null,
         icon: BadgeCheck,
         tone: "success"
       };
+    case "production.qty_change_requested": {
+      // PD-044, to the job's Leader: { …task, requestId, fromQty, toQty, reason }.
+      const change = qtyChange(notification);
+      return {
+        segments: [
+          actor,
+          { text: " đề nghị sửa số tấm giao của task " },
+          ref,
+          ...(change ? [{ text: ": " }, { text: change, strong: true }] : [])
+        ],
+        subject,
+        excerpt: str(notification.payload.reason) ?? excerpt,
+        icon: FilePenLine,
+        tone: "warning"
+      };
+    }
+    case "production.qty_change_decided": {
+      // PD-044, to the worker who asked: { …task, requestId, fromQty, toQty, approved, decisionNote }.
+      const approved = notification.payload.approved === true;
+      const change = qtyChange(notification);
+      return {
+        segments: [
+          actor,
+          {
+            text: approved
+              ? " đã duyệt đề nghị sửa số tấm của task "
+              : " đã từ chối đề nghị sửa số tấm của task "
+          },
+          ref,
+          ...(change ? [{ text: ": " }, { text: change, strong: true }] : [])
+        ],
+        subject,
+        excerpt: str(notification.payload.decisionNote) ?? excerpt,
+        icon: approved ? BadgeCheck : CircleX,
+        tone: approved ? "success" : "danger"
+      };
+    }
     case "production.task_due_soon": {
       const due = formatDeadline(notification.payload.deadline);
       return {
@@ -163,6 +234,25 @@ export const describeProductionNotification = (
         tone: "warning"
       };
     }
+    case "production.job_status_changed": {
+      // PD-045, to the job's Leader and production Account / Admin: { jobId, jobCode, jobName, from, to }.
+      const name = str(notification.payload.jobName);
+      return {
+        segments: [
+          actor,
+          { text: " đổi trạng thái job " },
+          { text: str(notification.payload.jobCode) ?? notification.title, strong: true },
+          { text: ": " },
+          statusChip(notification.payload.from),
+          { text: " → " },
+          statusChip(notification.payload.to)
+        ],
+        subject: name,
+        excerpt: null,
+        icon: ArrowRightLeft,
+        tone: "brand"
+      };
+    }
     case "production.feedback": {
       const type = str(notification.payload.feedbackType);
       return {
@@ -183,7 +273,7 @@ export const describeProductionNotification = (
         segments: [
           actor,
           { text: " đã nhắc đến bạn trong " },
-          num(notification.payload.taskNumber) !== null
+          taskCodeOf(notification) !== null
             ? ref
             : { text: `job ${notification.title}`, strong: true }
         ],
@@ -197,7 +287,7 @@ export const describeProductionNotification = (
         segments: [
           actor,
           { text: " đã bình luận trong " },
-          num(notification.payload.taskNumber) !== null
+          taskCodeOf(notification) !== null
             ? ref
             : { text: `job ${notification.title}`, strong: true }
         ],

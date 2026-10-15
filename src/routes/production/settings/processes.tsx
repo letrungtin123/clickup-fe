@@ -177,7 +177,7 @@ export const ProductionProcessesRoute = () => {
             QC
           </TooltipTrigger>
           <TooltipContent className="max-w-72">
-            Dòng việc của người QC: điểm ghi khi dòng Done, theo đơn giá của quy trình này trong dự
+            Task của người QC: điểm ghi khi task Done, theo đơn giá của quy trình này trong dự
             án (ca Khoán: điểm Khoán)
           </TooltipContent>
         </Tooltip>
@@ -223,8 +223,8 @@ export const ProductionProcessesRoute = () => {
     <SettingsPage>
       <PageIntro slug="processes" />
       <InfoNote icon={BadgeCheck} tone="brand">
-        Quy trình QC (thường là “Checking”) là một dòng việc bình thường do người QC làm: điểm QC
-        được ghi khi dòng Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán
+        Quy trình QC (thường là “Checking”) là một task bình thường do người QC làm: điểm QC
+        được ghi khi task Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán
         thì là điểm Khoán. Luôn có đúng một quy trình đang dùng là QC.
       </InfoNote>
       <SettingsSection
@@ -298,8 +298,8 @@ export const ProductionProcessesRoute = () => {
         {!processes.isPending && items.length > 0 && !currentQc ? (
           <div className="border-t p-3">
             <InfoNote icon={Info} tone="warning">
-              Chưa có quy trình QC. Đánh dấu một quy trình (thường là “Checking”) là QC để giao dòng
-              Checking cho người QC và ghi điểm QC khi dòng đó Done.
+              Chưa có quy trình QC. Đánh dấu một quy trình (thường là “Checking”) là QC để giao task
+              Checking cho người QC và ghi điểm QC khi task đó Done.
             </InfoNote>
           </div>
         ) : null}

@@ -9,6 +9,7 @@ import type {
 } from "@/contracts/production-jobs";
 import type { ProductionChangedEvent } from "@/contracts/realtime";
 
+import { qcQueueCodes } from "./jobs-model";
 import { productionKeys } from "./keys";
 import { kpiKeys, scoreKeys } from "./scores/keys";
 
@@ -101,17 +102,21 @@ export const planChangeInvalidations = (client: QueryClient, change: PendingChan
   const add = (queryKey: QueryKey, exact = true, refetch = true) =>
     invalidations.push({ queryKey, exact, refetch });
 
+  const touchesWork =
+    change.kinds.has("job") || change.kinds.has("tasks") || change.kinds.has("feedback");
+
   for (const jobId of change.jobIds) {
+    // The job timeline and, under its key, the job page's "Nhật ký" (history only, PD-044, job-log-hooks.ts): a
+    // comment leaves the log alone, any work change refreshes both (prefix).
     const key = productionKeys.timeline("jobs", jobId);
-    if (isCached(client, key)) add(key);
+    const exact = !touchesWork;
+    if (isCached(client, key, exact)) add(key, exact);
   }
   for (const taskId of change.taskIds) {
     const key = productionKeys.timeline("tasks", taskId);
     if (isCached(client, key)) add(key);
   }
 
-  const touchesWork =
-    change.kinds.has("job") || change.kinds.has("tasks") || change.kinds.has("feedback");
   if (!touchesWork) return { invalidations, speculative, scores: false };
 
   for (const jobId of change.jobIds) {
@@ -275,8 +280,8 @@ const doneTime = (task: Pick<ProductionTask, "doneAt">) =>
 
 /**
  * The QC queue after a write answered with `task`: it leaves the queue once it is no longer waiting
- * for my check, is replaced in place otherwise, and joins it (oldest Done first) when it starts
- * waiting for me (`myId`).
+ * for my check or being checked (Chờ QC / Đang check, PD-044), is replaced in place otherwise, and
+ * joins it (oldest Done first) when it starts waiting for me (`myId`). Subtasks are never queue cards.
  */
 export const patchQcQueue = (
   data: ProductionTaskPage | undefined,
@@ -284,7 +289,7 @@ export const patchQcQueue = (
   myId: string | null
 ) => {
   if (!data) return data;
-  const waiting = task.status.code === "WAITING_QC";
+  const waiting = qcQueueCodes.has(task.status.code) && !task.isSubtask;
   const index = data.items.findIndex((item) => item.id === task.id);
   if (index >= 0) {
     if (waiting && (myId === null || task.qc?.id === myId)) {

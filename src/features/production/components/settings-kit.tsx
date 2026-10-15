@@ -272,6 +272,8 @@ type RowMenuProps = {
   onToggleActive?: (() => void) | undefined;
   extra?: ReactNode;
   disabled?: boolean;
+  /** Menu width (default w-48), for longer item labels. */
+  menuClassName?: string;
 };
 
 /** "…" menu for a catalog row: edit + archive/restore (records are never hard-deleted). */
@@ -281,7 +283,8 @@ export const RowMenu = ({
   onEdit,
   onToggleActive,
   extra,
-  disabled
+  disabled,
+  menuClassName = "w-48"
 }: RowMenuProps) => (
   <DropdownMenu>
     <DropdownMenuTrigger
@@ -290,7 +293,7 @@ export const RowMenu = ({
     >
       <Ellipsis />
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" className="w-48">
+    <DropdownMenuContent align="end" className={menuClassName}>
       {onEdit ? (
         <DropdownMenuItem onClick={onEdit}>
           <Pencil />

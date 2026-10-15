@@ -119,7 +119,7 @@ export const MyLedJobs = ({ className }: { className?: string }) => {
                       </span>
                     </span>
                     <span className="ml-auto shrink-0 tabular-nums">
-                      {job.taskCount > 0 ? `${job.taskCount} dòng` : "Chưa chia"}
+                      {job.taskCount > 0 ? `${job.taskCount} task` : "Chưa chia"}
                     </span>
                   </span>
                 </Link>

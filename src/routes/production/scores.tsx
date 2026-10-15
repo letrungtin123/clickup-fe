@@ -372,7 +372,7 @@ const ScoresContent = ({
 
       <Panel
         title="Lịch sử ghi điểm"
-        description="Mỗi dòng công việc ghi một dòng điểm khi Done (dòng Checking: điểm QC); sửa số tấm sau khi xong hoặc xoá dòng thì thêm dòng điều chỉnh."
+        description="Mỗi task ghi một dòng điểm khi Done (task Checking: điểm QC); sửa số tấm sau khi xong hoặc xoá task thì thêm dòng điều chỉnh."
       >
         <EntriesList entries={entries} paging={paging} />
       </Panel>

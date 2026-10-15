@@ -249,7 +249,7 @@ const MyTasksCard = ({ timeZone }: { timeZone: string }) => {
                   <button type="button" className={rowClass} onClick={() => openTask(task.id)}>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate font-medium">
-                        #{task.number} · {task.process.name}
+                        #{task.code} · {task.process.name}
                       </span>
                       <span className="truncate text-xs text-foreground-muted">
                         {task.jobCode} · {task.qtyAssigned} tấm
@@ -308,7 +308,7 @@ const QcCard = ({ timeZone }: { timeZone: string }) => {
                 <button type="button" className={rowClass} onClick={() => openTask(task.id)}>
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">
-                      #{task.number} · {task.process.name}
+                      #{task.code} · {task.process.name}
                     </span>
                     <span className="truncate text-xs text-foreground-muted">
                       {task.jobCode} · {task.assignee.displayName}

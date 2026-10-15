@@ -520,7 +520,7 @@ export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["t
           size="sm"
           icon={UsersRound}
           title="Chưa có điểm trong 8 tuần gần nhất"
-          description="Điểm xuất hiện khi dòng công việc Done (dòng Checking ghi điểm QC)."
+          description="Điểm xuất hiện khi task Done (task Checking ghi điểm QC)."
         />
       ) : (
         <div className="p-4">

@@ -1,19 +1,5 @@
 import { cn } from "cn";
-import {
-  ArrowRightLeft,
-  Briefcase,
-  CirclePlus,
-  History,
-  Ellipsis,
-  MessageSquare,
-  NotebookPen,
-  Pencil,
-  Send,
-  SlidersHorizontal,
-  Trash2,
-  UserRoundCog,
-  type LucideIcon
-} from "lucide-react";
+import { Ellipsis, History, MessageSquare, Pencil, Send, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
@@ -38,14 +24,8 @@ import { useSessionContext } from "@/features/auth/hooks";
 
 import { foldText } from "../../catalog";
 import { productionErrorMessage } from "../../errors";
-import {
-  useCustomFields,
-  useProcesses,
-  useProductionAccess,
-  useProductionMe,
-  useShifts,
-  useTags
-} from "../../hooks";
+import { useProductionAccess, useProductionMe } from "../../hooks";
+import { useLogNames } from "../../job-log-hooks";
 import { useCommentMutations, useProductionTimeline } from "../../jobs-hooks";
 import type { TimelineEntity } from "../../jobs-api";
 import {
@@ -53,28 +33,20 @@ import {
   describeTaskLog,
   formatDateTime,
   insertMention,
+  logTaskLabel,
+  logTone,
   mentionAt,
   mentionedIds,
+  repeatsLineLog,
+  type LogNames,
   type Segment
 } from "../../jobs-model";
 import type { Person } from "../../people";
 import { ConfirmDialog } from "../settings-kit";
+import { logIcons, logToneBorder, logToneBubble } from "./log-icons";
 
 type TimelineItem = ProductionTimelinePage["items"][number];
 type Filter = "all" | "comments";
-
-const logIcons: Record<TaskLog["action"], LucideIcon> = {
-  CREATE: CirclePlus,
-  STATUS: ArrowRightLeft,
-  QTY: SlidersHorizontal,
-  ASSIGN: UserRoundCog,
-  NOTE: NotebookPen,
-  FIELD: Pencil,
-  // Job-level edit history (task_id null): deadline, Leader, custom fields, tags…
-  JOB: Briefcase,
-  // A deleted line (PD-036).
-  DELETE: Trash2
-};
 
 const itemTime = (item: TimelineItem) =>
   item.kind === "comment" ? item.comment.createdAt : item.log.createdAt;
@@ -92,6 +64,7 @@ export const ProductionTimeline = ({
   mentionable,
   readOnly = false,
   onOpenTask,
+  hiddenTaskIds,
   className
 }: {
   entity: TimelineEntity;
@@ -103,35 +76,15 @@ export const ProductionTimeline = ({
   /** Archived job: comments can be read but not added, edited or deleted (the API refuses). */
   readOnly?: boolean;
   onOpenTask?: ((taskId: string) => void) | undefined;
+  /** Job timeline: the job's subtasks — their status / assignment / create / delete rows repeat their line's (PD-044). */
+  hiddenTaskIds?: ReadonlySet<string> | undefined;
   className?: string | undefined;
 }) => {
   const timeline = useProductionTimeline(entity, id);
-  const processes = useProcesses();
-  const shifts = useShifts();
-  const tags = useTags();
-  const fields = useCustomFields();
   const me = useProductionMe();
   const [filter, setFilter] = useState<Filter>("all");
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
-
-  const names = useMemo(() => {
-    const processNames = new Map(
-      (processes.data?.items ?? []).map((process) => [process.id, process.name])
-    );
-    const shiftNames = new Map((shifts.data?.items ?? []).map((shift) => [shift.id, shift.name]));
-    const tagNames = new Map((tags.data?.items ?? []).map((tag) => [tag.id, tag.name]));
-    // Archived fields too: history may name a field that is no longer in use.
-    const fieldList = fields.data?.items ?? [];
-    return {
-      user: people.nameOf,
-      process: (value: string) => processNames.get(value),
-      shift: (value: string) => shiftNames.get(value),
-      tag: (value: string) => tagNames.get(value),
-      field: (fieldEntity: "JOB" | "TASK", key: string) =>
-        fieldList.find((field) => field.entity === fieldEntity && field.key === key),
-      timeZone
-    };
-  }, [people.nameOf, processes.data, shifts.data, tags.data, fields.data, timeZone]);
+  const names = useLogNames(people.nameOf, timeZone);
 
   const items = useMemo(() => {
     const seen = new Set<string>();
@@ -139,6 +92,8 @@ export const ProductionTimeline = ({
     for (const page of timeline.data?.pages ?? []) {
       for (const item of page.items) {
         const key = itemKey(item);
+        if (item.kind === "log" && hiddenTaskIds && repeatsLineLog(item.log, hiddenTaskIds))
+          continue;
         if (!seen.has(key)) {
           seen.add(key);
           list.push(item);
@@ -146,7 +101,7 @@ export const ProductionTimeline = ({
       }
     }
     return list.sort((a, b) => new Date(itemTime(b)).getTime() - new Date(itemTime(a)).getTime());
-  }, [timeline.data]);
+  }, [timeline.data, hiddenTaskIds]);
   const visible = filter === "comments" ? items.filter((item) => item.kind === "comment") : items;
 
   return (
@@ -254,7 +209,7 @@ const LogRow = ({
   onOpenTask
 }: {
   log: TaskLog;
-  names: Parameters<typeof describeTaskLog>[1];
+  names: LogNames;
   onOpenTask?: ((taskId: string) => void) | undefined;
 }) => {
   const Icon = logIcons[log.action];
@@ -262,15 +217,16 @@ const LogRow = ({
   const jobEdit = log.action === "JOB" ? describeJobEdit(log, names) : null;
   // Job-level rows (action JOB) have no task to open.
   const taskId = log.taskId;
-  const taskLabel = log.taskNumber === null ? null : `#${log.taskNumber}`;
-  const qcFail = log.toValue?.qcFail === true;
+  const taskLabel = logTaskLabel(log);
+  // QC asking for rework, quantity requests and their decisions (PD-044) stand out.
+  const tone = logTone(log);
   return (
     <li className="relative flex gap-3 py-2 pl-0.5">
       <span
         aria-hidden="true"
         className={cn(
           "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground-muted",
-          qcFail && "bg-danger-soft text-danger"
+          logToneBubble[tone ?? "none"]
         )}
       >
         <Icon className="size-3.5" />
@@ -297,7 +253,7 @@ const LogRow = ({
             </ul>
           </>
         ) : (
-          <p className="text-[13px] leading-relaxed text-foreground-muted">
+          <p className="text-[13px] leading-relaxed text-foreground-muted [overflow-wrap:anywhere]">
             <span className="font-medium text-foreground">
               {log.user?.displayName ?? "Hệ thống"}
             </span>{" "}
@@ -322,8 +278,8 @@ const LogRow = ({
         {log.note ? (
           <p
             className={cn(
-              "rounded-lg border-l-2 bg-muted/60 px-2.5 py-1.5 text-[13px] whitespace-pre-wrap text-foreground",
-              qcFail ? "border-danger" : "border-border-strong"
+              "rounded-lg border-l-2 bg-muted/60 px-2.5 py-1.5 text-[13px] whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
+              logToneBorder[tone ?? "none"]
             )}
           >
             {log.note}
@@ -337,8 +293,13 @@ const LogRow = ({
   );
 };
 
-const SegmentText = ({ segment }: { segment: Segment }) => (
+/**
+ * One piece of a history sentence (describeTaskLog): strong names / values, toned warnings; a shortened value (a long
+ * "Link chia việc", PD-045) carries the full one as its tooltip.
+ */
+export const SegmentText = ({ segment }: { segment: Segment }) => (
   <span
+    title={segment.title}
     className={cn(
       segment.strong && "font-medium text-foreground",
       segment.tone === "danger" && "font-medium text-danger",

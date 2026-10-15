@@ -21,7 +21,8 @@ import { RoleBadge } from "@/features/production/components/role-chips";
 import {
   jobScopeItems,
   jobScopeLabels,
-  jobScopeMeaning
+  jobScopeMeaning,
+  jobScopeNotes
 } from "@/features/production/job-permissions";
 import { productionRoleLabels } from "@/features/production/roles";
 
@@ -31,13 +32,19 @@ import { retouchColumns, type RetouchRule } from "./retouch-rules";
 /** Row labels of the job permission matrix (PD-036) on this page. */
 const jobRowLabels: Record<JobPermissionAction, string> = {
   view: "Xem job",
-  create: "Tạo job / dòng",
+  create: "Tạo job / task",
   update: "Sửa",
   delete: "Xoá"
 };
 
 const jobRowDescription = (action: JobPermissionAction) =>
-  `Của mình: ${jobScopeMeaning[action].own} Tất cả: ${jobScopeMeaning[action].all}`;
+  [
+    `Của mình: ${jobScopeMeaning[action].own}`,
+    `Tất cả: ${jobScopeMeaning[action].all}`,
+    jobScopeNotes[action]
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 const statusChangeLabel = "Đổi trạng thái job — theo quyền Sửa (Của mình = job mình được giao)";
 
@@ -77,7 +84,7 @@ export const RetouchMatrix = ({
       ))}
     >
       <GroupRow
-        title="Job & dòng việc"
+        title="Job & task"
         description="Không / Của mình / Tất cả. Một người nhiều vai trò dùng quyền rộng nhất."
         span={span}
       />
@@ -140,7 +147,7 @@ export const RetouchMatrix = ({
           <tr>
             <RowHead
               label={statusChangeLabel}
-              description="Trạng thái job (Mới nhận, Đang làm…) đổi theo quyền Sửa: Tất cả = mọi job; Của mình = job mình có dòng việc được giao hoặc mình là leader. Không chỉnh riêng được."
+              description="Trạng thái job (Mới nhận, Đang làm…) đổi theo quyền Sửa: Tất cả = mọi job; Của mình = job mình có task được giao hoặc mình là leader. Không chỉnh riêng được."
               locked
             />
             {retouchColumns.map((role) => (

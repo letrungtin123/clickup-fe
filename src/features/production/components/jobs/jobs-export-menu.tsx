@@ -86,9 +86,9 @@ export const JobsExportMenu = ({
         <DropdownMenuItem onClick={() => void run("worklog")} className="items-start py-2">
           <Rows3 className="mt-0.5" />
           <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="font-medium">Work log (từng dòng)</span>
+            <span className="font-medium">Work log (từng task)</span>
             <span className="text-xs text-pretty text-foreground-muted">
-              Mỗi dòng công việc một hàng, đúng các cột của file work log.
+              Mỗi task một hàng, đúng các cột của file work log.
             </span>
           </span>
         </DropdownMenuItem>

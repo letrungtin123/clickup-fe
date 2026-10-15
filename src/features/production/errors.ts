@@ -25,6 +25,12 @@ const productionMessages: Record<string, string> = {
   REFERENCE_INVALID: "Dữ liệu liên quan không còn tồn tại. Hãy tải lại.",
   RULE_VIOLATION: "Thay đổi vi phạm quy tắc dữ liệu.",
   PAYLOAD_TOO_LARGE: "Nội dung quá lớn. Hãy chia nhỏ rồi thử lại.",
+  // PD-045 fallbacks: the job status chip is the only place to finish a job; the separate feedback feature is gone.
+  JOB_NOT_READY: "Job chưa thể chuyển sang trạng thái này: còn task chưa check.",
+  FEEDBACK_RETIRED:
+    "Chức năng feedback riêng đã bỏ. Dùng trạng thái job “Feedback” và “Chia task” cho các task làm lại.",
+  // PD-047: a work task's QC can be changed, never removed (the server words it the same way).
+  QC_REQUIRED: "Task phải có QC — chỉ đổi sang QC khác.",
   // Fallbacks when the server sends no message (the server-worded set below wins otherwise).
   QTY_DONE_TOO_HIGH:
     "Số tấm hoàn thành vượt mức cho phép. Nếu thực tế làm nhiều hơn, hãy báo Leader của job sửa sau khi Done.",
@@ -50,7 +56,7 @@ const productionMessages: Record<string, string> = {
 
 /** Codes whose server message is already user-facing Vietnamese naming the offending fields. */
 const serverWorded = new Set([
-  // Custom fields & tags: list filters name the field; split / "Giao lại" prefix "Dòng N: …".
+  // Custom fields & tags: list filters name the field; split / "Giao lại" prefix "Task N: …".
   "CUSTOM_FIELDS_INVALID",
   "CUSTOM_FIELD_FILTER_INVALID",
   "CUSTOM_FIELDS_FORBIDDEN",
@@ -69,6 +75,20 @@ const serverWorded = new Set([
   "TEAM_NOT_FOUND",
   // Phase 2 (jobs/tasks): the workflow engine words these with the status names / failing lines.
   "TRANSITION_NOT_ALLOWED",
+  // PD-044 / PD-045: subtasks, quantity requests and the job status that needs every line checked (JOB_NOT_READY
+  // "Còn N task chưa check: #…") name the lines / quantities involved.
+  "SUBTASK_FOLLOWS_PARENT",
+  "SUBTASK_FIELD_LOCKED",
+  "SUBTASK_INVALID",
+  "SUBTASK_QTY_INVALID",
+  "SUBTASK_PARENT_INVALID",
+  "PROCESS_INVALID",
+  "QTY_REQUEST_REQUIRED",
+  "QTY_REQUEST_OPEN",
+  "QTY_REQUEST_INVALID",
+  "QTY_REQUEST_CLOSED",
+  "QTY_REQUEST_NOT_FOUND",
+  "JOB_NOT_READY",
   "NOTE_REQUIRED",
   "TASK_LINES_INVALID",
   "ASSIGNMENT_INVALID",
@@ -86,6 +106,9 @@ const serverWorded = new Set([
   "FEEDBACK_NOT_FOUND",
   "FEEDBACK_RESOLVED",
   "FEEDBACK_OPEN",
+  "FEEDBACK_RETIRED",
+  "SUBTASK_LIMIT",
+  "JOB_TRANSITION_RETIRED",
   "CHANNEL_NAME_TAKEN",
   "LEADER_INVALID",
   "LEADER_REQUIRED",

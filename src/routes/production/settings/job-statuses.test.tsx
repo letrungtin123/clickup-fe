@@ -27,6 +27,7 @@ const status = (
   color: "blue",
   position: n,
   isClosed: false,
+  requiresAllChecked: false,
   jobCount: 0,
   updatedAt: "2026-01-02T03:00:00.000Z",
   updatedBy: null,
@@ -79,7 +80,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("Cấu hình → Trạng thái job (PD-038)", () => {
+describe("Cấu hình → Trạng thái job (PD-038 / PD-045)", () => {
   it("lists the statuses in order with chips, job counts, the last change and the closed switch", async () => {
     vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: catalog });
     renderPage();
@@ -131,7 +132,12 @@ describe("Cấu hình → Trạng thái job (PD-038)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thêm trạng thái" }));
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     // slate / blue / amber / green are taken: violet is the first free palette colour.
-    expect(create).toHaveBeenCalledWith({ name: "Chờ duyệt", color: "violet", isClosed: true });
+    expect(create).toHaveBeenCalledWith({
+      name: "Chờ duyệt",
+      color: "violet",
+      isClosed: true,
+      requiresAllChecked: false
+    });
     await waitFor(() =>
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Đã thêm trạng thái Chờ duyệt")
     );
@@ -178,6 +184,45 @@ describe("Cấu hình → Trạng thái job (PD-038)", () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith(id(3), { isClosed: true }));
     await waitFor(() =>
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Chờ QC là trạng thái đóng")
+    );
+  });
+
+  it("“Cần mọi task đã check” (PD-045): a badge on the row, a checkbox in the row menu, a switch when adding", async () => {
+    const done = status(5, "Đã xong", { color: "green", requiresAllChecked: true });
+    const items = [...catalog.slice(0, 3), done, catalog[3]!];
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items });
+    const update = vi.spyOn(productionApi, "updateJobStatus").mockResolvedValue({ items });
+    const create = vi.spyOn(productionApi, "createJobStatus").mockResolvedValue({ items });
+    renderPage();
+    const row = await screen.findByRole("button", { name: /^Đã xong/ });
+    expect(row.textContent).toContain("Cần đã check");
+    // Only that row carries the badge (the other match is the switch of the “add” form).
+    const list = screen.getByRole("list", { name: "Trạng thái job" });
+    expect(list.textContent?.match(/Cần đã check/g)).toHaveLength(1);
+
+    await openRowMenu("Đã xong");
+    const checkbox = await screen.findByRole("menuitemcheckbox", { name: "Cần mọi task đã check" });
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      fireEvent.click(checkbox);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(id(5), { requiresAllChecked: false })
+    );
+    await waitFor(() =>
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Đã xong: không cần mọi task đã check")
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Tên trạng thái mới" }), {
+      target: { value: "Hoàn tất" }
+    });
+    fireEvent.click(screen.getByRole("switch", { name: "Trạng thái mới cần mọi task đã check" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thêm trạng thái" }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Hoàn tất", isClosed: false, requiresAllChecked: true })
+      )
     );
   });
 

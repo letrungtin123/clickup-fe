@@ -91,7 +91,7 @@ export const EntriesList = ({
         size="sm"
         icon={ListX}
         title="Chưa có điểm trong kỳ này"
-        description="Điểm được ghi ngay khi dòng công việc của bạn chuyển sang Done — dòng Checking ghi điểm QC."
+        description="Điểm được ghi ngay khi task của bạn chuyển sang Done — task Checking ghi điểm QC."
       />
     );
   }

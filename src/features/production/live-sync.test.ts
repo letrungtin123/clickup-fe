@@ -14,6 +14,7 @@ import type {
   ProductionTaskPage
 } from "@/contracts/production-jobs";
 
+import { jobLogKey } from "./job-log-hooks";
 import { productionKeys } from "./keys";
 import {
   addChange,
@@ -52,6 +53,7 @@ const status = (code: string, n: number) => ({
 const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTask => ({
   id: id(n),
   number: n,
+  code: String(n),
   jobId: id(1),
   jobCode: "JOB",
   project: { id: id(2), code: "P", name: "Dự án" },
@@ -70,6 +72,11 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
   status: status("PROCESSING", 50),
   kind: "NORMAL",
   parentTaskId: null,
+  isSubtask: false,
+  splitReason: null,
+  subtasks: [],
+  allocatedQty: 10,
+  pendingQtyRequest: null,
   feedbackId: null,
   note: null,
   workLink: null,
@@ -88,6 +95,10 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
     canAssign: false,
     canChangeAssignee: false,
     canEditQty: false,
+    canEditQtyAssigned: false,
+    canRequestQty: false,
+    canDecideQtyRequest: false,
+    canCreateSubtask: false,
     canDelete: false
   },
   ...extra
@@ -106,8 +117,16 @@ const makeJob = (n: number, extra: Partial<JobSummary> = {}): JobSummary => ({
   totalImagesManual: true,
   driveLink: null,
   channelId: null,
-  jobStatus: { id: id(90), name: "Mới nhận", color: "slate", isClosed: false },
+  jobStatus: {
+    id: id(90),
+    name: "Mới nhận",
+    color: "slate",
+    isClosed: false,
+    requiresAllChecked: false
+  },
   status: null,
+  uncheckedTaskCount: 0,
+  processTotals: [],
   qtyAssigned: 0,
   qtyDone: 0,
   qtyChecked: 0,
@@ -233,6 +252,43 @@ describe("planChangeInvalidations", () => {
     });
     expect(plan.speculative).toEqual([]);
     expect(plan.scores).toBe(false);
+  });
+
+  it("refreshes the job page's log (under the job timeline) on work changes, not on comments (PD-044)", () => {
+    seed();
+    const log = jobLogKey(id(1), null);
+    const lineLog = jobLogKey(id(1), id(10));
+    client.setQueryData(log, { pages: [], pageParams: [] });
+    client.setQueryData(lineLog, { pages: [], pageParams: [] });
+    const work = planChangeInvalidations(
+      client,
+      change([{ jobId: id(1), taskIds: [id(10)], kind: "tasks" }])
+    );
+    expect(work.invalidations).toContainEqual({
+      queryKey: productionKeys.timeline("jobs", id(1)),
+      exact: false,
+      refetch: true
+    });
+    const comment = planChangeInvalidations(
+      client,
+      change([{ jobId: id(1), taskIds: [id(10)], kind: "comment" }])
+    );
+    expect(comment.invalidations).toContainEqual({
+      queryKey: productionKeys.timeline("jobs", id(1)),
+      exact: true,
+      refetch: true
+    });
+  });
+
+  it("refreshes a cached log even when the job timeline itself is not cached (phones)", async () => {
+    const log = jobLogKey(id(1), null);
+    client.setQueryData(log, { pages: [], pageParams: [] });
+    const plan = planChangeInvalidations(
+      client,
+      change([{ jobId: id(1), taskIds: [id(10)], kind: "tasks" }])
+    );
+    await applyInvalidations(client, plan.invalidations, true);
+    expect(client.getQueryState(log)?.isInvalidated).toBe(true);
   });
 
   it("ignores views that are not cached", () => {
@@ -370,6 +426,32 @@ describe("patching own writes", () => {
       ME
     );
     expect(reassigned?.items.map((task) => task.number)).toEqual([3]);
+  });
+
+  it("keeps a line the QC is checking in the queue, drops it on rework (PD-044)", () => {
+    const queue = pageOf([
+      makeTask(1, { status: status("WAITING_QC", 52), doneAt: "2026-10-09T01:00:00.000Z" }),
+      makeTask(3, { status: status("WAITING_QC", 52), doneAt: "2026-10-09T03:00:00.000Z" })
+    ]);
+    const checking = patchQcQueue(
+      queue,
+      makeTask(1, { status: status("QC_CHECKING", 54), doneAt: "2026-10-09T01:00:00.000Z" }),
+      ME
+    );
+    expect(checking?.items.map((task) => [task.number, task.status.code])).toEqual([
+      [1, "QC_CHECKING"],
+      [3, "WAITING_QC"]
+    ]);
+    const rework = patchQcQueue(checking, makeTask(1, { status: status("REWORK", 55) }), ME);
+    expect(rework?.items.map((task) => task.number)).toEqual([3]);
+    // A subtask never joins the queue on its own.
+    const subtask = makeTask(4, {
+      status: status("WAITING_QC", 52),
+      doneAt: "2026-10-09T04:00:00.000Z",
+      isSubtask: true,
+      parentTaskId: id(3)
+    });
+    expect(patchQcQueue(queue, subtask, ME)).toBe(queue);
   });
 
   it("patches job rows from a job detail without its tasks", () => {

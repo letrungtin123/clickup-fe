@@ -198,7 +198,8 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "job-statuses",
     label: "Trạng thái job",
-    description: "Trạng thái người đặt cho job (như ClickUp): tên, màu, thứ tự và trạng thái đóng.",
+    description:
+      "Trạng thái người đặt cho job (như ClickUp): tên, màu, thứ tự, trạng thái đóng và trạng thái cần mọi task đã check.",
     icon: CircleDot,
     group: "workflow",
     roles: ["ADMIN"]

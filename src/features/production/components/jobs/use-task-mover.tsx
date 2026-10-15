@@ -4,11 +4,17 @@ import { toast } from "sonner";
 import type { ProductionStatus } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 
-import { productionErrorMessage } from "../../errors";
 import { useWorkflow } from "../../hooks";
 import { useTransitionTask } from "../../jobs-hooks";
 import { needsInput } from "../../jobs-model";
-import { TransitionDialog, type PendingMove } from "./transition-dialog";
+import { taskEditErrorMessage } from "../../task-edit-model";
+import { TransitionDialog, type Extras, type PendingMove } from "./transition-dialog";
+
+/** "Đã chuyển #5 sang Done" (+ "cùng 2 subtask": subtasks move with their line, PD-044). */
+const movedMessage = (task: ProductionTask, targetName: string | undefined) => {
+  const subtasks = task.subtasks?.length ?? 0;
+  return `Đã chuyển #${task.code}${subtasks > 0 ? ` (cùng ${subtasks} subtask)` : ""} sang ${targetName ?? "trạng thái mới"}`;
+};
 
 /** Workflow statuses by id (names, colours, flags) for labelling transition options. */
 export const useStatusLookup = () => {
@@ -33,8 +39,9 @@ export const useStatusLookup = () => {
 
 /**
  * State + dialog for task moves. `start` runs a move straight away when it needs no input, or opens
- * the dialog (Done quantity, OT hours, required note, ADMIN override reason). Options always come
- * from `task.capabilities.transitions` — the UI never invents moves (PD-014).
+ * the dialog (Done quantity — of the line and its subtasks —, OT hours, required note, ADMIN override
+ * reason). Options always come from `task.capabilities.transitions` — the UI never invents moves
+ * (PD-014); a subtask has none (it follows its line, PD-044).
  */
 export const useTaskMover = () => {
   const transition = useTransitionTask();
@@ -44,7 +51,7 @@ export const useTaskMover = () => {
   const run = (
     task: ProductionTask,
     option: TaskTransitionOption,
-    extras: { note?: string; qtyDone?: number; otHours?: number } = {},
+    extras: Extras = {},
     optimistic = false
   ) => {
     const target = lookup.byId.get(option.toStatusId);
@@ -60,11 +67,11 @@ export const useTaskMover = () => {
       })
       .then(
         () => {
-          toast.success(`Đã chuyển #${task.number} sang ${target?.name ?? "trạng thái mới"}`);
+          toast.success(movedMessage(task, target?.name));
           return true;
         },
         (error: unknown) => {
-          toast.error(productionErrorMessage(error));
+          toast.error(taskEditErrorMessage(error));
           return false;
         }
       );
@@ -96,7 +103,7 @@ export const useTaskMover = () => {
           input: { toStatusId: pending.option.toStatusId, ...extras }
         });
         toast.success(
-          `Đã chuyển #${pending.task.number} sang ${lookup.byId.get(pending.option.toStatusId)?.name ?? "trạng thái mới"}`
+          movedMessage(pending.task, lookup.byId.get(pending.option.toStatusId)?.name)
         );
         setPending(null);
         return true;

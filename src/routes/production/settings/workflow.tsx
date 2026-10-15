@@ -394,13 +394,13 @@ const StatusDialog = ({
                 checked={countsDone}
                 onChange={setCountsDone}
                 title="Ghi điểm"
-                hint="Vào trạng thái này lần đầu thì ghi điểm cho người làm dòng (dòng Checking: điểm QC)."
+                hint="Vào trạng thái này lần đầu thì ghi điểm cho người làm task (task Checking: điểm QC)."
               />
               <FlagSwitch
                 checked={countsChecked}
                 onChange={setCountsChecked}
                 title="Đã kiểm"
-                hint="Vào trạng thái này thì dòng được tính là đã QC kiểm. Không ghi điểm: điểm QC ghi ở dòng Checking."
+                hint="Vào trạng thái này thì task được tính là đã QC kiểm. Không ghi điểm: điểm QC ghi ở task Checking."
               />
               <FlagSwitch
                 checked={isTerminal}

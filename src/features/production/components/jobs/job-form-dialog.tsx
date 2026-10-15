@@ -31,7 +31,13 @@ import {
   useTags
 } from "../../hooks";
 import { useCreateJob, useUpdateJob } from "../../jobs-hooks";
-import { dueDayToIso, isoToDay, receivedDayToIso } from "../../jobs-model";
+import {
+  dueDayToIso,
+  isoToDay,
+  receivedDayToIso,
+  WORK_LINK_MAX,
+  workLinkProblem
+} from "../../jobs-model";
 import { useProductionPeople } from "../../people";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { CustomFieldsForm } from "../custom-field-input";
@@ -131,8 +137,9 @@ export const JobFormDialog = ({
     const totalValue = totalText === "" ? null : Number(totalText);
     if (totalValue !== null && (!/^\d+$/.test(totalText) || totalValue > 1_000_000))
       problems.total = "Số tấm nguyên ≥ 0, hoặc để trống để tự tính.";
-    if (link.trim() && !/^https?:\/\//i.test(link.trim()))
-      problems.link = "Link phải bắt đầu bằng http:// hoặc https://";
+    // PD-046: a web link or a folder path ("//PHOTO/…", "Y:\…"), like a line's "Link chia việc".
+    const linkProblem = workLinkProblem(link);
+    if (linkProblem) problems.link = linkProblem;
     const custom = validateCustomValues(jobFields, values, { enforceRequired: !job });
     setErrors(problems);
     setFieldErrors(custom);
@@ -223,7 +230,7 @@ export const JobFormDialog = ({
               {job ? `Sửa job ${job.code}` : "Tạo job"}
             </DialogTitle>
             <DialogDescription>
-              Một job là một gói công việc của dự án (như trong file work log); các dòng công việc
+              Một job là một gói công việc của dự án (như trong file work log); các task
               được chia sau.
             </DialogDescription>
           </DialogHeader>
@@ -233,6 +240,7 @@ export const JobFormDialog = ({
               <OptionSelect
                 id={`${ids}-project`}
                 options={projectOptions}
+                searchPlaceholder="Tìm dự án…"
                 value={projectId}
                 onChange={setProjectId}
                 placeholder="Chọn dự án"
@@ -285,11 +293,11 @@ export const JobFormDialog = ({
                 ) : dueInPast ? (
                   <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
                     <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                    Ngày giao đã qua — dòng chưa xong sẽ bị tính trễ ngay.
+                    Ngày giao đã qua — task chưa xong sẽ bị tính trễ ngay.
                   </p>
                 ) : (
                   <FieldDescription className="text-xs">
-                    Mặc định cho ngày nhận / ngày giao của các dòng.
+                    Mặc định cho ngày nhận / ngày giao của các task.
                   </FieldDescription>
                 )}
               </Field>
@@ -325,7 +333,7 @@ export const JobFormDialog = ({
                   placeholder={
                     job && !job.totalImagesManual
                       ? `Tự tính: ${formatInteger(job.totalImages)}`
-                      : "Tự tính theo các dòng"
+                      : "Tự tính theo các task"
                   }
                   aria-invalid={Boolean(errors.total)}
                   onChange={(event) => setTotal(event.target.value)}
@@ -335,7 +343,7 @@ export const JobFormDialog = ({
                   <FieldError>{errors.total}</FieldError>
                 ) : (
                   <FieldDescription className="text-xs">
-                    Để trống: bằng tổng số lượng các dòng, tự cập nhật.
+                    Để trống: bằng tổng số lượng các task, tự cập nhật.
                   </FieldDescription>
                 )}
               </Field>
@@ -369,11 +377,11 @@ export const JobFormDialog = ({
                 </FieldLabel>
                 <Input
                   id={`${ids}-link`}
-                  type="url"
-                  inputMode="url"
                   value={link}
-                  maxLength={2000}
-                  placeholder="https://…"
+                  maxLength={WORK_LINK_MAX}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="Dán link hoặc đường dẫn thư mục"
                   aria-invalid={Boolean(errors.link)}
                   onChange={(event) => setLink(event.target.value)}
                 />

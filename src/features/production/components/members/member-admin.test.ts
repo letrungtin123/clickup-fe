@@ -129,7 +129,8 @@ describe("orphaned jobs", () => {
         id: `${userId}-status`,
         name: "Đang làm",
         color: "blue" as const,
-        isClosed: false
+        isClosed: false,
+        requiresAllChecked: false
       },
       taskCount: 0
     }))

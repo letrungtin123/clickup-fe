@@ -8,18 +8,18 @@ import {
   JobDetailSchema,
   JobOptionsSchema,
   JobPageSchema,
-  JobTransitionResultSchema,
   ProductionCommentSchema,
   ProductionTaskPageSchema,
   ProductionTaskSchema,
   ProductionTimelinePageSchema,
   WorkEntryResultSchema,
   type AssignTaskRequestSchema,
-  type CreateFeedbackRequestSchema,
   type CreateJobRequestSchema,
+  type CreateQtyRequestSchema,
+  type CreateSubtaskRequestSchema,
   type CreateTaskLineSchema,
   type CreateWorkEntryRequestSchema,
-  type ReassignFeedbackRequestSchema,
+  type DecideQtyRequestSchema,
   type TransitionTaskRequestSchema,
   type UpdateJobRequestSchema,
   type UpdateProductionTaskRequestSchema,
@@ -32,20 +32,25 @@ import { OkResponseSchema } from "@/lib/api/schemas";
 import { queryPath } from "./list-filters";
 
 /**
- * Production jobs, tasks, feedback and comments (BE modules/production/jobs.routes.ts, SPEC Phase 2).
- * Responses are parsed with the shared contract; what a caller may do comes back as `capabilities`.
+ * Production jobs, tasks and comments (BE modules/production/jobs.routes.ts, SPEC Phase 2). Responses are parsed with
+ * the shared contract; what a caller may do comes back as `capabilities`. PD-045: the job-level line moves ("Complete
+ * cả gói") and the separate feedback feature ("Ghi feedback", "Giao lại", "Đóng feedback") are retired — the job's
+ * status is the manual chip (changeStatus).
  */
 
 export type CreateJobInput = z.input<typeof CreateJobRequestSchema>;
 export type UpdateJobInput = z.input<typeof UpdateJobRequestSchema>;
 export type TaskLineInput = z.input<typeof CreateTaskLineSchema>;
-export type ReassignInput = z.input<typeof ReassignFeedbackRequestSchema>;
-export type FeedbackInput = z.input<typeof CreateFeedbackRequestSchema>;
 export type TransitionInput = z.input<typeof TransitionTaskRequestSchema>;
 export type QtyInput = z.input<typeof UpdateTaskQtyRequestSchema>;
 export type AssignInput = z.input<typeof AssignTaskRequestSchema>;
 export type UpdateTaskInput = z.input<typeof UpdateProductionTaskRequestSchema>;
 export type WorkEntryInput = z.input<typeof CreateWorkEntryRequestSchema>;
+/** PD-044: split part of a line off into another process ("Tạo subtask"). */
+export type CreateSubtaskInput = z.input<typeof CreateSubtaskRequestSchema>;
+/** PD-044: the worker asks the Leader for a new "Số lượng giao" (the new total). */
+export type QtyRequestInput = z.input<typeof CreateQtyRequestSchema>;
+export type DecideQtyRequestInput = z.input<typeof DecideQtyRequestSchema>;
 export type TimelineEntity = "jobs" | "tasks";
 export type MyTasksRole = "assignee" | "qc" | "all";
 
@@ -94,17 +99,6 @@ export const jobsApi = {
     api.post("/production/work-entries", WorkEntryResultSchema, input),
   createTasks: (jobId: string, tasks: TaskLineInput[]) =>
     api.post(apiPath`/production/jobs/${jobId}/tasks`, CreateTasksResultSchema, { tasks }),
-  transition: (jobId: string, toStatusId: string) =>
-    api.post(apiPath`/production/jobs/${jobId}/transition`, JobTransitionResultSchema, {
-      toStatusId
-    }),
-  feedback: (jobId: string, input: FeedbackInput) =>
-    api.post(apiPath`/production/jobs/${jobId}/feedbacks`, JobDetailSchema, input),
-  /** "Đóng feedback, không cần làm lại" (Account / Admin, reason required); answers the job. */
-  closeFeedback: (feedbackId: string, note: string) =>
-    api.post(apiPath`/production/feedbacks/${feedbackId}/close`, JobDetailSchema, { note }),
-  reassign: (feedbackId: string, input: ReassignInput) =>
-    api.post(apiPath`/production/feedbacks/${feedbackId}/reassign`, CreateTasksResultSchema, input),
   chat: (jobId: string) => api.post(apiPath`/production/jobs/${jobId}/chat`, JobChatResultSchema),
 
   /** `filters`: TASK tag / custom-field query (list-filters.ts). */
@@ -146,6 +140,19 @@ export const jobsApi = {
   /** Deletes one line (PD-036): its points are reversed, it is kept for audit. */
   removeTask: (taskId: string) =>
     api.delete(apiPath`/production/tasks/${taskId}`, DeleteTaskResultSchema),
+  /**
+   * PD-044 subtasks. Create answers the LINE (with its `subtasks`); a subtask is edited / deleted with updateTask /
+   * removeTask on its own id (its quantity moves between it and its line).
+   */
+  createSubtask: (taskId: string, input: CreateSubtaskInput) =>
+    api.post(apiPath`/production/tasks/${taskId}/subtasks`, ProductionTaskSchema, input),
+  /** PD-044 quantity requests: each answers the line with its `pendingQtyRequest`. */
+  requestQty: (taskId: string, input: QtyRequestInput) =>
+    api.post(apiPath`/production/tasks/${taskId}/qty-requests`, ProductionTaskSchema, input),
+  decideQtyRequest: (requestId: string, input: DecideQtyRequestInput) =>
+    api.post(apiPath`/production/qty-requests/${requestId}/decision`, ProductionTaskSchema, input),
+  cancelQtyRequest: (requestId: string) =>
+    api.delete(apiPath`/production/qty-requests/${requestId}`, ProductionTaskSchema),
 
   timeline: (
     entity: TimelineEntity,

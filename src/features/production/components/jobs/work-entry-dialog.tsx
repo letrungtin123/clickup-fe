@@ -60,10 +60,11 @@ type SaveMode = "close" | "next";
 
 /**
  * "Nhập công việc" (PD-035, PD-038): one row of the work-log Excel — Nhân viên thực hiện, Dự án, Gói công việc, Quy
- * trình, Ngày nhận, Ngày giao, Ca làm việc, Số lượng, Hình lỗi, Giờ OT, Link chia việc (PD-040), Ghi chú — plus the
- * TASK custom fields. The package is an EXISTING job of the project, picked from a searchable list (closed jobs too);
- * the entry never creates a job — jobs come from "Tạo job". "create: own" enters rows for myself only; "create: all"
- * picks the person (PD-036). "Lưu & nhập tiếp" (also Enter) keeps the row's context (person, project, job, process,
+ * trình, QC (required unless the process is Checking, PD-047), Ngày nhận, Ngày giao, Ca làm việc, Số lượng, Hình lỗi,
+ * Giờ OT, Link chia việc (PD-040), Ghi chú — plus the TASK custom fields. The package is an EXISTING job of the project,
+ * picked from a searchable list (closed jobs too); the entry never creates a job — jobs come from "Tạo job". "create:
+ * own" enters rows for myself only; "create: all" picks the person (PD-036; staff have "none" since PD-047, so the action
+ * is hidden for them). "Lưu & nhập tiếp" (also Enter) keeps the row's context (person, QC, project, job, process,
  * shift, dates) for the next one.
  */
 export const WorkEntryDialog = ({
@@ -146,6 +147,7 @@ export const WorkEntryDialog = ({
   const chosen = people.byId(draft.assigneeId);
   const assigneeChoices =
     chosen && !pool.some((person) => person.id === chosen.id) ? [chosen, ...pool] : pool;
+  const checkers = people.withRole("QC").filter((person) => person.id !== draft.assigneeId);
   const isSelf = draft.assigneeId === session.user.id;
   const assigneeRoles = isSelf
     ? me.data
@@ -177,6 +179,7 @@ export const WorkEntryDialog = ({
     const payload = workEntryPayload(draft, {
       timeZone,
       sendAssignee: canPick,
+      checking,
       ...(taskFields.length > 0 ? { customValues: toCustomValuesPayload(taskFields, values) } : {})
     });
     if (Object.keys(problems).length > 0 || Object.keys(custom).length > 0 || !payload) return;
@@ -240,8 +243,8 @@ export const WorkEntryDialog = ({
           <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
             <DialogTitle>Nhập công việc</DialogTitle>
             <DialogDescription>
-              Một dòng như trong file work log, thêm vào một gói công việc đã có của dự án. Gói mới
-              do Leader / Account tạo bằng “Tạo job”.
+              Một task (một hàng của file work log), thêm vào một gói công việc đã có của dự án. Gói
+              mới do Leader / Account tạo bằng “Tạo job”.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
@@ -253,7 +256,10 @@ export const WorkEntryDialog = ({
                     id={`${ids}-assignee`}
                     people={assigneeChoices}
                     value={draft.assigneeId}
-                    onChange={(assigneeId) => set({ assigneeId })}
+                    // QC is never the worker: picking the QC as the worker clears the QC.
+                    onChange={(assigneeId) =>
+                      set({ assigneeId, ...(assigneeId === draft.qcId ? { qcId: null } : {}) })
+                    }
                     placeholder={people.isPending ? "Đang tải…" : "Chọn nhân viên"}
                     disabled={people.isPending}
                     invalid={Boolean(shown.assignee)}
@@ -272,8 +278,8 @@ export const WorkEntryDialog = ({
                 ) : canPick ? (
                   <FieldDescription className="text-xs">
                     {checking
-                      ? "Dòng Checking: người có vai trò QC hoặc Leader."
-                      : "Nhân viên hoặc Leader làm dòng này."}
+                      ? "Task Checking: người có vai trò QC hoặc Leader."
+                      : "Nhân viên hoặc Leader làm task này."}
                   </FieldDescription>
                 ) : (
                   <FieldDescription className="text-xs">
@@ -286,6 +292,7 @@ export const WorkEntryDialog = ({
                 <OptionSelect
                   id={`${ids}-project`}
                   options={projectOptions}
+                  searchPlaceholder="Tìm dự án…"
                   value={draft.projectId}
                   onChange={(projectId) => {
                     // A job never crosses projects: another project drops the picked job.
@@ -329,18 +336,49 @@ export const WorkEntryDialog = ({
               )}
             </Field>
 
-            <Field data-invalid={Boolean(shown.process)}>
-              <FieldLabel htmlFor={`${ids}-process`}>Quy trình</FieldLabel>
-              <OptionSelect
-                id={`${ids}-process`}
-                options={processOptions}
-                value={draft.processId}
-                onChange={(processId) => set({ processId })}
-                placeholder={processes.isPending ? "Đang tải…" : "Chọn quy trình"}
-                invalid={Boolean(shown.process)}
-              />
-              {shown.process ? <FieldError>{shown.process}</FieldError> : null}
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={Boolean(shown.process)}>
+                <FieldLabel htmlFor={`${ids}-process`}>Quy trình</FieldLabel>
+                <OptionSelect
+                  id={`${ids}-process`}
+                  options={processOptions}
+                  value={draft.processId}
+                  onChange={(processId) =>
+                    set({
+                      processId,
+                      // A Checking task has no QC of its own (PD-037).
+                      ...(processList.some((process) => process.id === processId && process.isQc)
+                        ? { qcId: null }
+                        : {})
+                    })
+                  }
+                  placeholder={processes.isPending ? "Đang tải…" : "Chọn quy trình"}
+                  invalid={Boolean(shown.process)}
+                />
+                {shown.process ? <FieldError>{shown.process}</FieldError> : null}
+              </Field>
+              {/* PD-047: every work task names its QC (not the worker); a Checking task has none. */}
+              <Field data-invalid={Boolean(shown.qc)}>
+                <FieldLabel htmlFor={`${ids}-qc`}>QC</FieldLabel>
+                <PersonSelect
+                  id={`${ids}-qc`}
+                  people={checkers}
+                  value={checking ? null : draft.qcId}
+                  onChange={(qcId) => set({ qcId })}
+                  placeholder={people.isPending ? "Đang tải…" : "Chọn QC"}
+                  noneLabel={checking ? "Task Checking — không có QC" : undefined}
+                  disabled={checking || people.isPending}
+                  invalid={Boolean(shown.qc)}
+                />
+                {shown.qc ? (
+                  <FieldError>{shown.qc}</FieldError>
+                ) : !checking && !people.isPending && checkers.length === 0 ? (
+                  <FieldDescription className="text-xs">
+                    Không có người QC để chọn — nhờ Leader nhập task này.
+                  </FieldDescription>
+                ) : null}
+              </Field>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field data-invalid={Boolean(shown.receivedDay)}>
@@ -481,7 +519,7 @@ export const WorkEntryDialog = ({
                     value={draft.note}
                     maxLength={5000}
                     rows={2}
-                    placeholder="Ghi chú cho dòng này"
+                    placeholder="Ghi chú cho task này"
                     onChange={(event) => set({ note: event.target.value })}
                     className="max-h-40"
                   />

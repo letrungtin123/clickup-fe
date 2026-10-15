@@ -19,7 +19,7 @@ import type { Tag } from "../../types";
 import { CustomFieldValue } from "../custom-field-input";
 import { CustomFieldChips } from "../list-filters";
 import { TagChips } from "../tag-picker";
-import { FeedbackBadge, JobStatusChip, LateBadge, MiniBar } from "./job-bits";
+import { JobStatusChip, LateBadge, MiniBar, ProcessTotalChips } from "./job-bits";
 import { JobPeopleStack } from "./job-people";
 
 const ROW_HEIGHT = 60;
@@ -32,8 +32,12 @@ export type ListPerson = { id: string; displayName: string };
  * Table columns as [track, minimum rem]. The table is as wide as its container but never narrower
  * than the minimums (plus 7.5rem per custom-field column); narrower screens scroll sideways with the
  * job column pinned. Gói công việc (PD-035), "Người làm" (avatars, at most 4 + "+N"), Ngày giao and the manual job status (PD-038) come first.
+ * PD-048: "Công đoạn" after "Tổng tấm" breaks the job's images down by process (chips, two at most, then "+N" with
+ * the full list as the tooltip) — for everyone who sees the list.
  * Per-person view: "Công đoạn" (the person's processes) replaces "Người làm", and the image columns
- * become the person's own: Giao · Xong · Đã kiểm (the job's "Tổng tấm" is not theirs, so it goes).
+ * become the person's own: Giao · Xong · Đã kiểm (the job's "Tổng tấm" and its breakdown are not theirs, so they
+ * go). No feedback column: the separate feedback feature is retired (PD-045; client feedback is the job status
+ * "Feedback").
  */
 const tableColumns = (perPerson: boolean): [string, number][] => [
   ["minmax(13.5rem,2fr)", 13.5],
@@ -45,11 +49,12 @@ const tableColumns = (perPerson: boolean): [string, number][] => [
     ? Array.from({ length: 3 }, (): [string, number] => ["5.75rem", 5.75])
     : ([
         ["5rem", 5],
+        // PD-048 "Tổng tấm" per process: one chip per line, two at most.
+        ["minmax(11rem,1.4fr)", 11],
         ["5.25rem", 5.25],
         ["5.25rem", 5.25],
         ["5.25rem", 5.25]
       ] as [string, number][])),
-  ["3.5rem", 3.5],
   ["minmax(7rem,1fr)", 7]
 ];
 
@@ -242,6 +247,13 @@ const JobTable = ({
                 <span role="columnheader" className="px-3 text-right whitespace-nowrap">
                   Tổng tấm
                 </span>
+                <span
+                  role="columnheader"
+                  className="px-3 whitespace-nowrap"
+                  title="Tổng tấm theo công đoạn"
+                >
+                  Công đoạn
+                </span>
                 <span role="columnheader" className="px-3">
                   Đã giao
                 </span>
@@ -253,9 +265,6 @@ const JobTable = ({
                 </span>
               </>
             )}
-            <span role="columnheader" className="px-3" title="Feedback đang mở">
-              FB
-            </span>
             <span role="columnheader" className="px-3">
               Tag
             </span>
@@ -350,6 +359,13 @@ const JobTable = ({
                       <span role="cell" className="px-3 text-right tabular-nums">
                         {formatInteger(job.totalImages)}
                       </span>
+                      <span role="cell" className="flex min-w-0 px-3">
+                        {job.processTotals.length > 0 ? (
+                          <ProcessTotalChips totals={job.processTotals} max={2} layout="stack" />
+                        ) : (
+                          <span className="text-foreground-subtle">—</span>
+                        )}
+                      </span>
                       <span role="cell" className="px-3">
                         <Qty
                           value={job.qtyAssigned}
@@ -365,9 +381,6 @@ const JobTable = ({
                       </span>
                     </>
                   )}
-                  <span role="cell" className="px-3">
-                    <FeedbackBadge count={job.openFeedbackCount} />
-                  </span>
                   <span role="cell" className="min-w-0 px-3">
                     <TagChips tags={tags} tagIds={job.tagIds} max={2} />
                   </span>
@@ -474,7 +487,6 @@ const JobCards = ({
                   Giao {formatWorkDay(job.deadline, timeZone)}
                 </span>
                 {late ? <LateBadge label={`${job.lateTaskCount} trễ`} /> : null}
-                <FeedbackBadge count={job.openFeedbackCount} />
               </span>
               {person ? (
                 <span className="flex flex-col gap-2 rounded-lg bg-brand-soft px-2.5 py-2 text-xs">
@@ -529,6 +541,8 @@ const JobCards = ({
                       tone="success"
                     />
                   </span>
+                  {/* PD-048 "Tổng tấm" per process; the job page lists them all. */}
+                  <ProcessTotalChips totals={job.processTotals} max={4} />
                 </>
               )}
               <CustomFieldChips fields={fields} values={job.customValues} />
@@ -577,7 +591,7 @@ export const JobsEmpty = ({
     <EmptyState
       icon={Briefcase}
       title="Chưa có job"
-      description="Mỗi job là một gói công việc của dự án. Tạo job, hoặc “Nhập công việc” để thêm dòng work log — gói mới tự thành job."
+      description="Mỗi job là một gói công việc của dự án. Tạo job, hoặc “Nhập công việc” để thêm task — gói mới tự thành job."
       action={
         onCreate ? (
           <Button size="sm" onClick={onCreate}>

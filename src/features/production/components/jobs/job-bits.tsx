@@ -1,11 +1,14 @@
 import { cn } from "cn";
-import { AlarmClock, CircleCheck, MessageSquareWarning, RotateCcw, Sparkles } from "lucide-react";
+import { AlarmClock, CircleCheck, RotateCcw, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import type { JobStatusRef, ProductionStatusRef, TaskKind } from "@/contracts/production-jobs";
 import type { UserRef } from "@/contracts/work";
 import { toneClass } from "@/lib/colors";
+
+import { formatInteger } from "../../format";
+import { processTotalChips, type ProcessTotal } from "../../jobs-model";
 
 /** Small presentational pieces shared by the job and task screens. */
 
@@ -114,20 +117,6 @@ export const LateBadge = ({ className, label = "Trễ" }: { className?: string; 
   </span>
 );
 
-export const FeedbackBadge = ({ count, className }: { count: number; className?: string }) =>
-  count > 0 ? (
-    <span
-      title={`${count} feedback đang mở`}
-      className={cn(
-        "inline-flex h-5 shrink-0 items-center gap-1 rounded-md bg-warning-soft px-1.5 text-[11px] font-semibold text-foreground",
-        className
-      )}
-    >
-      <MessageSquareWarning className="size-3 text-warning" aria-hidden="true" />
-      {count}
-    </span>
-  ) : null;
-
 export const Person = ({
   user,
   className,
@@ -192,3 +181,72 @@ export const Fact = ({
     <dd className="min-w-0 text-[13px]">{children}</dd>
   </div>
 );
+
+/**
+ * PD-048 "Tổng tấm" per process ("Công đoạn"): one chip per process — its name (ending in "…" when long) and its images
+ * — largest first, as the API sends them. `max`: at most that many chips, then "+N" whose tooltip lists the rest (the
+ * whole list is the group's tooltip and what screen readers hear). `layout="stack"`: one chip per line with the "+N"
+ * after the last one, so a table cell knows its height (two lines with max 2).
+ */
+export const ProcessTotalChips = ({
+  totals,
+  max,
+  size = "sm",
+  layout = "wrap",
+  className
+}: {
+  totals: readonly ProcessTotal[];
+  max?: number | undefined;
+  size?: "sm" | "md";
+  layout?: "wrap" | "stack";
+  className?: string;
+}) => {
+  if (totals.length === 0) return null;
+  const { shown, hidden, hiddenText, text } = processTotalChips(totals, max);
+  const chip = cn(
+    "inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-muted whitespace-nowrap text-foreground-muted",
+    size === "md" ? "h-6 px-2 text-xs" : "h-5 px-1.5 text-[11px]"
+  );
+  const more =
+    hidden > 0 ? (
+      <span className={cn(chip, "shrink-0 font-medium")} title={hiddenText}>
+        +{hidden}
+      </span>
+    ) : null;
+  const chips = shown.map((total) => (
+    <span key={total.process.id} className={chip}>
+      <span className="min-w-0 truncate">{total.process.name}</span>
+      <span className="shrink-0 font-semibold text-foreground tabular-nums">
+        {formatInteger(total.qty)}
+      </span>
+    </span>
+  ));
+  const last = chips.length - 1;
+  return (
+    <span title={text} className={cn("flex min-w-0", className)}>
+      <span className="sr-only">Tổng tấm theo công đoạn: {text}</span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex min-w-0",
+          layout === "stack" ? "flex-col items-start gap-1" : "flex-wrap gap-1"
+        )}
+      >
+        {layout === "stack" ? (
+          <>
+            {chips.slice(0, last)}
+            <span className="flex max-w-full min-w-0 items-center gap-1">
+              {chips[last]}
+              {more}
+            </span>
+          </>
+        ) : (
+          <>
+            {chips}
+            {more}
+          </>
+        )}
+      </span>
+    </span>
+  );
+};

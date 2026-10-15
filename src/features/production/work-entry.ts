@@ -14,6 +14,8 @@ import { dueDayToIso, receivedDayToIso, workLinkProblem, workLinkValue } from ".
 
 export type WorkEntryDraft = {
   assigneeId: string | null;
+  /** The task's QC (PD-047: required unless the process is the Checking one, which has no QC). */
+  qcId: string | null;
   projectId: string | null;
   /** "Gói công việc": the picked job of `projectId` (its id is sent; the rest is shown). */
   job: JobOption | null;
@@ -32,6 +34,7 @@ export type WorkEntryDraft = {
 
 export type WorkEntryField =
   | "assignee"
+  | "qc"
   | "project"
   | "job"
   | "process"
@@ -67,6 +70,7 @@ export const newWorkEntryDraft = (
   const projectId = initial.projectId ?? initial.job?.projectId ?? null;
   return {
     assigneeId: initial.assigneeId ?? null,
+    qcId: null,
     projectId,
     job: jobOf(initial.job, projectId),
     processId: null,
@@ -89,7 +93,7 @@ export const withProject = (draft: WorkEntryDraft, projectId: string | null): Wo
 });
 
 /**
- * "Lưu & nhập tiếp": the next row of the same day — person, project, job, process, shift and dates stay; the row's
+ * "Lưu & nhập tiếp": the next row of the same day — person, QC, project, job, process, shift and dates stay; the row's
  * own numbers, link (each row is its own batch of images) and note are cleared.
  */
 export const nextWorkEntryDraft = (draft: WorkEntryDraft): WorkEntryDraft => ({
@@ -126,9 +130,10 @@ export const assigneeRolesFor = (checking: boolean): readonly ProductionRole[] =
 
 /**
  * Field problems of a draft (empty object = valid). Mirrors POST /production/work-entries: everything is required
- * except Hình lỗi, Giờ OT (also on the OT shift), Link chia việc and Ghi chú; the job belongs to the project; Ngày giao from Ngày
- * nhận on. `assigneeRoles`: the production roles of the chosen person when known (null = unknown, the API decides);
- * `self`: that person is me.
+ * except Hình lỗi, Giờ OT (also on the OT shift), Link chia việc and Ghi chú — the QC too, unless the process is the
+ * Checking one (PD-047; a Checking task has no QC); the job belongs to the project; Ngày giao from Ngày nhận on.
+ * `checking`: the chosen process is the Checking one; `assigneeRoles`: the production roles of the chosen person when
+ * known (null = unknown, the API decides); `self`: that person is me.
  */
 export const workEntryProblems = (
   draft: WorkEntryDraft,
@@ -148,11 +153,15 @@ export const workEntryProblems = (
   ) {
     problems.assignee = context.checking
       ? context.self
-        ? "Dòng Checking cần vai trò QC hoặc Leader — bạn chưa có."
-        : "Dòng Checking cần người có vai trò QC hoặc Leader."
+        ? "Task Checking cần vai trò QC hoặc Leader — bạn chưa có."
+        : "Task Checking cần người có vai trò QC hoặc Leader."
       : context.self
         ? "Quy trình này cần vai trò Nhân viên hoặc Leader — bạn chưa có."
         : "Cần người có vai trò Nhân viên hoặc Leader.";
+  }
+  if (!context.checking) {
+    if (!draft.qcId) problems.qc = "Chọn QC.";
+    else if (draft.qcId === draft.assigneeId) problems.qc = "QC phải khác người làm.";
   }
   if (!draft.projectId) problems.project = "Chọn dự án.";
   if (!draft.job) problems.job = "Chọn gói công việc.";
@@ -186,13 +195,15 @@ export const workEntryProblems = (
 
 /**
  * The request body of a valid draft (null when something required is missing). The job goes by id (`jobId`, never a
- * typed package). `sendAssignee`: false when the line is fixed to me ("create: own") — the API then takes the caller.
+ * typed package). `sendAssignee`: false when the task is fixed to me ("create: own") — the API then takes the caller.
+ * `checking`: the process is the Checking one, which has no QC (PD-037); any other task needs its QC (PD-047).
  */
 export const workEntryPayload = (
   draft: WorkEntryDraft,
   options: {
     timeZone: string;
     sendAssignee: boolean;
+    checking?: boolean | undefined;
     customValues?: WorkEntryInput["customValues"];
   }
 ): WorkEntryInput | null => {
@@ -202,9 +213,11 @@ export const workEntryPayload = (
   const deadline = draft.dueDay ? dueDayToIso(draft.dueDay, options.timeZone) : null;
   const qty = parseWholeNumber(draft.qty);
   const job = jobOf(draft.job, draft.projectId);
+  const qcId = options.checking ? null : draft.qcId;
   if (
     !draft.projectId ||
     !job ||
+    (!options.checking && !qcId) ||
     !draft.processId ||
     !draft.shiftId ||
     !assignedAt ||
@@ -221,6 +234,7 @@ export const workEntryPayload = (
     projectId: draft.projectId,
     jobId: job.id,
     ...(options.sendAssignee && draft.assigneeId ? { assigneeId: draft.assigneeId } : {}),
+    ...(qcId ? { qcId } : {}),
     processId: draft.processId,
     shiftId: draft.shiftId,
     qtyAssigned: qty,
@@ -245,7 +259,7 @@ export const workEntryJobError = (code: string): string | null => {
     case "JOB_NOT_FOUND":
       return "Không tìm thấy gói công việc này (có thể đã bị xoá) — chọn lại trong danh sách.";
     case "JOB_ARCHIVED":
-      return "Job của gói này đã lưu trữ nên không thêm dòng được — chọn gói khác hoặc nhờ Leader mở lại.";
+      return "Job của gói này đã lưu trữ nên không thêm task được — chọn gói khác hoặc nhờ Leader mở lại.";
     case "JOB_PROJECT_MISMATCH":
       return "Gói công việc không thuộc dự án đã chọn — chọn lại.";
     default:
@@ -279,5 +293,9 @@ export const shortPackage = (code: string, max = 60) => {
   return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
 };
 
-/** The API words line errors for multi-line splits ("Dòng 1: …"); a work entry is a single row. */
-export const withoutLinePrefix = (message: string) => message.replace(/(^|\s)Dòng 1:\s*/g, "$1");
+/**
+ * The API words task errors for multi-task splits ("Task 1: …", PD-047; older servers "Dòng 1: …"); a work entry is a
+ * single task.
+ */
+export const withoutLinePrefix = (message: string) =>
+  message.replace(/(^|\s)(?:Task|Dòng) 1:\s*/g, "$1");

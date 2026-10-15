@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { ChevronDown, RotateCw } from "lucide-react";
+import { ChevronDown, Lock, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -30,6 +30,7 @@ import { toneClass } from "@/lib/colors";
 import { productionErrorMessage } from "../../errors";
 import { useJobStatuses } from "../../hooks";
 import { useChangeJobStatus } from "../../jobs-hooks";
+import { jobStatusBlockedReason, NEW_JOB_READINESS, type JobReadiness } from "../../jobs-model";
 import { JobStatusChip } from "./job-bits";
 
 /** Open statuses first, then the closed ones ("Đã đóng"), each in catalog order. */
@@ -42,25 +43,47 @@ const splitByClosed = <T extends Pick<JobStatus, "isClosed">>(statuses: readonly
 const rowClass = "max-sm:min-h-10";
 
 /**
- * A job's manual status (PD-038) in the job header. With `editable` (capabilities.canChangeStatus) the chip opens a
- * menu of every status of the organization — the current one checked, closed ones under "Đã đóng" — and picking one
- * saves it right away; otherwise it is the plain chip (full name in the tooltip).
+ * "Còn 3 task chưa check" under a status that cannot be chosen yet (PD-045): readable at full contrast (only the chip
+ * is dimmed), with a lock so the reason does not rely on colour.
+ */
+const BlockedHint = ({ reason, id }: { reason: string; id?: string }) => (
+  <span id={id} className="flex items-center gap-1 text-[11px] leading-tight text-foreground-muted">
+    <Lock className="size-3 shrink-0" aria-hidden="true" />
+    {reason}
+  </span>
+);
+
+/**
+ * A job's status (PD-038; PD-045: the only one — the job page has no other status action) in the job header. With
+ * `editable` (capabilities.canChangeStatus) the chip opens a menu of every status of the organization — the current
+ * one checked, closed ones under "Đã đóng" — and picking one saves it right away; otherwise it is the plain chip (full
+ * name in the tooltip). A status marked "Cần mọi task đã check" (e.g. "Đã xong") is shown disabled while the job has no
+ * line or lines not yet checked (`readiness`: taskCount / uncheckedTaskCount), with the reason under it; if the API
+ * still refuses (409 JOB_NOT_READY, counts changed meanwhile) its message is the toast.
  */
 export const JobStatusMenu = ({
   jobId,
   status,
+  readiness,
   editable,
   align = "end",
   className
 }: {
   jobId: string;
   status: JobStatusRef;
+  readiness: JobReadiness;
   editable: boolean;
   align?: "start" | "end";
   className?: string;
 }) =>
   editable ? (
-    <EditableJobStatus jobId={jobId} status={status} align={align} className={className} />
+    <EditableJobStatus
+      jobId={jobId}
+      status={status}
+      readiness={readiness}
+      align={align}
+      className={className}
+    />
   ) : (
     <JobStatusChip status={status} className={cn("max-w-48", className)} />
   );
@@ -68,11 +91,13 @@ export const JobStatusMenu = ({
 const EditableJobStatus = ({
   jobId,
   status,
+  readiness,
   align,
   className
 }: {
   jobId: string;
   status: JobStatusRef;
+  readiness: JobReadiness;
   align: "start" | "end";
   className?: string | undefined;
 }) => {
@@ -80,9 +105,12 @@ const EditableJobStatus = ({
   const change = useChangeJobStatus(jobId);
   const { open, closed } = splitByClosed(statuses.data?.items ?? []);
   const pending = change.isPending;
+  const blockedReason = (item: JobStatus) => jobStatusBlockedReason(item, readiness, status.id);
 
   const pick = (statusId: string) => {
     if (statusId === status.id || pending) return;
+    const target = statuses.data?.items.find((item) => item.id === statusId);
+    if (target && blockedReason(target)) return;
     change.mutate(statusId, {
       onSuccess: (saved) => toast.success(`Đã chuyển job sang ${saved.jobStatus.name}`),
       onError: (error) => toast.error(productionErrorMessage(error))
@@ -90,17 +118,29 @@ const EditableJobStatus = ({
   };
 
   const rows = (items: readonly JobStatus[]) =>
-    items.map((item) => (
-      <DropdownMenuRadioItem
-        key={item.id}
-        value={item.id}
-        label={item.name}
-        closeOnClick
-        className={rowClass}
-      >
-        <JobStatusChip status={item} />
-      </DropdownMenuRadioItem>
-    ));
+    items.map((item) => {
+      const blocked = blockedReason(item);
+      return (
+        <DropdownMenuRadioItem
+          key={item.id}
+          value={item.id}
+          label={item.name}
+          closeOnClick
+          disabled={blocked !== null}
+          // Disabled: only the chip dims, so the reason under it stays readable (light and dark).
+          className={cn(rowClass, blocked && "data-disabled:opacity-100")}
+        >
+          {blocked ? (
+            <span className="flex min-w-0 flex-col items-start gap-0.5 py-0.5">
+              <JobStatusChip status={item} className="opacity-60" />
+              <BlockedHint reason={blocked} />
+            </span>
+          ) : (
+            <JobStatusChip status={item} />
+          )}
+        </DropdownMenuRadioItem>
+      );
+    });
 
   return (
     <DropdownMenu>
@@ -175,12 +215,14 @@ const EditableJobStatus = ({
 
 /**
  * "Trạng thái" of the create-job form (PD-038): every status as its chip, open ones first and the closed ones under
- * "Đã đóng". `value` null shows the placeholder (catalog still loading).
+ * "Đã đóng". `value` null shows the placeholder (catalog still loading). `readiness` (default: a job being created, no
+ * line yet) disables the statuses that need every line checked (PD-045), with the reason under them.
  */
 export const JobStatusSelect = ({
   statuses,
   value,
   onChange,
+  readiness = NEW_JOB_READINESS,
   placeholder = "Chọn trạng thái",
   disabled,
   id,
@@ -189,6 +231,7 @@ export const JobStatusSelect = ({
   statuses: readonly JobStatus[];
   value: string | null;
   onChange: (id: string) => void;
+  readiness?: JobReadiness;
   placeholder?: string;
   disabled?: boolean;
   id?: string;
@@ -197,12 +240,28 @@ export const JobStatusSelect = ({
   const { open, closed } = splitByClosed(statuses);
   const items = statuses.map((status) => ({ value: status.id, label: status.name }));
   const selected = statuses.find((status) => status.id === value) ?? null;
-  const option = (status: JobStatus) => (
-    <SelectItem key={status.id} value={status.id} label={status.name}>
-      {/* The item text never wraps: a long name ends in "…" (full name in the chip's tooltip). */}
-      <JobStatusChip status={status} className="max-w-60" />
-    </SelectItem>
-  );
+  const option = (status: JobStatus) => {
+    const blocked = jobStatusBlockedReason(status, readiness, value);
+    return (
+      <SelectItem
+        key={status.id}
+        value={status.id}
+        label={status.name}
+        disabled={blocked !== null}
+        className={cn(blocked && "data-disabled:opacity-100")}
+      >
+        {/* The item text never wraps: a long name ends in "…" (full name in the chip's tooltip). */}
+        {blocked ? (
+          <span className="flex min-w-0 flex-col items-start gap-0.5 py-0.5">
+            <JobStatusChip status={status} className="max-w-60 opacity-60" />
+            <BlockedHint reason={blocked} />
+          </span>
+        ) : (
+          <JobStatusChip status={status} className="max-w-60" />
+        )}
+      </SelectItem>
+    );
+  };
   return (
     <Select
       items={items}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { defaultJobPermissions } from "@/contracts/production-catalog";
@@ -30,10 +30,29 @@ describe("RetouchMatrix (PD-042)", () => {
     expect(screen.getByRole("combobox", { name: "Xem job — Leader" }).textContent).toContain(
       "Tất cả"
     );
-    expect(screen.getByRole("combobox", { name: "Xoá — Nhân viên" }).textContent).toContain(
-      "Của mình"
-    );
+    expect(screen.getByRole("combobox", { name: "Xoá — QC" }).textContent).toContain("Của mình");
     expect(screen.queryByRole("combobox", { name: /Quản trị/ })).toBeNull();
+  });
+
+  it("reads fine with staff who neither create nor delete (PD-047)", async () => {
+    renderMatrix({
+      value: {
+        ...defaultJobPermissions,
+        STAFF: { ...defaultJobPermissions.STAFF, create: "none", delete: "none" }
+      }
+    });
+    expect(
+      screen.getByRole("combobox", { name: "Tạo job / task — Nhân viên" }).textContent
+    ).toContain("Không");
+    expect(screen.getByRole("combobox", { name: "Xoá — Nhân viên" }).textContent).toContain(
+      "Không"
+    );
+    // The row help says a worker's own subtasks stay deletable.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Xoá" }));
+      await Promise.resolve();
+    });
+    expect(await screen.findByText(/Subtask của task mình làm/)).toBeTruthy();
   });
 
   it("derives “Đổi trạng thái job” from “Sửa”", () => {

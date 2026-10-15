@@ -12,6 +12,7 @@ import type {
   JobPage,
   JobSummary,
   ProductionTask,
+  ProductionTimelinePage,
   TaskLog,
   TaskTransitionOption
 } from "@/contracts/production-jobs";
@@ -19,7 +20,7 @@ import type {
 import type { QueryValue } from "@/lib/api/client";
 
 import { formatCustomValue, type CustomValue } from "./custom-fields";
-import { formatMoney, formatNumber } from "./format";
+import { formatInteger, formatMoney, formatNumber } from "./format";
 import {
   activeListFilterCount,
   emptyListFilters,
@@ -174,7 +175,8 @@ export const isFinishedStatus = (
 /**
  * The job deadline's countdown ("còn 3 giờ", "trễ 2 ngày"), or null once the job is complete or
  * delivered with no client feedback open — a countdown means nothing then (BUG-PR-26). A job whose
- * manual status is closed ("Đã giao khách", PD-038) is done for the team too.
+ * manual status is closed ("Đã giao khách", PD-038) or needs every line checked ("Đã xong", PD-045 — the
+ * job-level "Complete" of before) is done for the team too.
  */
 export const jobDeadlineCountdown = (
   job: Pick<JobSummary, "deadline" | "status" | "openFeedbackCount"> &
@@ -183,7 +185,9 @@ export const jobDeadlineCountdown = (
   now: Date = new Date()
 ) =>
   job.openFeedbackCount === 0 &&
-  (isFinishedStatus(job.status, statuses) || job.jobStatus?.isClosed === true)
+  (isFinishedStatus(job.status, statuses) ||
+    job.jobStatus?.isClosed === true ||
+    job.jobStatus?.requiresAllChecked === true)
     ? null
     : relativeDeadline(job.deadline, now);
 
@@ -206,6 +210,26 @@ export const jobProgress = (
   overAllocated: job.qtyAssigned > job.totalImages
 });
 
+export type ProcessTotal = JobSummary["processTotals"][number];
+
+/** PD-048 "Tổng tấm" per process, as one line: "Normal Retouch 16 · Premium Retouch 15" (the API's order). */
+export const processTotalsText = (totals: readonly ProcessTotal[]) =>
+  totals.map((total) => `${total.process.name} ${formatInteger(total.qty)}`).join(" · ");
+
+/**
+ * The process chips to show — at most `max` (all without it) — and the rest as "+N", with their text for its tooltip.
+ */
+export const processTotalChips = (totals: readonly ProcessTotal[], max?: number) => {
+  const shown = max === undefined ? totals : totals.slice(0, Math.max(0, max));
+  const rest = totals.slice(shown.length);
+  return {
+    shown,
+    hidden: rest.length,
+    hiddenText: processTotalsText(rest),
+    text: processTotalsText(totals)
+  };
+};
+
 /** Live totals of the "Chia task" form: what is already assigned plus the new lines. */
 export const allocation = (
   totalImages: number,
@@ -223,6 +247,64 @@ export const allocation = (
 /** Images already given out in normal (non-feedback) tasks — what over-allocation is measured against. */
 export const assignedNormalQty = (tasks: readonly Pick<ProductionTask, "kind" | "qtyAssigned">[]) =>
   tasks.reduce((sum, task) => sum + (task.kind === "NORMAL" ? task.qtyAssigned : 0), 0);
+
+// Lines and subtasks (PD-044) --------------------------------------------------------------------------------
+
+type LineShape = Pick<ProductionTask, "id" | "isSubtask" | "parentTaskId" | "subtasks">;
+
+/**
+ * The job page's lines: top-level lines in the API's order, each with its subtasks (`line.subtasks`, oldest first) to
+ * nest under it. Subtask rows of the list are never lines of their own — unless their line is missing from the list
+ * (should not happen), so nothing silently disappears.
+ */
+export const jobLines = <T extends LineShape>(tasks: readonly T[]) => {
+  const ids = new Set(tasks.map((task) => task.id));
+  return tasks
+    .filter((task) => !task.isSubtask || !task.parentTaskId || !ids.has(task.parentTaskId))
+    .map((line) => ({ line, subtasks: line.isSubtask ? [] : line.subtasks }));
+};
+
+/** Every subtask of the job → its line (from the lines' `subtasks` and from subtask rows of the list). */
+export const subtaskLineIds = (tasks: readonly LineShape[]) => {
+  const lines = new Map<string, string>();
+  for (const task of tasks) {
+    for (const subtask of task.subtasks) lines.set(subtask.id, task.id);
+    if (task.isSubtask && task.parentTaskId) lines.set(task.id, task.parentTaskId);
+  }
+  return lines;
+};
+
+/**
+ * A Done work line nobody can check (PD-044): no QC and not a Checking line. It keeps the job out of "Đã xong" (PD-045,
+ * every line "Đã check") until the Leader assigns a QC (which moves it on to Chờ QC).
+ */
+export const lacksQc = (task: Pick<ProductionTask, "process" | "qc" | "status" | "isSubtask">) =>
+  !task.isSubtask && !task.process.isQc && task.qc === null && task.status.code === "DONE";
+
+/** "#1216" / "#1216a" — how a line or subtask is named everywhere (PD-045: its code, never the internal number). */
+export const taskTag = (task: Pick<ProductionTask, "code">) => `#${task.code}`;
+
+// Job status (PD-045) -------------------------------------------------------------------------------------------
+
+/**
+ * Why a job status cannot be chosen for this job right now, or null when it can: a status marked "Cần mọi task đã
+ * check" (`requiresAllChecked`, e.g. "Đã xong") needs at least one line and every live line "Đã check" (a Checking
+ * line: Done; subtasks follow their line). Mirrors the API's 409 JOB_NOT_READY; the job's current status is never
+ * blocked. A job being created has no line yet.
+ */
+export type JobReadiness = Pick<JobSummary, "taskCount" | "uncheckedTaskCount">;
+export const NEW_JOB_READINESS: JobReadiness = { taskCount: 0, uncheckedTaskCount: 0 };
+export const jobStatusBlockedReason = (
+  status: Pick<JobStatus, "id" | "requiresAllChecked">,
+  job: JobReadiness,
+  currentStatusId: string | null = null
+) => {
+  if (!status.requiresAllChecked || status.id === currentStatusId) return null;
+  if (job.taskCount === 0) return "Chưa có task";
+  if (job.uncheckedTaskCount > 0)
+    return `Còn ${formatNumber(job.uncheckedTaskCount)} task chưa check`;
+  return null;
+};
 
 /**
  * Expected credit/money of a task line from the credit rule effective today (PLAN §5: money only for
@@ -305,8 +387,9 @@ const decimalOf = (text: string) =>
   text.trim() === "" ? null : Number(text.trim().replace(",", "."));
 
 /**
- * Problems of one line ("Chia task", "Nhập công việc"), keyed by field (empty object = valid). QC is optional on
- * every line (PD-035); a Checking line is done by a QC person (or Leader) and has no QC of its own (PD-037).
+ * Problems of one task ("Chia task"), keyed by field (empty object = valid). Every work task names its QC (PD-047:
+ * "Chọn QC." until the process is known to be the Checking one); a Checking task is done by a QC person (or Leader)
+ * and has no QC of its own (PD-037).
  */
 export const taskLineProblems = (line: TaskLineDraft, context: LineContext) => {
   const problems: Partial<Record<TaskLineProblemKey, string>> = {};
@@ -316,15 +399,17 @@ export const taskLineProblems = (line: TaskLineDraft, context: LineContext) => {
   } else if (context.roles.has(line.assigneeId)) {
     const roles = context.roles.get(line.assigneeId) ?? [];
     if (checking && !roles.some((role) => role === "QC" || role === "LEADER" || role === "ADMIN"))
-      problems.assignee = "Dòng Checking cần người có vai trò QC (hoặc Leader).";
+      problems.assignee = "Task Checking cần người có vai trò QC (hoặc Leader).";
     else if (!checking && !roles.includes("STAFF") && !roles.includes("LEADER"))
       problems.assignee = "Cần vai trò Nhân viên hoặc Leader.";
   }
   if (line.qcId) {
-    if (checking) problems.qc = "Dòng Checking không có QC riêng.";
+    if (checking) problems.qc = "Task Checking không có QC riêng.";
     else if (context.roles.has(line.qcId) && !(context.roles.get(line.qcId) ?? []).includes("QC"))
       problems.qc = "Người QC cần vai trò QC.";
     else if (line.qcId === line.assigneeId) problems.qc = "QC phải khác người làm.";
+  } else if (!checking) {
+    problems.qc = "Chọn QC.";
   }
   if (!line.processId) problems.process = "Chọn quy trình.";
   if (!line.shiftId) problems.shift = "Chọn ca.";
@@ -443,34 +528,21 @@ export const splitTransitions = (options: readonly TaskTransitionOption[]) => ({
 export const maxDeclaredDoneQty = (qtyAssigned: number) =>
   Math.max(qtyAssigned * 2, qtyAssigned + 10);
 
-/** True when a move needs the transition dialog (note, Done quantity, OT hours or override reason). */
 /**
- * What a move must ask for. The API flags every move into a done status with asksQty/asksOtHours,
- * but both lock at the first Done (a re-Done after QC fail sending another qty answers QTY_LOCKED;
- * the Leader corrects it instead), so they are only asked while the task has never been done.
+ * Whether a move opens the transition dialog: only for a reason — QC's "Cần sửa lại" (requiresNote) or an ADMIN
+ * override. Done asks nothing (owner, 2026-10-15): the API's asksQty / asksOtHours are ignored and the line and its
+ * subtasks are Done with the quantities they already show (the first Done takes "Số lượng"; corrections are made in
+ * place on the line page until "Đã check"); the subtasks follow the line.
  */
-export const transitionAsks = (
-  task: Pick<ProductionTask, "doneAt">,
-  option: TaskTransitionOption
-) => {
-  const firstDone = task.doneAt === null;
-  return {
-    qty: option.asksQty && firstDone,
-    otHours: option.asksOtHours && firstDone,
-    note: option.requiresNote || option.override
-  };
-};
-
-export const needsInput = (task: Pick<ProductionTask, "doneAt">, option: TaskTransitionOption) => {
-  const asks = transitionAsks(task, option);
-  return asks.qty || asks.otHours || asks.note;
-};
+export const needsInput = (_task: Pick<ProductionTask, "doneAt">, option: TaskTransitionOption) =>
+  option.requiresNote || option.override;
 
 type StatusMeta = Pick<ProductionStatus, "id" | "sortOrder" | "countsChecked">;
 
 /**
- * QC queue buttons: "Pass" is the move into a checked status; "Fail" a backward move that needs a
- * note (PLAN §4). Both come from the task's own capabilities — never invented here.
+ * QC queue buttons: "Pass" ("Đã check") is the move into a checked status; "Fail" ("Cần sửa lại") a backward move
+ * that needs a note (PLAN §4, PD-044); "Start" ("Đang check") a forward move short of checked without a note (Chờ QC →
+ * Đang check). All come from the task's own capabilities — never invented here.
  */
 export const qcActions = (
   task: Pick<ProductionTask, "status" | "capabilities">,
@@ -490,8 +562,22 @@ export const qcActions = (
         target.sortOrder < current.sortOrder
       );
     }) ?? null;
-  return { pass, fail };
+  const start =
+    normal.find((option) => {
+      const target = byId.get(option.toStatusId);
+      return (
+        !option.requiresNote &&
+        target !== undefined &&
+        current !== undefined &&
+        !target.countsChecked &&
+        target.sortOrder > current.sortOrder
+      );
+    }) ?? null;
+  return { pass, fail, start };
 };
+
+/** Statuses of the QC queue ("Hàng chờ QC", PD-044): waiting for QC, and being checked. */
+export const qcQueueCodes: ReadonlySet<string> = new Set(["WAITING_QC", "QC_CHECKING"]);
 
 // Overview agenda -----------------------------------------------------------------------------------------
 
@@ -578,6 +664,49 @@ export const boardColumns = <T extends { status: { id: string } }>(
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .filter((status) => status.active || byStatus.has(status.id))
     .map((status) => ({ status, tasks: byStatus.get(status.id) ?? [] }));
+};
+
+/**
+ * Statuses off the main path (PD-044): "Cần sửa lại" is a detour after a QC fail and "Đang check" the QC's own step,
+ * so their columns only show when they hold a card or can receive one.
+ */
+export const occasionalBoardCodes: ReadonlySet<string> = new Set(["REWORK", "QC_CHECKING"]);
+
+/**
+ * "Việc của tôi" columns: the task flow up to the first checked status stays put (columns do not jump as cards move),
+ * except the occasional statuses above; later job-level statuses, and the occasional ones, only show when they hold a
+ * card or a card can move there (its own normal moves).
+ */
+export const myBoardColumns = <
+  T extends {
+    status: { id: string };
+    capabilities: { transitions: readonly TaskTransitionOption[] };
+  }
+>(
+  tasks: readonly T[],
+  statuses: readonly Pick<
+    ProductionStatus,
+    "id" | "name" | "color" | "code" | "sortOrder" | "active" | "countsChecked"
+  >[]
+): BoardColumn<T>[] => {
+  const reachable = new Set(
+    tasks.flatMap((task) =>
+      task.capabilities.transitions
+        .filter((option) => !option.override)
+        .map((option) => option.toStatusId)
+    )
+  );
+  const checkedOrder = Math.min(
+    ...statuses.filter((status) => status.active && status.countsChecked).map((s) => s.sortOrder)
+  );
+  return boardColumns(tasks, statuses).filter(
+    (column) =>
+      column.tasks.length > 0 ||
+      reachable.has(column.status.id) ||
+      (column.status.active &&
+        column.status.sortOrder <= checkedOrder &&
+        !occasionalBoardCodes.has(column.status.code))
+  );
 };
 
 /** Given name for compact labels ("Bùi Thị Hoa" → "Hoa"): Vietnamese names end with it. */
@@ -778,7 +907,38 @@ export const toggleJobStatusId = (
 
 // Timeline sentences ------------------------------------------------------------------------------------------
 
-export type Segment = { text: string; strong?: boolean; tone?: "danger" | "success" | "warning" };
+export type Segment = {
+  text: string;
+  strong?: boolean;
+  tone?: "danger" | "success" | "warning";
+  /** The full value when `text` shows it shortened (a long link or path): the tooltip. */
+  title?: string;
+};
+
+/** "#1216" / "#1216a" of a history row: its task code (PD-045), the number on rows older than codes; null on job rows. */
+export const logTaskLabel = (log: Pick<TaskLog, "taskCode" | "taskNumber">) => {
+  const code = log.taskCode ?? (log.taskNumber !== null ? String(log.taskNumber) : null);
+  return code === null ? null : `#${code}`;
+};
+
+/** Longest value quoted in a history sentence; longer ones keep their start and end ("//nas/Kh…/Batch 12/Done"). */
+export const LOG_VALUE_MAX = 48;
+
+/**
+ * A free-text value of a history sentence (e.g. "Link chia việc", PD-045): quoted and, when long, shortened in the
+ * middle — the end of a path or link is what tells two values apart — with the full value as the tooltip. "trống" when
+ * there is none.
+ */
+export const logValue = (value: unknown): Segment => {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return { text: "trống" };
+  if (text.length <= LOG_VALUE_MAX) return { text: `“${text}”`, strong: true };
+  const head = Math.ceil((LOG_VALUE_MAX - 1) * 0.4);
+  const tail = LOG_VALUE_MAX - 1 - head;
+  return { text: `“${text.slice(0, head)}…${text.slice(-tail)}”`, strong: true, title: text };
+};
+
+export type LogNames = Names;
 
 type Names = {
   user: (id: string) => string | undefined;
@@ -870,7 +1030,7 @@ export const describeJobEdit = (
   if (to.deleted === true) {
     const count = num(to.deletedTasks);
     return {
-      verb: `đã xoá job${count !== null ? ` và ${formatNumber(count)} dòng` : ""}`,
+      verb: `đã xoá job${count !== null ? ` và ${formatNumber(count)} task` : ""}`,
       changes: []
     };
   }
@@ -925,16 +1085,13 @@ const jobChanges = (from: Record<string, unknown>, to: Record<string, unknown>, 
         break;
       case "totalImagesManual":
         parts.push(
-          to.totalImagesManual === false ? "tổng tấm tự tính theo các dòng" : "tổng tấm nhập tay"
+          to.totalImagesManual === false ? "tổng tấm tự tính theo các task" : "tổng tấm nhập tay"
         );
         break;
       case "driveLink":
+        // Like "Link chia việc" (PD-045): the old and the new folder, long paths shortened in the middle.
         parts.push(
-          !str(from.driveLink)
-            ? "thêm link ảnh"
-            : !str(to.driveLink)
-              ? "xóa link ảnh"
-              : "đổi link ảnh"
+          `link thư mục ảnh ${logValue(from.driveLink).text} → ${logValue(to.driveLink).text}`
         );
         break;
       case "customValues":
@@ -982,17 +1139,164 @@ const fieldValue = (key: string, value: unknown, names: Names) => {
 };
 
 /**
+ * What a STATUS row adds after "from → to": the Done quantity and OT hours given at the first Done, the QC asking for
+ * rework (PD-044, `qcFail`; `withQcFail: false` when the sentence already says it) and an ADMIN override.
+ */
+export const statusLogDetails = (
+  to: Record<string, unknown>,
+  { withQcFail = true }: { withQcFail?: boolean } = {}
+): Segment[] => {
+  const segments: Segment[] = [];
+  if (num(to.qtyDone) !== null) segments.push({ text: ` · ${formatNumber(num(to.qtyDone))} tấm` });
+  if (num(to.otHours) !== null)
+    segments.push({ text: ` · ${formatNumber(num(to.otHours))} giờ OT` });
+  if (to.qcFail === true && withQcFail)
+    segments.push({ text: " · QC yêu cầu sửa lại", tone: "danger" });
+  if (to.override === true) segments.push({ text: " · chuyển ngoài luồng", tone: "warning" });
+  return segments;
+};
+
+export type LogStatusRef = { id: string | null; code: string | null; name: string };
+
+/** A STATUS row's from → to ({ statusId, code, name } on both sides), null for other rows. */
+export const logStatusChange = (
+  log: Pick<TaskLog, "action" | "fromValue" | "toValue">
+): { from: LogStatusRef; to: LogStatusRef } | null => {
+  if (log.action !== "STATUS") return null;
+  const ref = (value: Record<string, unknown> | null): LogStatusRef => ({
+    id: str(value?.statusId),
+    code: str(value?.code),
+    name: str(value?.name) ?? "?"
+  });
+  return { from: ref(log.fromValue), to: ref(log.toValue) };
+};
+
+/**
+ * How a history row reads at a glance: QC asking for rework and refused quantity requests in red, approvals in green,
+ * open requests in amber; null for the rest.
+ */
+export const logTone = (
+  log: Pick<TaskLog, "action" | "toValue">
+): "danger" | "success" | "warning" | null => {
+  if (log.toValue?.qcFail === true) return "danger";
+  if (log.action !== "QTY_REQUEST") return null;
+  const op = str(log.toValue?.op);
+  return op === "requested"
+    ? "warning"
+    : op === "approved"
+      ? "success"
+      : op === "rejected"
+        ? "danger"
+        : null;
+};
+
+const qtyLabel = (value: unknown) =>
+  num(value) !== null ? `${formatNumber(num(value))} tấm` : null;
+
+/**
+ * SUBTASK rows (PD-044), on the line's history: "đã tạo subtask #1210a · Mannequin · 3 tấm từ task #1210", "đã sửa
+ * subtask #1210a của task #1210: công đoạn A → B; 3 → 5 tấm", "đã xoá subtask #1210a … — trả số tấm về task #1210". The
+ * subtask is named by its code (PD-045; rows older than codes: its number). The reason, when given, is the row's note.
+ */
+const describeSubtaskLog = (
+  from: Record<string, unknown>,
+  to: Record<string, unknown>,
+  line: Segment,
+  names: Names
+): Segment[] => {
+  const subtask: Segment = {
+    text: `#${str(to.subtaskCode) ?? num(to.subtaskNumber) ?? "?"}`,
+    strong: true
+  };
+  const processOf = (value: Record<string, unknown>) =>
+    str(value.processName) ??
+    (str(value.processId) ? names.process(str(value.processId)!) : undefined) ??
+    null;
+  const what = [processOf(to), qtyLabel(to.qtyAssigned)].filter(Boolean).join(" · ");
+  const lineLeft = num(to.parentQtyAssigned);
+  switch (str(to.op)) {
+    case "created":
+      return [
+        { text: "đã tạo subtask " },
+        subtask,
+        ...(what ? [{ text: ` · ${what}`, strong: true }] : []),
+        { text: " từ task " },
+        line,
+        ...(lineLeft !== null ? [{ text: ` (task còn ${formatNumber(lineLeft)} tấm)` }] : [])
+      ];
+    case "deleted":
+      return [
+        { text: "đã xoá subtask " },
+        subtask,
+        ...(what ? [{ text: ` · ${what}` }] : []),
+        { text: " — trả số tấm về task " },
+        line,
+        ...(lineLeft !== null ? [{ text: ` (nay ${formatNumber(lineLeft)} tấm)` }] : [])
+      ];
+    default: {
+      const changes: string[] = [];
+      const before = processOf(from);
+      const after = processOf(to);
+      if (before && after && before !== after) changes.push(`công đoạn ${before} → ${after}`);
+      if (num(from.qtyAssigned) !== null && num(to.qtyAssigned) !== num(from.qtyAssigned))
+        changes.push(`${qtyLabel(from.qtyAssigned)} → ${qtyLabel(to.qtyAssigned) ?? "—"}`);
+      return [
+        { text: "đã sửa subtask " },
+        subtask,
+        { text: " của task " },
+        line,
+        ...(changes.length > 0 ? [{ text: `: ${changes.join("; ")}`, strong: true }] : [])
+      ];
+    }
+  }
+};
+
+/**
+ * QTY_REQUEST rows (PD-044): "đề nghị sửa số tấm giao #1210: 10 → 12", "đã duyệt / đã từ chối đề nghị …", "đã huỷ đề
+ * nghị …". The reason (or decision note) is the row's note.
+ */
+const describeQtyRequestLog = (to: Record<string, unknown>, line: Segment): Segment[] => {
+  const change = `${num(to.fromQty) ?? "?"} → ${num(to.toQty) ?? "?"} tấm`;
+  switch (str(to.op)) {
+    case "approved":
+      return [
+        { text: "đã duyệt đề nghị sửa số tấm giao " },
+        line,
+        { text: ": " },
+        { text: change, strong: true, tone: "success" }
+      ];
+    case "rejected":
+      return [
+        { text: "đã từ chối đề nghị sửa số tấm giao " },
+        line,
+        { text: ": " },
+        { text: change, strong: true, tone: "danger" }
+      ];
+    case "cancelled":
+      return [{ text: "đã huỷ đề nghị sửa số tấm giao " }, line, { text: ` (${change})` }];
+    default:
+      return [
+        { text: "đề nghị sửa số tấm giao " },
+        line,
+        { text: ": " },
+        { text: change, strong: true, tone: "warning" }
+      ];
+  }
+};
+
+/**
  * One history row as a Vietnamese sentence (actor prepended by the caller): status from → to with
- * the Done quantity / OT hours / QC fail / override, quantity corrections, (re)assignment, field
- * edits and creation (with the over-allocation warning stored in the log).
+ * the Done quantity / OT hours / QC rework / override, quantity corrections, (re)assignment, field
+ * edits, creation (with the over-allocation warning stored in the log), subtasks and quantity
+ * requests (PD-044).
  */
 export const describeTaskLog = (
-  log: Pick<TaskLog, "action" | "fromValue" | "toValue" | "taskNumber">,
+  log: Pick<TaskLog, "action" | "fromValue" | "toValue" | "taskNumber" | "taskCode">,
   names: Names
 ): Segment[] => {
   const from = log.fromValue ?? {};
   const to = log.toValue ?? {};
-  const task: Segment = { text: `#${log.taskNumber ?? "?"}`, strong: true };
+  const task: Segment = { text: logTaskLabel(log) ?? "#?", strong: true };
   switch (log.action) {
     case "JOB": {
       const edit = describeJobEdit(log, names);
@@ -1020,23 +1324,20 @@ export const describeTaskLog = (
       if (str(to.warning)) segments.push({ text: ` — ${str(to.warning)}`, tone: "warning" });
       return segments;
     }
-    case "STATUS": {
-      const segments: Segment[] = [
+    case "STATUS":
+      return [
         { text: "chuyển " },
         task,
         { text: " từ " },
         { text: str(from.name) ?? "?", strong: true },
         { text: " sang " },
-        { text: str(to.name) ?? "?", strong: true }
+        { text: str(to.name) ?? "?", strong: true },
+        ...statusLogDetails(to)
       ];
-      if (num(to.qtyDone) !== null)
-        segments.push({ text: ` · ${formatNumber(num(to.qtyDone))} tấm` });
-      if (num(to.otHours) !== null)
-        segments.push({ text: ` · ${formatNumber(num(to.otHours))} giờ OT` });
-      if (to.qcFail === true) segments.push({ text: " · QC trả lại", tone: "danger" });
-      if (to.override === true) segments.push({ text: " · chuyển ngoài luồng", tone: "warning" });
-      return segments;
-    }
+    case "SUBTASK":
+      return describeSubtaskLog(from, to, task, names);
+    case "QTY_REQUEST":
+      return describeQtyRequestLog(to, task);
     case "QTY":
       return [
         { text: "sửa số tấm hoàn thành của " },
@@ -1071,7 +1372,7 @@ export const describeTaskLog = (
     case "DELETE": {
       // PD-036: the line is hidden, kept for audit; its score rows were brought back to zero.
       const segments: Segment[] = [
-        { text: "đã xoá dòng " },
+        { text: "đã xoá task " },
         task,
         { text: " của " },
         person(from.assigneeId, names)
@@ -1085,31 +1386,95 @@ export const describeTaskLog = (
     }
     case "FIELD": {
       const keys = Object.keys(to);
-      const parts = keys.flatMap((key) => {
-        if (key === "tagIds") return tagChanges(from.tagIds, to.tagIds, names);
-        // PD-040: a path or URL is too long for a sentence — the change is named, the sheet shows the value.
+      const parts = keys.flatMap((key): Segment[][] => {
+        if (key === "tagIds")
+          return tagChanges(from.tagIds, to.tagIds, names).map((text) => [{ text }]);
+        // PD-045: "link chia việc “old” → “new”" — long paths / links shortened, the full value in the tooltip.
         if (key === "workLink")
           return [
-            !str(from.workLink)
-              ? "thêm link chia việc"
-              : !str(to.workLink)
-                ? "xóa link chia việc"
-                : "đổi link chia việc"
+            [
+              { text: "link chia việc " },
+              logValue(from.workLink),
+              { text: " → " },
+              logValue(to.workLink)
+            ]
           ];
         if (key === "customValues" && names.field) {
           const changes = customValueChanges("TASK", from.customValues, to.customValues, names);
-          return changes.length > 0 ? changes : [fieldLabels.customValues ?? key];
+          return (changes.length > 0 ? changes : [fieldLabels.customValues ?? key]).map((text) => [
+            { text }
+          ]);
         }
         const label = fieldLabels[key] ?? key;
         const before = fieldValue(key, from[key], names);
         const after = fieldValue(key, to[key], names);
-        return [before !== null && after !== null ? `${label} ${before} → ${after}` : label];
+        return [
+          [{ text: before !== null && after !== null ? `${label} ${before} → ${after}` : label }]
+        ];
       });
-      return [{ text: "sửa " }, task, { text: `: ${parts.join("; ")}` }];
+      return [
+        { text: "sửa " },
+        task,
+        { text: ": " },
+        ...parts.flatMap((part, index) => (index === 0 ? part : [{ text: "; " }, ...part]))
+      ];
     }
     default:
       return [{ text: "cập nhật " }, task];
   }
+};
+
+// Job log ("Nhật ký", PD-044) --------------------------------------------------------------------------------
+
+type TimelineItem = ProductionTimelinePage["items"][number];
+
+/**
+ * A subtask moves and is (re)assigned with its line, and its creation / deletion is the line's SUBTASK row: its own rows
+ * of these kinds repeat the line's.
+ */
+const lineFollowedActions: ReadonlySet<TaskLog["action"]> = new Set([
+  "STATUS",
+  "ASSIGN",
+  "CREATE",
+  "DELETE"
+]);
+
+/** A job-level history row that only repeats its line's (a subtask's own status / assignment / create / delete row). */
+export const repeatsLineLog = (log: TaskLog, subtaskIds: ReadonlySet<string>) =>
+  Boolean(log.taskId && subtaskIds.has(log.taskId) && lineFollowedActions.has(log.action));
+
+/**
+ * Rows of the job page's "Nhật ký": history only (comments dropped), newest first, without duplicates across pages. A
+ * subtask's STATUS / ASSIGN rows are hidden — the line's own row already says it (`subtaskIds`: subtaskLineIds keys).
+ */
+export const jobLogRows = (
+  pages: readonly { items: readonly TimelineItem[] }[] | undefined,
+  subtaskIds: ReadonlySet<string>
+): TaskLog[] => {
+  const seen = new Set<string>();
+  const rows: TaskLog[] = [];
+  for (const page of pages ?? []) {
+    for (const item of page.items) {
+      if (item.kind !== "log" || seen.has(item.log.id)) continue;
+      seen.add(item.log.id);
+      const { log } = item;
+      if (repeatsLineLog(log, subtaskIds)) continue;
+      rows.push(log);
+    }
+  }
+  return rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
+/**
+ * When a history row happened, compact: "vừa xong", "5 phút trước", "3 giờ trước" (same half day), then the short
+ * date-time in the organization timezone ("17:30 · 09/10"). A time slightly ahead of the device clock is "vừa xong".
+ */
+export const logTimeLabel = (iso: string, timeZone: string, now: Date = new Date()) => {
+  const minutes = Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "vừa xong";
+  if (minutes < 60) return `${minutes} phút trước`;
+  if (minutes < 12 * 60) return `${Math.floor(minutes / 60)} giờ trước`;
+  return formatDateTime(iso, timeZone, false, now);
 };
 
 // Mentions ------------------------------------------------------------------------------------------------------

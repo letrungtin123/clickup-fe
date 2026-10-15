@@ -11,6 +11,7 @@ import {
   jobScopeChanges,
   jobScopeItems,
   jobScopeMeaning,
+  jobScopeNotes,
   sameJobPermissions,
   withJobScope
 } from "./job-permissions";
@@ -35,10 +36,16 @@ describe("job permission matrix helpers (PD-036)", () => {
   });
 
   it("changes one cell without touching the input", () => {
-    const next = withJobScope(defaultJobPermissions, "STAFF", "view", "all");
-    expect(next.STAFF).toEqual({ view: "all", create: "own", update: "own", delete: "own" });
+    const next = withJobScope(defaultJobPermissions, "STAFF", "update", "all");
+    expect(next.STAFF).toEqual({ ...defaultJobPermissions.STAFF, update: "all" });
     expect(next.LEADER).toBe(defaultJobPermissions.LEADER);
-    expect(defaultJobPermissions.STAFF.view).toBe("own");
+    expect(defaultJobPermissions.STAFF.update).toBe("own");
+  });
+
+  it("explains “Không” for create and that a worker's own subtasks stay deletable (PD-047)", () => {
+    expect(jobScopeNotes.create).toContain("“Chia task”");
+    expect(jobScopeNotes.delete).toContain("Subtask của task mình làm");
+    expect(jobScopeNotes.view).toBeUndefined();
   });
 
   it("lists the changed cells in table order and compares matrices by value", () => {

@@ -35,7 +35,6 @@ import type { CustomField } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { TaskCard } from "@/features/production/components/jobs/task-card";
-import { TransitionButtons } from "@/features/production/components/jobs/transition-controls";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
 import { WorkEntryDialog } from "@/features/production/components/jobs/work-entry-dialog";
 import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
@@ -48,8 +47,8 @@ import { useUrlListFilters } from "@/features/production/list-filters-hooks";
 import type { MyTasksRole } from "@/features/production/jobs-api";
 import { useMyTasks } from "@/features/production/jobs-hooks";
 import {
-  boardColumns,
   flattenPages,
+  myBoardColumns,
   pagedCountLabel,
   type BoardColumn
 } from "@/features/production/jobs-model";
@@ -79,7 +78,9 @@ type Paging = {
 /**
  * /production/my-tasks — tasks I do or check (PLAN §7). Kanban by status: a card can only be dropped
  * on statuses its own capabilities offer (anything else snaps back); Done asks for the quantity
- * (and OT hours), QC fail and overrides ask for a note. Phones get a status tab bar instead.
+ * (and OT hours), "Cần sửa lại" and overrides ask for a note. The list view and phones move a card
+ * with its status dropdown (PD-044); phones get a status tab bar instead of columns. Subtasks stay
+ * inside their line's card ("+N subtask").
  * Tasks load in pages (deadline order) with "Tải thêm" (BUG-PR-18); without the workflow the tasks
  * stay readable as a list and the screen offers a retry.
  */
@@ -100,30 +101,19 @@ export const ProductionMyTasksRoute = () => {
   const tasks = useMyTasks(role, includeFinished, listFilters.ready, listFilters.query);
   const fields = listFilters.fields;
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
-  const items = useMemo(() => flattenPages(tasks.data?.pages), [tasks.data]);
+  // Subtasks are listed inside their line (PD-044), never as cards of their own.
+  const items = useMemo(
+    () => flattenPages(tasks.data?.pages).filter((task) => !task.isSubtask),
+    [tasks.data]
+  );
   const statuses = mover.lookup.statuses;
   const noWorkflow = mover.lookup.isError;
 
-  const columns = useMemo(() => {
-    const reachable = new Set(
-      items.flatMap((task) =>
-        task.capabilities.transitions
-          .filter((option) => !option.override)
-          .map((option) => option.toStatusId)
-      )
-    );
-    // The task flow up to the first "checked" status stays put (columns do not jump as cards
-    // move); later job-level statuses only show when they hold or can receive a card.
-    const checkedOrder = Math.min(
-      ...statuses.filter((status) => status.active && status.countsChecked).map((s) => s.sortOrder)
-    );
-    return boardColumns(items, statuses).filter(
-      (column) =>
-        column.tasks.length > 0 ||
-        reachable.has(column.status.id) ||
-        (column.status.active && column.status.sortOrder <= checkedOrder)
-    );
-  }, [items, statuses]);
+  // The flow up to "Đã check" stays put; "Cần sửa lại" / "Đang check" and later statuses show when they hold or can
+  // receive a card (PD-044). PD-045: the line workflow ends at "Đã check" — finished lines (Đã check or later, a Checking
+  // line at Done) only come back with "Hiện việc đã xong", so "Complete" and later columns stay away unless a card
+  // (an older line) sits there.
+  const columns = useMemo(() => myBoardColumns(items, statuses), [items, statuses]);
 
   const changeView = (next: View) => {
     setView(next);
@@ -345,7 +335,7 @@ const dragInstructions: ScreenReaderInstructions = {
 
 const taskLabel = (data: unknown) => {
   const task = (data as { task?: ProductionTask } | undefined)?.task;
-  return task ? `task #${task.number}` : "task";
+  return task ? `task #${task.code}` : "task";
 };
 
 const dragAnnouncements: Announcements = {
@@ -590,15 +580,8 @@ const ListView = ({
             fields={fields}
             onOpen={onOpen}
             showStatus
-            footer={
-              onMove ? (
-                <TransitionButtons
-                  task={task}
-                  busy={busyTaskId === task.id}
-                  onMove={(option) => onMove(task, option)}
-                />
-              ) : undefined
-            }
+            onMove={onMove}
+            busy={busyTaskId === task.id}
           />
         </li>
       ))}
@@ -607,7 +590,7 @@ const ListView = ({
   </div>
 );
 
-/** Phones: a scrollable status tab bar and the selected status' cards with move buttons. */
+/** Phones: a scrollable status tab bar and the selected status' cards, each with its status dropdown (PD-044). */
 const PhoneStatusList = ({
   columns,
   timeZone,
@@ -669,13 +652,9 @@ const PhoneStatusList = ({
                   timeZone={timeZone}
                   fields={fields}
                   onOpen={onOpen}
-                  footer={
-                    <TransitionButtons
-                      task={task}
-                      busy={busyTaskId === task.id}
-                      onMove={(option) => onMove(task, option)}
-                    />
-                  }
+                  showStatus
+                  onMove={onMove}
+                  busy={busyTaskId === task.id}
                 />
               </li>
             ))}

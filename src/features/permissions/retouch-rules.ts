@@ -51,20 +51,20 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
   const whenScores = { partial: "Khi bật “Công khai bảng điểm”" };
   const whenMoney = { partial: "Khi bật “Công khai tiền công”" };
   const leaderScores = {
-    partial: "Điểm các dòng trong job mình lead (hoặc job chưa có leader)"
+    partial: "Điểm các task trong job mình lead (hoặc job chưa có leader)"
   };
   return [
     {
       id: "qc-queue",
       label: "Hàng chờ QC",
       description:
-        "Danh sách dòng việc chờ kiểm mà mình là người QC. Chỉ người có vai trò QC mới được chọn làm QC của dòng.",
+        "Danh sách task chờ kiểm mà mình là người QC. Chỉ người có vai trò QC mới được chọn làm QC của task.",
       cells: only("QC")
     },
     {
       id: "others-scores",
       label: "Xem điểm người khác",
-      description: `Bảng xếp hạng và điểm từng dòng của người khác. Theo cài đặt “Công khai bảng điểm”${onOff(scoresPublic)}; điểm của mình luôn xem được.`,
+      description: `Bảng xếp hạng và điểm từng task của người khác. Theo cài đặt “Công khai bảng điểm”${onOff(scoresPublic)}; điểm của mình luôn xem được.`,
       cells:
         scoresPublic === true
           ? everyone
@@ -81,7 +81,7 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
     {
       id: "others-money",
       label: "Xem tiền Khoán người khác",
-      description: `Tiền công của người khác trên bảng xếp hạng, chi tiết dòng việc và đơn giá. Theo cài đặt “Công khai tiền công”${onOff(moneyPublic)}; báo cáo tiền Khoán luôn chỉ Quản trị.`,
+      description: `Tiền công của người khác trên bảng xếp hạng, chi tiết task và đơn giá. Theo cài đặt “Công khai tiền công”${onOff(moneyPublic)}; báo cáo tiền Khoán luôn chỉ Quản trị.`,
       cells:
         moneyPublic === true
           ? everyone
@@ -119,7 +119,7 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
       id: "anomalies",
       label: "Bất thường",
       description:
-        "Dòng việc bất thường (trễ, lệch số lượng…). Leader thấy job mình lead và job chưa có leader.",
+        "Task bất thường (trễ, lệch số lượng…). Leader thấy job mình lead và job chưa có leader.",
       cells: only("LEADER")
     },
     {

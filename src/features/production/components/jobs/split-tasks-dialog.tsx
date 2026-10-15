@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { CreditRule, CustomField, CustomValues, Shift } from "@/contracts/production-catalog";
-import type { Feedback, JobDetail, ProductionTask } from "@/contracts/production-jobs";
+import type { JobDetail } from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
 
 import { indexRules, lookupRule } from "../../credit-matrix";
@@ -40,7 +40,7 @@ import {
   useShifts,
   useTags
 } from "../../hooks";
-import { useCreateTasks, useReassignFeedback } from "../../jobs-hooks";
+import { useCreateTasks } from "../../jobs-hooks";
 import {
   allocation,
   assignedNormalQty,
@@ -62,15 +62,15 @@ import type { Tag } from "../../types";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { CustomFieldInput } from "../custom-field-input";
 import { DateField } from "../date-field";
-import { FormAlert, InfoNote } from "../settings-kit";
+import { FormAlert } from "../settings-kit";
 import { TagPicker } from "../tag-picker";
 import { OptionalDetails } from "./optional-details";
 import { OptionSelect, PersonSelect } from "./pickers";
 
 /**
  * One work-log row (PD-035). `receivedDay` / `dueDay` default to the job's Ngày nhận / Ngày giao. `values` /
- * `tagIds`: the line's TASK custom fields and tags (required fields must be filled, BE CUSTOM_FIELDS_INVALID
- * "Dòng N: …"). "Giao lại" lines start from the source task's values, tags and Link chia việc (PD-040).
+ * `tagIds`: the task's TASK custom fields and tags (required fields must be filled, BE CUSTOM_FIELDS_INVALID
+ * "Task N: …"). `qcId`: required unless the process is the Checking one (PD-047).
  */
 type Line = TaskLineDraft & {
   key: string;
@@ -80,7 +80,6 @@ type Line = TaskLineDraft & {
   otHours: string;
   workLink: string;
   note: string;
-  sourceTaskId: string | null;
   values: CustomValues;
   tagIds: string[];
 };
@@ -101,43 +100,30 @@ const blankLine = (template?: Partial<Line>): Line => ({
   otHours: "",
   workLink: "",
   note: "",
-  sourceTaskId: null,
   values: {},
   tagIds: [],
   ...template
 });
 
-const fromTask = (task: ProductionTask, dates: Pick<Line, "receivedDay" | "dueDay">): Line =>
-  blankLine({
-    assigneeId: task.assignee.id,
-    qcId: task.qc?.id ?? null,
-    processId: task.process.id,
-    shiftId: task.shift.id,
-    qty: String(task.qtyAssigned),
-    // The redo is about the same images: start from the source's folder (editable).
-    workLink: task.workLink ?? "",
-    sourceTaskId: task.id,
-    values: task.customValues,
-    tagIds: task.tagIds,
-    ...dates
-  });
-
-/** Line numbers named by a server answer ("Dòng 2: …"), to outline those cards. */
+/** Task numbers named by a server answer ("Task 2: …", PD-047; older servers "Dòng 2: …"), to outline those cards. */
 const linesInMessage = (message: string | null) =>
-  new Set([...(message ?? "").matchAll(/Dòng (\d+):/g)].map((match) => Number(match[1]) - 1));
+  new Set(
+    [...(message ?? "").matchAll(/(?:Task|Dòng) (\d+):/g)].map((match) => Number(match[1]) - 1)
+  );
 
-/** One server error per line ("Dòng 1: … Dòng 2: …" → one per row). */
-const splitLineMessages = (message: string) => message.replace(/\s+(?=Dòng \d+:)/g, "\n");
+/** One server error per task ("Task 1: … Task 2: …" → one per row). */
+const splitLineMessages = (message: string) => message.replace(/\s+(?=(?:Task|Dòng) \d+:)/g, "\n");
 
 /**
- * One column template for every grid of a line card, so main fields, dates and details line up on desktop:
- * Nhân viên thực hiện (wide) · Quy trình · Ca · Số lượng (narrow). Two columns on tablets, one on phones.
+ * One column template for every grid of a task card, so main fields, dates and details line up on desktop:
+ * Nhân viên thực hiện (wide) · Quy trình · Ca · Số lượng (narrow), then QC (under the person) · Ngày nhận · Ngày giao.
+ * Two columns on tablets, one on phones.
  */
 const lineGrid =
   "grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,1fr)_7rem]";
 
 /** The problems that belong to "Chi tiết thêm" (it opens by itself when one is shown). */
-const detailProblemKeys: readonly TaskLineProblemKey[] = ["qc", "errorQty", "otHours", "workLink"];
+const detailProblemKeys: readonly TaskLineProblemKey[] = ["errorQty", "otHours", "workLink"];
 
 /** "Độ khó: Khó · 2 tag" — what a line's optional custom fields and tags add to the collapsed summary. */
 const extrasSummary = (
@@ -152,26 +138,25 @@ const extrasSummary = (
 ];
 
 /**
- * "Chia task" (PD-035): several work-log rows at once, one card per row —
- *   header: "Dòng N", the unit price from today's credit rules ("5,5 điểm/tấm", or "Chưa có đơn giá"), the expected
+ * "Chia task" (PD-035): several work-log rows at once, one card per task —
+ *   header: "Task N", the unit price from today's credit rules ("5,5 điểm/tấm", or "Chưa có đơn giá"), the expected
  *           points of the row, delete;
- *   main:   Nhân viên thực hiện · Quy trình (Checking included: the QC person's own line, without a QC — PD-037) · Ca ·
- *           Số lượng, then Ngày nhận · Ngày giao (default: the job's) and the required TASK custom fields;
- *   "Chi tiết thêm" (optional, collapsed while empty): QC, Hình lỗi, Giờ OT, Link chia việc (PD-040), Ghi chú, the
- *           other custom fields and tags.
- * Live totals in the footer. With "create: own" (PD-036) every line is mine: the assignee is fixed. In "reassign" mode
- * the lines start from the feedback's source task (FB tasks, PD-014). Not a <form>: Enter in a field never submits.
+ *   main:   Nhân viên thực hiện · Quy trình (Checking included: the QC person's own task, without a QC — PD-037) · Ca ·
+ *           Số lượng, then QC (required on every other task, PD-047) · Ngày nhận · Ngày giao (default: the job's) and
+ *           the required TASK custom fields;
+ *   "Chi tiết thêm" (optional, collapsed while empty): Hình lỗi, Giờ OT, Link chia việc (PD-040), Ghi chú, the other
+ *           custom fields and tags.
+ * Live totals in the footer. With "create: own" (PD-036) every line is mine: the assignee is fixed. Client feedback
+ * redo lines are ordinary lines added here too (PD-045: the separate "Giao lại" mode is retired). Not a <form>: Enter
+ * in a field never submits.
  */
 export const SplitTasksDialog = ({
   open,
   job,
-  feedback,
   onClose
 }: {
   open: boolean;
   job: JobDetail;
-  /** Reassign mode: lines create FB tasks for this feedback. */
-  feedback?: Feedback | null;
   onClose: () => void;
 }) => {
   const ids = useId();
@@ -180,7 +165,7 @@ export const SplitTasksDialog = ({
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const today = todayIn(timeZone);
   const myId = session.user.id;
-  const ownOnly = !feedback && job.capabilities.splitOwnOnly;
+  const ownOnly = job.capabilities.splitOwnOnly;
   const people = useProductionPeople([
     job.leader,
     ...job.tasks.flatMap((task) => [task.assignee, task.qc])
@@ -191,7 +176,6 @@ export const SplitTasksDialog = ({
   const tags = useTags();
   const matrix = useCreditMatrix(today);
   const create = useCreateTasks(job.id);
-  const reassign = useReassignFeedback(job.id);
   const listRef = useRef<HTMLOListElement | null>(null);
   const taskFields = useMemo(
     () => fieldsFor(customFields.data?.items ?? [], "TASK"),
@@ -201,18 +185,13 @@ export const SplitTasksDialog = ({
   const optionalFields = taskFields.filter((field) => !field.required);
   const tagList = useMemo(() => tags.data?.items ?? [], [tags.data]);
 
-  // Defaults of each line: the job's days; a feedback redo is received today and due no earlier than today.
-  const jobDue = isoToDay(job.deadline, timeZone);
-  const defaultDates = feedback
-    ? { receivedDay: today, dueDay: jobDue < today ? today : jobDue }
-    : { receivedDay: isoToDay(job.receivedAt, timeZone), dueDay: jobDue };
-  const source = feedback?.sourceTaskId
-    ? (job.tasks.find((task) => task.id === feedback.sourceTaskId) ?? null)
-    : null;
+  // Defaults of each line: the job's days.
+  const defaultDates = {
+    receivedDay: isoToDay(job.receivedAt, timeZone),
+    dueDay: isoToDay(job.deadline, timeZone)
+  };
   const [lines, setLines] = useState<Line[]>(() => [
-    source
-      ? fromTask(source, defaultDates)
-      : blankLine({ ...defaultDates, ...(ownOnly ? { assigneeId: myId } : {}) })
+    blankLine({ ...defaultDates, ...(ownOnly ? { assigneeId: myId } : {}) })
   ]);
   const [showErrors, setShowErrors] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -261,10 +240,10 @@ export const SplitTasksDialog = ({
   const failedLines = linesInMessage(formError);
   const totals = allocation(
     job.totalImages,
-    feedback ? 0 : assignedNormalQty(job.tasks),
+    assignedNormalQty(job.tasks),
     lines.map((line) => Number(line.qty))
   );
-  const pending = create.isPending || reassign.isPending;
+  const pending = create.isPending;
 
   const update = (key: string, patch: Partial<Line>) =>
     setLines((items) => items.map((item) => (item.key === key ? { ...item, ...patch } : item)));
@@ -279,7 +258,7 @@ export const SplitTasksDialog = ({
   };
 
   /**
-   * "Thêm dòng": the same process, shift, dates, QC, fields and tags as the last line; a new person — the new line's
+   * "Thêm task": the same process, shift, dates, QC, fields and tags as the last task; a new person — the new task's
    * Nhân viên thực hiện (Quy trình when it is fixed to me) takes the focus.
    */
   const addLine = () => {
@@ -331,41 +310,22 @@ export const SplitTasksDialog = ({
         ...(taskFields.length > 0
           ? { customValues: toCustomValuesPayload(taskFields, line.values) }
           : {}),
-        // "Giao lại": tags sent on a line replace the inherited ones; the form started from them.
-        ...(line.tagIds.length > 0 || feedback ? { tagIds: line.tagIds } : {})
+        ...(line.tagIds.length > 0 ? { tagIds: line.tagIds } : {})
       };
     });
-    const onSuccess = (result: { tasks: unknown[]; warnings: string[] }) => {
-      toast.success(
-        feedback
-          ? `Đã giao lại ${result.tasks.length} dòng`
-          : `Đã thêm ${result.tasks.length} dòng công việc`
-      );
-      for (const warning of result.warnings) toast.warning(warning);
-      onClose();
-    };
-    const onError = (error: unknown) => {
-      const message = splitLineMessages(productionErrorMessage(error));
-      flushSync(() => setFormError(message));
-      // A server answer naming lines ("Dòng 2: …"): show the first of them.
-      revealLine([...linesInMessage(message)].sort((a, b) => a - b)[0]);
-    };
-    if (feedback) {
-      reassign.mutate(
-        {
-          feedbackId: feedback.id,
-          input: {
-            tasks: payload.map((line, index) => ({
-              ...line,
-              ...(lines[index]?.sourceTaskId ? { sourceTaskId: lines[index].sourceTaskId } : {})
-            }))
-          }
-        },
-        { onSuccess, onError }
-      );
-    } else {
-      create.mutate(payload, { onSuccess, onError });
-    }
+    create.mutate(payload, {
+      onSuccess: (result) => {
+        toast.success(`Đã thêm ${result.tasks.length} task`);
+        for (const warning of result.warnings) toast.warning(warning);
+        onClose();
+      },
+      onError: (error) => {
+        const message = splitLineMessages(productionErrorMessage(error));
+        flushSync(() => setFormError(message));
+        // A server answer naming tasks ("Task 2: …"): show the first of them.
+        revealLine([...linesInMessage(message)].sort((a, b) => a - b)[0]);
+      }
+    });
   };
 
   return (
@@ -383,27 +343,16 @@ export const SplitTasksDialog = ({
           )}
         >
           <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
-            <DialogTitle className="[overflow-wrap:anywhere]">
-              {feedback
-                ? `Giao lại theo feedback ${feedback.type === "WRONG" ? "sai" : "yêu cầu thêm"}`
-                : `Chia task · ${job.code}`}
-            </DialogTitle>
+            <DialogTitle className="[overflow-wrap:anywhere]">Chia task · {job.code}</DialogTitle>
             <DialogDescription>
-              {feedback
-                ? "Tạo dòng feedback trỏ về task gốc: mặc định giao lại đúng người cũ và giữ trường tùy chỉnh, tag, link của task gốc — đổi được từng dòng."
-                : ownOnly
-                  ? "Mỗi dòng là một dòng work log của bạn: quy trình, ca, số lượng, ngày nhận / giao."
-                  : "Mỗi dòng là một dòng work log: một người, một quy trình, N tấm. Dòng Checking là việc của người QC."}
+              {ownOnly
+                ? "Mỗi task là một hàng work log của bạn: quy trình, ca, số lượng, QC, ngày nhận / giao."
+                : "Mỗi task là một hàng work log: một người, một quy trình, N tấm và QC kiểm. Task Checking là việc của người QC (không có QC)."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4">
-            {feedback ? (
-              <InfoNote icon={TriangleAlert} tone="warning">
-                {feedback.note}
-              </InfoNote>
-            ) : null}
-            <ol ref={listRef} className="flex flex-col gap-4" aria-label="Các dòng công việc">
+            <ol ref={listRef} className="flex flex-col gap-4" aria-label="Các task">
               {lines.map((line, index) => {
                 const shift = shiftList.find((item) => item.id === line.shiftId) ?? null;
                 return (
@@ -416,13 +365,6 @@ export const SplitTasksDialog = ({
                     fieldErrors={showErrors ? (fieldProblems[index] ?? {}) : {}}
                     flagged={failedLines.has(index)}
                     canRemove={lines.length > 1}
-                    sourceNumber={
-                      line.sourceTaskId
-                        ? (job.tasks.find((task) => task.id === line.sourceTaskId)?.number ?? null)
-                        : null
-                    }
-                    inherited={Boolean(feedback && (line.sourceTaskId || feedback.sourceTaskId))}
-                    redoWithoutPoints={feedback?.type === "WRONG"}
                     ownOnly={ownOnly}
                     myself={myself}
                     people={{ workers, checkers, checkingPeople, nameOf: people.nameOf }}
@@ -453,7 +395,7 @@ export const SplitTasksDialog = ({
               onClick={addLine}
             >
               <Plus />
-              Thêm dòng
+              Thêm task
             </Button>
             <FormAlert>{formError}</FormAlert>
           </div>
@@ -469,9 +411,7 @@ export const SplitTasksDialog = ({
               )}
               aria-live="polite"
             >
-              {feedback ? (
-                <>Giao lại {formatInteger(totals.adding)} tấm</>
-              ) : job.totalImagesManual ? (
+              {job.totalImagesManual ? (
                 <>
                   Đã giao {formatInteger(assignedNormalQty(job.tasks))} + mới{" "}
                   {formatInteger(totals.adding)} ={" "}
@@ -499,7 +439,7 @@ export const SplitTasksDialog = ({
               </Button>
               <Button onClick={submit} disabled={pending} className="max-sm:flex-1">
                 {pending ? <Spinner /> : null}
-                {feedback ? `Giao lại ${lines.length} dòng` : `Thêm ${lines.length} dòng`}
+                Thêm {lines.length} task
               </Button>
             </div>
           </DialogFooter>
@@ -518,22 +458,15 @@ const PriceInfo = ({
   qty,
   shift,
   checking,
-  hasProcess,
-  redoWithoutPoints
+  hasProcess
 }: {
   rule: CreditRule | null;
   qty: number;
   shift: Shift | null;
   checking: boolean;
   hasProcess: boolean;
-  redoWithoutPoints: boolean;
 }) => {
   const badge = "inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium";
-  if (redoWithoutPoints) {
-    return (
-      <span className={cn(badge, "bg-muted text-foreground-muted")}>Làm lại — không tính điểm</span>
-    );
-  }
   if (!hasProcess) return null;
   const price = unitPriceLabel(rule, shift?.payMode ?? null);
   if (!price) {
@@ -570,9 +503,6 @@ const LineCard = ({
   fieldErrors,
   flagged,
   canRemove,
-  sourceNumber,
-  inherited,
-  redoWithoutPoints,
   ownOnly,
   myself,
   people,
@@ -595,13 +525,9 @@ const LineCard = ({
   /** Shown problems (empty until the first "Thêm"). */
   problems: Partial<Record<TaskLineProblemKey, string>>;
   fieldErrors: Record<string, string>;
-  /** The server named this line ("Dòng N: …"). */
+  /** The server named this task ("Task N: …"). */
   flagged: boolean;
   canRemove: boolean;
-  sourceNumber: number | null;
-  /** "Giao lại" line: started from the source task's values, tags and link. */
-  inherited: boolean;
-  redoWithoutPoints: boolean;
   ownOnly: boolean;
   myself: Person;
   people: {
@@ -627,10 +553,8 @@ const LineCard = ({
   const id = (name: string) => `${idPrefix}-${name}`;
   const dueOver = line.dueDay !== null && line.dueDay < today;
   const showTags = tags.some((tag) => tag.active || line.tagIds.includes(tag.id));
-  const qcName = !checking && line.qcId ? (people.nameOf(line.qcId) ?? "đã chọn") : null;
   const summary = optionalDetailsSummary(
     {
-      qcName,
       errorQty: line.errorQty,
       otHours: line.otHours,
       workLink: line.workLink,
@@ -641,14 +565,18 @@ const LineCard = ({
   const detailsInvalid =
     detailProblemKeys.some((key) => problems[key]) ||
     optionalFields.some((field) => fieldErrors[field.key]);
-  const customField = (field: CustomField) => {
+  const customField = (field: CustomField, index = -1) => {
     const fieldId = id(`cf-${field.key}`);
     const error = fieldErrors[field.key];
     return (
       <Field
         key={field.id}
         data-invalid={Boolean(error)}
-        className={cn(field.type === "TEXT" && "lg:col-span-2")}
+        className={cn(
+          field.type === "TEXT" && "lg:col-span-2",
+          // Required fields start their own row on desktop (QC and the dates fill the row above).
+          index === 0 && "lg:col-start-1"
+        )}
       >
         <FieldLabel htmlFor={fieldId}>
           {field.label}
@@ -684,22 +612,13 @@ const LineCard = ({
           className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
           aria-live="polite"
         >
-          <span className="text-[13px] font-semibold whitespace-nowrap">
-            Dòng {index + 1}
-            {sourceNumber !== null || line.sourceTaskId ? (
-              <span className="font-normal text-foreground-subtle">
-                {" "}
-                · task gốc #{sourceNumber ?? "?"}
-              </span>
-            ) : null}
-          </span>
+          <span className="text-[13px] font-semibold whitespace-nowrap">Task {index + 1}</span>
           <PriceInfo
             rule={rule}
             qty={Number(line.qty)}
             shift={shift}
             checking={checking}
             hasProcess={line.processId !== null}
-            redoWithoutPoints={redoWithoutPoints}
           />
         </div>
         <Tooltip>
@@ -708,7 +627,7 @@ const LineCard = ({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Xóa dòng ${index + 1}`}
+                aria-label={`Xóa task ${index + 1}`}
                 className="text-foreground-subtle hover:text-danger"
                 disabled={!canRemove}
                 onClick={onRemove}
@@ -718,7 +637,7 @@ const LineCard = ({
             <Trash2 />
           </TooltipTrigger>
           <TooltipContent>
-            {canRemove ? `Xóa dòng ${index + 1}` : "Cần ít nhất một dòng"}
+            {canRemove ? `Xóa task ${index + 1}` : "Cần ít nhất một task"}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -800,6 +719,21 @@ const LineCard = ({
             />
             {problems.qty ? <FieldError className="text-xs">{problems.qty}</FieldError> : null}
           </Field>
+          {/* PD-047: every work task names its QC; a Checking task has none (PD-037). */}
+          <Field data-invalid={Boolean(problems.qc)}>
+            <FieldLabel htmlFor={id("qc")}>QC</FieldLabel>
+            <PersonSelect
+              id={id("qc")}
+              people={people.checkers.filter((person) => person.id !== line.assigneeId)}
+              value={checking ? null : line.qcId}
+              onChange={(qcId) => onChange({ qcId })}
+              placeholder="Chọn QC"
+              noneLabel={checking ? "Task Checking — không có QC" : undefined}
+              disabled={checking}
+              invalid={Boolean(problems.qc)}
+            />
+            {problems.qc ? <FieldError className="text-xs">{problems.qc}</FieldError> : null}
+          </Field>
           <Field data-invalid={Boolean(problems.received)}>
             <FieldLabel htmlFor={id("received")}>Ngày nhận</FieldLabel>
             <DateField
@@ -827,40 +761,22 @@ const LineCard = ({
             ) : dueOver ? (
               <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                Đã qua — dòng chưa xong sẽ bị tính trễ.
+                Đã qua — task chưa xong sẽ bị tính trễ.
               </p>
             ) : null}
           </Field>
           {/* Required TASK custom fields are not optional: they stay in view, after the dates. */}
-          {requiredFields.map(customField)}
+          {requiredFields.map((field, index) => customField(field, index))}
         </div>
 
         <OptionalDetails
           id={id("details")}
           summary={summary}
-          placeholder={`QC, hình lỗi, giờ OT, link chia việc, ghi chú${optionalFields.length > 0 || showTags ? ", trường thêm" : ""}`}
+          placeholder={`Hình lỗi, giờ OT, link chia việc, ghi chú${optionalFields.length > 0 || showTags ? ", trường thêm" : ""}`}
           hasValue={summary !== ""}
           forceOpen={detailsInvalid || flagged}
         >
-          {inherited && (optionalFields.length > 0 || showTags) ? (
-            <p className="mb-3 text-xs text-foreground-subtle">
-              Trường tùy chỉnh, tag và link lấy từ task gốc — sửa được.
-            </p>
-          ) : null}
           <div className={lineGrid}>
-            <Field data-invalid={Boolean(problems.qc)} className="sm:col-span-2 lg:col-span-1">
-              <FieldLabel htmlFor={id("qc")}>QC</FieldLabel>
-              <PersonSelect
-                id={id("qc")}
-                people={people.checkers.filter((person) => person.id !== line.assigneeId)}
-                value={checking ? null : line.qcId}
-                onChange={(qcId) => onChange({ qcId })}
-                noneLabel={checking ? "Dòng Checking — không có QC" : "Chưa gán QC"}
-                disabled={checking}
-                invalid={Boolean(problems.qc)}
-              />
-              {problems.qc ? <FieldError className="text-xs">{problems.qc}</FieldError> : null}
-            </Field>
             <Field data-invalid={Boolean(problems.errorQty)}>
               <FieldLabel htmlFor={id("error")}>Hình lỗi</FieldLabel>
               <Input
@@ -919,11 +835,11 @@ const LineCard = ({
                 id={id("note")}
                 value={line.note}
                 maxLength={5000}
-                placeholder="Ghi chú cho dòng này"
+                placeholder="Ghi chú cho task này"
                 onChange={(event) => onChange({ note: event.target.value })}
               />
             </Field>
-            {optionalFields.map(customField)}
+            {optionalFields.map((field) => customField(field))}
             {showTags ? (
               <Field className="sm:col-span-2">
                 <FieldLabel id={id("tags")}>Tag</FieldLabel>
@@ -931,7 +847,7 @@ const LineCard = ({
                   tags={tags}
                   value={line.tagIds}
                   onChange={(tagIds) => onChange({ tagIds })}
-                  aria-label={`Tag dòng ${index + 1}`}
+                  aria-label={`Tag task ${index + 1}`}
                 />
               </Field>
             ) : null}

@@ -146,8 +146,8 @@ const JobsPage = () => {
         title="Job"
         description={
           jobScopes.view === "own"
-            ? "Các job có dòng công việc của bạn — mỗi job là một gói công việc của dự án."
-            : "Mỗi job là một gói công việc của dự án, gồm các dòng công việc: tiến độ, trễ và feedback."
+            ? "Các job có task của bạn — mỗi job là một gói công việc của dự án."
+            : "Mỗi job là một gói công việc của dự án, gồm các task: trạng thái, tiến độ và trễ hạn."
         }
         actions={
           <>
@@ -213,7 +213,7 @@ const JobsPage = () => {
               <EmptyState
                 icon={Briefcase}
                 title="Chưa có job nào của bạn"
-                description="Job hiện ở đây khi bạn có dòng công việc trong đó."
+                description="Job hiện ở đây khi bạn có task trong đó."
                 action={
                   canEnter ? (
                     <Button size="sm" onClick={() => setEntering(true)}>

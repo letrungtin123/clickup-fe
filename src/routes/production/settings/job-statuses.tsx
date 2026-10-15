@@ -5,6 +5,7 @@ import {
   ArrowUp,
   CircleCheck,
   CircleDot,
+  ListChecks,
   LockKeyhole,
   Pencil,
   Trash2,
@@ -25,7 +26,11 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenuCheckboxItem,
+  DropdownMenuItem,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -78,6 +83,9 @@ const nameConflict = "Đã có trạng thái job cùng tên (không phân biệt
 const limitReached = `Tối đa ${jobStatusLimit} trạng thái job. Xoá bớt trạng thái không dùng trước khi thêm.`;
 const closedHint =
   "Trạng thái đóng (ví dụ “Đã giao khách”): job được coi là đã xong, không còn đếm ngược hạn giao, và luôn xếp sau các trạng thái đang mở khi chọn.";
+/** PD-045: `requiresAllChecked`. */
+const checkedHint =
+  "Cần mọi task đã check (ví dụ “Đã xong”): chỉ chọn được khi job có ít nhất một task và mọi task đã “Đã check” (task Checking: Done; subtask đi theo task của nó). Trước đó trạng thái hiện mờ trong menu của job, kèm số task còn chưa check.";
 
 /** Copy for the PD-038 codes (the shared production map does not know them yet). */
 const jobStatusMessages: Record<string, string> = {
@@ -136,8 +144,9 @@ const auditTitle = (status: JobStatus, timeZone: string) =>
 /**
  * Cấu hình → Trạng thái job (PD-038, ADMIN): the manual, ClickUp-style status people set on a job,
  * separate from the line workflow ("Trạng thái & luồng chuyển"). Add, rename in place, colour,
- * order (drag, keyboard or the row menu), "đóng" and delete; every write answers the whole catalog.
- * A status jobs use is deleted together with moving those jobs to a replacement (one request).
+ * order (drag, keyboard or the row menu), "đóng", "Cần mọi task đã check" (PD-045: a switch when adding, a checkbox in
+ * the row menu, a "Cần đã check" badge on the row) and delete; every write answers the whole catalog. A status jobs use
+ * is deleted together with moving those jobs to a replacement (one request).
  *
  * Rows are one grid per status sized by the list's own width (container query, not the viewport):
  * narrow lists put the job count and the last change under the name, wide ones give them aligned
@@ -151,6 +160,7 @@ export const ProductionJobStatusesRoute = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newColor, setNewColor] = useState<ColorToken | null>(null);
   const [newClosed, setNewClosed] = useState(false);
+  const [newRequiresChecked, setNewRequiresChecked] = useState(false);
   // The order being saved: the reorder answer is not optimistic, so the rows keep the drop meanwhile.
   const [order, setOrder] = useState<readonly string[] | null>(null);
   const [deleting, setDeleting] = useState<JobStatus | null>(null);
@@ -192,18 +202,21 @@ export const ProductionJobStatusesRoute = () => {
   };
 
   const add = (name: string) =>
-    mutations.create.mutateAsync({ name, color, isClosed: newClosed }).then(
-      () => {
-        toast.success(`Đã thêm trạng thái ${name}`);
-        setNewColor(null);
-        setNewClosed(false);
-        return true;
-      },
-      (error: unknown) => {
-        toast.error(errorMessage(error));
-        return false;
-      }
-    );
+    mutations.create
+      .mutateAsync({ name, color, isClosed: newClosed, requiresAllChecked: newRequiresChecked })
+      .then(
+        () => {
+          toast.success(`Đã thêm trạng thái ${name}`);
+          setNewColor(null);
+          setNewClosed(false);
+          setNewRequiresChecked(false);
+          return true;
+        },
+        (error: unknown) => {
+          toast.error(errorMessage(error));
+          return false;
+        }
+      );
 
   const row = (status: JobStatus, index: number, handle: ReactNode) => {
     const editing = editingId === status.id;
@@ -249,6 +262,7 @@ export const ProductionJobStatusesRoute = () => {
           >
             <span className="flex min-w-0 items-center gap-1.5">
               <JobStatusChip status={status} />
+              {status.requiresAllChecked ? <RequiresCheckedBadge /> : null}
               {index === 0 ? (
                 // Narrow lists: the name keeps the room (the line below says "Job mới" instead).
                 <span
@@ -315,12 +329,29 @@ export const ProductionJobStatusesRoute = () => {
           <RowMenu
             label={status.name}
             active
+            menuClassName="w-60"
             extra={
               <>
                 <DropdownMenuItem onClick={() => setEditingId(status.id)}>
                   <Pencil />
                   Đổi tên
                 </DropdownMenuItem>
+                <DropdownMenuCheckboxItem
+                  checked={status.requiresAllChecked}
+                  disabled={updatingId === status.id}
+                  onCheckedChange={(requiresAllChecked) =>
+                    save(
+                      status,
+                      { requiresAllChecked },
+                      requiresAllChecked
+                        ? `${status.name}: cần mọi task đã check`
+                        : `${status.name}: không cần mọi task đã check`
+                    )
+                  }
+                >
+                  <ListChecks />
+                  Cần mọi task đã check
+                </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   disabled={index === 0 || mutations.reorder.isPending}
@@ -363,8 +394,8 @@ export const ProductionJobStatusesRoute = () => {
       <PageIntro slug="job-statuses" />
       <div className="flex flex-col gap-2">
         <InfoNote icon={CircleDot} tone="brand">
-          Trạng thái job do người đặt bằng tay (giống ClickUp), riêng với luồng của dòng việc:{" "}
-          <SettingsLink slug="workflow" /> của từng dòng công việc vẫn giữ nguyên. Job mới bắt đầu ở
+          Trạng thái job do người đặt bằng tay (giống ClickUp), riêng với luồng của task:{" "}
+          <SettingsLink slug="workflow" /> của từng task vẫn giữ nguyên. Job mới bắt đầu ở
           trạng thái đầu tiên của danh sách.
         </InfoNote>
         <InfoNote icon={LockKeyhole}>
@@ -375,7 +406,7 @@ export const ProductionJobStatusesRoute = () => {
           >
             Cài đặt → Vai trò & phân quyền
           </Link>{" "}
-          — “Tất cả”: mọi job; “Của mình”: chỉ job mình được giao dòng việc hoặc là Leader. Quản trị
+          — “Tất cả”: mọi job; “Của mình”: chỉ job mình được giao task hoặc là Leader. Quản trị
           luôn đổi được.
         </InfoNote>
       </div>
@@ -408,6 +439,13 @@ export const ProductionJobStatusesRoute = () => {
               checked={newClosed}
               onChange={setNewClosed}
               label="Trạng thái mới là trạng thái đóng"
+            />
+            <RuleToggle
+              checked={newRequiresChecked}
+              onChange={setNewRequiresChecked}
+              label="Trạng thái mới cần mọi task đã check"
+              text="Cần đã check"
+              hint={checkedHint}
               className="max-sm:mr-auto"
             />
           </QuickAdd>
@@ -442,8 +480,11 @@ export const ProductionJobStatusesRoute = () => {
             </InfoNote>
           </div>
         ) : null}
-        <div className="border-t p-3">
+        <div className="flex flex-col gap-2 border-t p-3">
           <InfoNote icon={CircleCheck}>{closedHint}</InfoNote>
+          <InfoNote icon={ListChecks}>
+            {checkedHint} Bật / tắt trong menu ⋯ của từng trạng thái.
+          </InfoNote>
         </div>
       </SettingsSection>
 
@@ -517,18 +558,46 @@ const ColorButton = ({
   );
 };
 
-const ClosedToggle = ({
+/**
+ * "Cần đã check" on a status row (PD-045, `requiresAllChecked`): the full text from wide lists, the icon alone on
+ * narrow ones (the name keeps the room; the text stays for screen readers and in the tooltip).
+ */
+const RequiresCheckedBadge = () => (
+  <span
+    title="Cần mọi task đã check: job chỉ chuyển sang trạng thái này khi mọi task đã “Đã check”."
+    className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-success-soft px-1.5 text-[11px] font-medium text-success"
+  >
+    <ListChecks className="size-3" aria-hidden="true" />
+    <span className="sr-only @2xl:not-sr-only">Cần đã check</span>
+  </span>
+);
+
+const ClosedToggle = (props: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  disabled?: boolean;
+  className?: string;
+}) => <RuleToggle {...props} text="Đóng" hint={closedHint} />;
+
+/** A labelled switch for a status rule ("Đóng", "Cần đã check") with its explanation in the tooltip. */
+const RuleToggle = ({
   checked,
   onChange,
   label,
+  text,
+  hint,
   disabled,
   className
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label: string;
+  /** The short visible text next to the switch. */
+  text: string;
+  hint: string;
   disabled?: boolean;
-  className?: string;
+  className?: string | undefined;
 }) => {
   // Base UI names a switch after its wrapping <label> ("Đóng" on every row) and ignores aria-label:
   // point it at the full name instead.
@@ -555,9 +624,11 @@ const ClosedToggle = ({
           onCheckedChange={onChange}
           aria-labelledby={labelId}
         />
-        <span aria-hidden="true">Đóng</span>
+        <span aria-hidden="true" className="whitespace-nowrap">
+          {text}
+        </span>
       </TooltipTrigger>
-      <TooltipContent className="max-w-72">{closedHint}</TooltipContent>
+      <TooltipContent className="max-w-72">{hint}</TooltipContent>
     </Tooltip>
   );
 };

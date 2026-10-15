@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskTransitionOption } from "@/contracts/production-jobs";
+import type {
+  ProductionSubtask,
+  ProductionTimelinePage,
+  TaskLog,
+  TaskTransitionOption
+} from "@/contracts/production-jobs";
 
 import {
   activeFilterCount,
@@ -9,6 +14,15 @@ import {
   boardColumns,
   defaultTaskDeadline,
   describeTaskLog,
+  jobLines,
+  jobLogRows,
+  lacksQc,
+  logStatusChange,
+  logTimeLabel,
+  logTone,
+  myBoardColumns,
+  statusLogDetails,
+  subtaskLineIds,
   emptyJobFilters,
   expectedEarnings,
   dueDayToIso,
@@ -23,8 +37,14 @@ import {
   jobFiltersToSearch,
   jobPeopleStack,
   jobProgress,
+  jobStatusBlockedReason,
   jobStatusFilterGroups,
   listPersonOf,
+  LOG_VALUE_MAX,
+  logTaskLabel,
+  logValue,
+  NEW_JOB_READINESS,
+  taskTag,
   sameIdSet,
   sanitizeJobStatusIds,
   shortName,
@@ -35,13 +55,14 @@ import {
   mentionedIds,
   myCreditSummary,
   needsInput,
-  transitionAsks,
   qcActions,
   relativeDeadline,
   splitTransitions,
   taskLineProblems,
   isWebLink,
   optionalDetailsSummary,
+  processTotalChips,
+  processTotalsText,
   unitPriceLabel,
   WORK_LINK_MAX,
   workLinkProblem,
@@ -54,6 +75,18 @@ import {
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const VN = "Asia/Ho_Chi_Minh";
 const text = (segments: Segment[]) => segments.map((segment) => segment.text).join("");
+/** Every non-move capability off (PD-044 adds the quantity request / subtask ones). */
+const noCapabilities = {
+  canEdit: false,
+  canAssign: false,
+  canChangeAssignee: false,
+  canEditQty: false,
+  canEditQtyAssigned: false,
+  canRequestQty: false,
+  canDecideQtyRequest: false,
+  canCreateSubtask: false,
+  canDelete: false
+};
 
 describe("organization time", () => {
   it("converts a local day + time to UTC and back", () => {
@@ -162,7 +195,7 @@ describe("task lines", () => {
     expect(taskLineProblems(line, context)).toEqual({});
   });
 
-  it("mirrors the API's people and catalog rules (QC optional, PD-035)", () => {
+  it("mirrors the API's people and catalog rules; every work task names its QC (PD-047)", () => {
     expect(taskLineProblems({ ...line, assigneeId: id(4) }, context).assignee).toBe(
       "Cần vai trò Nhân viên hoặc Leader."
     );
@@ -170,10 +203,12 @@ describe("task lines", () => {
     expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: id(1) }, context).qc).toBe(
       "QC phải khác người làm."
     );
-    // Entering a line for oneself needs no QC any more.
-    expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: null }, context)).toEqual({});
-    // A person the caller cannot list (STAFF entering their own line) is left to the API.
-    expect(taskLineProblems({ ...line, assigneeId: id(9), qcId: null }, context)).toEqual({});
+    // PD-047: a work task without a QC is refused ("Chọn QC."), whoever it is for.
+    expect(taskLineProblems({ ...line, assigneeId: id(1), qcId: null }, context)).toEqual({
+      qc: "Chọn QC."
+    });
+    // A person the caller cannot list (not in the roles map) is left to the API.
+    expect(taskLineProblems({ ...line, assigneeId: id(9) }, context)).toEqual({});
     expect(taskLineProblems({ ...line, qty: "0" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
     expect(taskLineProblems({ ...line, qty: "2.5" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
     expect(
@@ -183,7 +218,7 @@ describe("task lines", () => {
           context
         )
       )
-    ).toEqual(["assignee", "process", "shift", "qty"]);
+    ).toEqual(["assignee", "qc", "process", "shift", "qty"]);
   });
 
   it("a Checking line (PD-037) is done by a QC person (or Leader) and has no QC of its own", () => {
@@ -191,10 +226,10 @@ describe("task lines", () => {
     expect(taskLineProblems(checking, context)).toEqual({});
     expect(taskLineProblems({ ...checking, assigneeId: id(1) }, context)).toEqual({});
     expect(taskLineProblems({ ...checking, assigneeId: id(2) }, context).assignee).toBe(
-      "Dòng Checking cần người có vai trò QC (hoặc Leader)."
+      "Task Checking cần người có vai trò QC (hoặc Leader)."
     );
     expect(taskLineProblems({ ...checking, qcId: id(1) }, context).qc).toBe(
-      "Dòng Checking không có QC riêng."
+      "Task Checking không có QC riêng."
     );
   });
 
@@ -324,46 +359,59 @@ describe("transitions", () => {
     const fresh = { doneAt: null };
     const doneBefore = { doneAt: "2026-10-09T03:00:00.000Z" };
     expect(needsInput(fresh, option(1))).toBe(false);
-    expect(needsInput(fresh, option(1, { asksQty: true }))).toBe(true);
+    // Owner 2026-10-15: Done asks nothing — the quantities already on the line / subtasks are used.
+    expect(needsInput(fresh, option(1, { asksQty: true, asksOtHours: true }))).toBe(false);
+    expect(needsInput(doneBefore, option(1, { asksQty: true }))).toBe(false);
     expect(needsInput(fresh, option(1, { requiresNote: true }))).toBe(true);
-    // Re-Done after a QC fail: qty/OT hours are locked at the first Done.
-    expect(needsInput(doneBefore, option(1, { asksQty: true, asksOtHours: true }))).toBe(false);
-    expect(transitionAsks(doneBefore, option(1, { asksQty: true }))).toEqual({
-      qty: false,
-      otHours: false,
-      note: false
-    });
+    expect(needsInput(fresh, option(2, { override: true, requiresNote: true }))).toBe(true);
   });
 
-  it("finds Pass and Fail among the task's own options", () => {
+  it("finds Start, Pass and Fail among the task's own options (PD-044)", () => {
+    // Cần sửa lại (2) · Chờ QC (5) · Đang check (6) · Đã check (7).
     const statuses = [
       { id: id(10), sortOrder: 2, countsChecked: false },
-      { id: id(11), sortOrder: 4, countsChecked: false },
-      { id: id(12), sortOrder: 5, countsChecked: true }
+      { id: id(11), sortOrder: 5, countsChecked: false },
+      { id: id(13), sortOrder: 6, countsChecked: false },
+      { id: id(12), sortOrder: 7, countsChecked: true }
     ];
     const task = {
       status: { id: id(11), code: "WAITING_QC", name: "Chờ QC", color: "amber" as const },
       capabilities: {
         transitions: [
+          option(13),
           option(12),
           option(10, { requiresNote: true }),
           option(12, { override: true })
         ],
-        canEdit: false,
-        canAssign: false,
-        canChangeAssignee: false,
-        canEditQty: false,
-        canDelete: false
+        ...noCapabilities
       }
     };
     const actions = qcActions(task, statuses);
+    expect(actions.start?.toStatusId).toBe(id(13));
     expect(actions.pass?.toStatusId).toBe(id(12));
     expect(actions.fail?.toStatusId).toBe(id(10));
+    // Đang check: Đã check or Cần sửa lại, nothing to start.
+    const checking = qcActions(
+      {
+        status: { id: id(13), code: "QC_CHECKING", name: "Đang check", color: "purple" },
+        capabilities: {
+          ...noCapabilities,
+          transitions: [option(12), option(10, { requiresNote: true })]
+        }
+      },
+      statuses
+    );
+    expect([checking.start, checking.pass?.toStatusId, checking.fail?.toStatusId]).toEqual([
+      null,
+      id(12),
+      id(10)
+    ]);
     expect(
       qcActions({ ...task, capabilities: { ...task.capabilities, transitions: [] } }, statuses)
     ).toEqual({
       pass: null,
-      fail: null
+      fail: null,
+      start: null
     });
   });
 });
@@ -384,6 +432,154 @@ describe("board columns", () => {
       ["B", 2],
       ["OLD", 1]
     ]);
+  });
+
+  it("shows Cần sửa lại / Đang check (PD-044) and later statuses only when they hold or can receive a card", () => {
+    const flow = [
+      ["ASSIGNED", 1, false],
+      ["REWORK", 2, false],
+      ["PROCESSING", 3, false],
+      ["DONE", 4, false],
+      ["WAITING_QC", 5, false],
+      ["QC_CHECKING", 6, false],
+      ["CHECKED", 7, true],
+      ["COMPLETE", 8, false]
+    ] as const;
+    const statuses = flow.map(([code, sortOrder, countsChecked]) => ({
+      id: id(100 + sortOrder),
+      name: code,
+      color: "sky" as const,
+      code,
+      sortOrder,
+      active: true,
+      countsChecked
+    }));
+    const card = (statusOrder: number, moves: number[] = []) => ({
+      status: { id: id(100 + statusOrder) },
+      capabilities: {
+        transitions: moves.map((order) => ({
+          toStatusId: id(100 + order),
+          requiresNote: false,
+          asksQty: false,
+          asksOtHours: false,
+          override: false
+        }))
+      }
+    });
+    const codes = (tasks: ReturnType<typeof card>[]) =>
+      myBoardColumns(tasks, statuses).map((column) => column.status.code);
+    // A worker's card in progress: the main flow up to Đã check, no detour columns.
+    expect(codes([card(3, [4])])).toEqual([
+      "ASSIGNED",
+      "PROCESSING",
+      "DONE",
+      "WAITING_QC",
+      "CHECKED"
+    ]);
+    // A line sent back holds "Cần sửa lại"; a QC's waiting card can be moved to "Đang check" / back to rework.
+    expect(codes([card(2, [3])])).toContain("REWORK");
+    expect(codes([card(5, [6, 7, 2])])).toEqual([
+      "ASSIGNED",
+      "REWORK",
+      "PROCESSING",
+      "DONE",
+      "WAITING_QC",
+      "QC_CHECKING",
+      "CHECKED"
+    ]);
+    // Complete shows only with a card in it.
+    expect(codes([card(8)]).at(-1)).toBe("COMPLETE");
+  });
+});
+
+describe("lines and subtasks (PD-044)", () => {
+  const subtask = (n: number, extra: Partial<ProductionSubtask> = {}): ProductionSubtask => ({
+    id: id(n),
+    number: n,
+    code: `${n}a`,
+    process: { id: id(80), name: "Mannequin" },
+    qtyAssigned: 3,
+    qtyDone: null,
+    reason: "Ảnh cần ghép nền",
+    createdBy: null,
+    createdAt: "2026-10-14T03:00:00.000Z",
+    ...extra
+  });
+  const row = (
+    n: number,
+    extra: Partial<{
+      isSubtask: boolean;
+      parentTaskId: string | null;
+      subtasks: ProductionSubtask[];
+    }> = {}
+  ) => ({ id: id(n), number: n, isSubtask: false, parentTaskId: null, subtasks: [], ...extra });
+
+  it("nests subtasks under their line and never lists them as lines", () => {
+    const line = row(1, { subtasks: [subtask(11), subtask(12)] });
+    const tasks = [
+      line,
+      row(11, { isSubtask: true, parentTaskId: id(1) }),
+      row(2),
+      row(12, { isSubtask: true, parentTaskId: id(1) }),
+      // Its line is not in the list: kept visible rather than lost.
+      row(31, { isSubtask: true, parentTaskId: id(30) })
+    ];
+    expect(
+      jobLines(tasks).map((entry) => [entry.line.number, entry.subtasks.map((s) => s.number)])
+    ).toEqual([
+      [1, [11, 12]],
+      [2, []],
+      [31, []]
+    ]);
+    expect(Object.fromEntries(subtaskLineIds(tasks))).toEqual({
+      [id(11)]: id(1),
+      [id(12)]: id(1),
+      [id(31)]: id(30)
+    });
+  });
+
+  it("flags a Done work line without QC", () => {
+    const line = {
+      isSubtask: false,
+      qc: null,
+      process: { id: id(80), name: "Retouch", isQc: false },
+      status: { id: id(4), code: "DONE", name: "Done", color: "green" as const }
+    };
+    expect(lacksQc(line)).toBe(true);
+    expect(
+      lacksQc({ ...line, qc: { id: id(2), displayName: "QC", email: null, avatarUrl: null } })
+    ).toBe(false);
+    // A Checking line has no QC by design; a line still in progress is not blocking yet.
+    expect(lacksQc({ ...line, process: { ...line.process, isQc: true } })).toBe(false);
+    expect(lacksQc({ ...line, status: { ...line.status, code: "PROCESSING" } })).toBe(false);
+  });
+
+  it("names a line or a subtask by its code (PD-045)", () => {
+    expect(taskTag({ code: "1216" })).toBe("#1216");
+    expect(taskTag({ code: "1216a" })).toBe("#1216a");
+  });
+});
+
+describe("job status readiness (PD-045)", () => {
+  const done = { id: id(71), requiresAllChecked: true };
+  const working = { id: id(72), requiresAllChecked: false };
+  const job = (taskCount: number, uncheckedTaskCount: number) => ({
+    taskCount,
+    uncheckedTaskCount
+  });
+
+  it("blocks a status that needs every line checked until the job is ready", () => {
+    expect(jobStatusBlockedReason(done, job(0, 0), id(72))).toBe("Chưa có task");
+    expect(jobStatusBlockedReason(done, job(5, 3), id(72))).toBe("Còn 3 task chưa check");
+    expect(jobStatusBlockedReason(done, job(1500, 1200))).toBe("Còn 1.200 task chưa check");
+    expect(jobStatusBlockedReason(done, job(5, 0), id(72))).toBeNull();
+    // A job being created has no line yet.
+    expect(jobStatusBlockedReason(done, NEW_JOB_READINESS)).toBe("Chưa có task");
+  });
+
+  it("never blocks other statuses nor the job's current one", () => {
+    expect(jobStatusBlockedReason(working, job(0, 0))).toBeNull();
+    expect(jobStatusBlockedReason(done, job(5, 2), id(71))).toBeNull();
   });
 });
 
@@ -452,6 +648,31 @@ describe("job filters", () => {
     expect(jobPeopleStack([1, 2, 3, 4])).toEqual({ shown: [1, 2, 3, 4], hidden: 0 });
     expect(jobPeopleStack([1, 2, 3, 4, 5, 6])).toEqual({ shown: [1, 2, 3, 4], hidden: 2 });
     expect(jobPeopleStack([])).toEqual({ shown: [], hidden: 0 });
+  });
+
+  it("“Tổng tấm” per process: chips in the API's order, then +N with the rest as its tooltip (PD-048)", () => {
+    const totals = [
+      { process: { id: id(41), name: "Normal Retouch" }, qty: 16 },
+      { process: { id: id(42), name: "Premium Retouch" }, qty: 15 },
+      { process: { id: id(43), name: "Light Retouch" }, qty: 4 },
+      { process: { id: id(44), name: "Cắt nền" }, qty: 1200 }
+    ];
+    expect(processTotalsText(totals.slice(0, 3))).toBe(
+      "Normal Retouch 16 · Premium Retouch 15 · Light Retouch 4"
+    );
+    const two = processTotalChips(totals, 2);
+    expect(two.shown.map((total) => total.process.name)).toEqual([
+      "Normal Retouch",
+      "Premium Retouch"
+    ]);
+    expect(two.hidden).toBe(2);
+    expect(two.hiddenText).toBe("Light Retouch 4 · Cắt nền 1.200");
+    expect(two.text).toBe(
+      "Normal Retouch 16 · Premium Retouch 15 · Light Retouch 4 · Cắt nền 1.200"
+    );
+    expect(processTotalChips(totals).hidden).toBe(0);
+    expect(processTotalChips(totals.slice(0, 2), 2)).toMatchObject({ hidden: 0, hiddenText: "" });
+    expect(processTotalChips([], 2)).toEqual({ shown: [], hidden: 0, hiddenText: "", text: "" });
   });
 
   it("carries several tags and custom-field filters (old single-tag links still work)", () => {
@@ -555,14 +776,15 @@ describe("timeline sentences", () => {
     timeZone: VN
   };
   const log = (
-    action: "CREATE" | "STATUS" | "QTY" | "ASSIGN" | "NOTE" | "FIELD",
+    action: TaskLog["action"],
     fromValue: Record<string, unknown> | null,
     toValue: Record<string, unknown> | null
   ) => ({
     action,
     fromValue,
     toValue,
-    taskNumber: 7
+    taskNumber: 7,
+    taskCode: "7"
   });
 
   it("describes creation with the over-allocation warning", () => {
@@ -592,14 +814,118 @@ describe("timeline sentences", () => {
     expect(
       text(
         describeTaskLog(
-          log("STATUS", { name: "Chờ QC" }, { name: "Đang làm", qcFail: true }),
+          log("STATUS", { name: "Đang check" }, { name: "Cần sửa lại", qcFail: true }),
           names
         )
       )
-    ).toBe("chuyển #7 từ Chờ QC sang Đang làm · QC trả lại");
+    ).toBe("chuyển #7 từ Đang check sang Cần sửa lại · QC yêu cầu sửa lại");
     expect(
       text(describeTaskLog(log("STATUS", { name: "A" }, { name: "B", override: true }), names))
     ).toContain("ngoài luồng");
+  });
+
+  it("reads a status row's from → to and its details for the job log (PD-044)", () => {
+    const row = log(
+      "STATUS",
+      { statusId: id(41), code: "WAITING_QC", name: "Chờ QC" },
+      { statusId: id(42), code: "REWORK", name: "Cần sửa lại", qcFail: true }
+    );
+    expect(logStatusChange(row)).toEqual({
+      from: { id: id(41), code: "WAITING_QC", name: "Chờ QC" },
+      to: { id: id(42), code: "REWORK", name: "Cần sửa lại" }
+    });
+    expect(logStatusChange(log("QTY", null, null))).toBeNull();
+    expect(logTone(row)).toBe("danger");
+    expect(text(statusLogDetails({ qtyDone: 5, qcFail: true }))).toBe(
+      " · 5 tấm · QC yêu cầu sửa lại"
+    );
+    expect(text(statusLogDetails({ qtyDone: 5, qcFail: true }, { withQcFail: false }))).toBe(
+      " · 5 tấm"
+    );
+  });
+
+  it("describes subtasks created, edited and deleted on the line (PD-044)", () => {
+    // Rows written before subtask codes (PD-045) only hold the number.
+    const base = { subtaskId: id(50), subtaskNumber: 1301, processId: id(80) };
+    expect(
+      text(
+        describeTaskLog(
+          log("SUBTASK", null, {
+            ...base,
+            op: "created",
+            processName: "Mannequin Retouch",
+            qtyAssigned: 3,
+            parentQtyAssigned: 7
+          }),
+          names
+        )
+      )
+    ).toBe("đã tạo subtask #1301 · Mannequin Retouch · 3 tấm từ task #7 (task còn 7 tấm)");
+    // No process name stored: the catalog names it.
+    expect(
+      text(describeTaskLog(log("SUBTASK", null, { ...base, op: "created", qtyAssigned: 2 }), names))
+    ).toBe("đã tạo subtask #1301 · Retouch · 2 tấm từ task #7");
+    expect(
+      text(
+        describeTaskLog(
+          log(
+            "SUBTASK",
+            { processName: "Mannequin", qtyAssigned: 3 },
+            { ...base, op: "updated", processName: "Ghép nền", qtyAssigned: 5 }
+          ),
+          names
+        )
+      )
+    ).toBe("đã sửa subtask #1301 của task #7: công đoạn Mannequin → Ghép nền; 3 tấm → 5 tấm");
+    expect(
+      text(
+        describeTaskLog(
+          log("SUBTASK", null, {
+            ...base,
+            op: "deleted",
+            processName: "Mannequin",
+            qtyAssigned: 3,
+            parentQtyAssigned: 10
+          }),
+          names
+        )
+      )
+    ).toBe("đã xoá subtask #1301 · Mannequin · 3 tấm — trả số tấm về task #7 (nay 10 tấm)");
+  });
+
+  it("names tasks and subtasks by their code (PD-045), the number on older rows", () => {
+    const created = {
+      subtaskId: id(50),
+      subtaskNumber: 1301,
+      subtaskCode: "1216a",
+      op: "created",
+      processName: "Ghép nền",
+      qtyAssigned: 2
+    };
+    expect(
+      text(describeTaskLog({ ...log("SUBTASK", null, created), taskCode: "1216" }, names))
+    ).toBe("đã tạo subtask #1216a · Ghép nền · 2 tấm từ task #1216");
+    expect(
+      text(describeTaskLog({ ...log("NOTE", null, { note: "x" }), taskCode: "1216a" }, names))
+    ).toBe("cập nhật ghi chú của #1216a");
+    expect(logTaskLabel({ taskCode: "1216a", taskNumber: 1301 })).toBe("#1216a");
+    expect(logTaskLabel({ taskCode: null, taskNumber: 1301 })).toBe("#1301");
+    expect(logTaskLabel({ taskCode: null, taskNumber: null })).toBeNull();
+  });
+
+  it("describes quantity requests and their decisions (PD-044)", () => {
+    const request = { requestId: id(60), fromQty: 10, toQty: 12 };
+    const sentence = (op: string) =>
+      text(describeTaskLog(log("QTY_REQUEST", null, { ...request, op }), names));
+    expect(sentence("requested")).toBe("đề nghị sửa số tấm giao #7: 10 → 12 tấm");
+    expect(sentence("approved")).toBe("đã duyệt đề nghị sửa số tấm giao #7: 10 → 12 tấm");
+    expect(sentence("rejected")).toBe("đã từ chối đề nghị sửa số tấm giao #7: 10 → 12 tấm");
+    expect(sentence("cancelled")).toBe("đã huỷ đề nghị sửa số tấm giao #7 (10 → 12 tấm)");
+    expect(
+      ["requested", "approved", "rejected", "cancelled"].map((op) =>
+        logTone(log("QTY_REQUEST", null, { ...request, op }))
+      )
+    ).toEqual(["warning", "success", "danger", null]);
   });
 
   it("describes quantity, assignment, note and field edits", () => {
@@ -631,12 +957,18 @@ describe("timeline sentences", () => {
     ).toBe("sửa #7: số lượng 5 tấm → 6 tấm; quy trình quy trình khác → Retouch");
   });
 
-  it("names Link chia việc changes without printing the path (PD-040)", () => {
+  it("shows the old and the new Link chia việc (PD-045)", () => {
     const sentence = (from: unknown, to: unknown) =>
       text(describeTaskLog(log("FIELD", { workLink: from }, { workLink: to }), names));
-    expect(sentence(null, "Y:\\Client\\Batch 1")).toBe("sửa #7: thêm link chia việc");
-    expect(sentence("https://drive.example.com/f/1", null)).toBe("sửa #7: xóa link chia việc");
-    expect(sentence("Y:\\A", "Y:\\B")).toBe("sửa #7: đổi link chia việc");
+    expect(sentence("//old/path", "//new/path")).toBe(
+      "sửa #7: link chia việc “//old/path” → “//new/path”"
+    );
+    expect(sentence(null, "Y:\\Client\\Batch 1")).toBe(
+      "sửa #7: link chia việc trống → “Y:\\Client\\Batch 1”"
+    );
+    expect(sentence("https://drive.example.com/f/1", null)).toBe(
+      "sửa #7: link chia việc “https://drive.example.com/f/1” → trống"
+    );
     expect(
       text(
         describeTaskLog(
@@ -644,7 +976,20 @@ describe("timeline sentences", () => {
           names
         )
       )
-    ).toBe("sửa #7: hình lỗi — → 2; thêm link chia việc");
+    ).toBe("sửa #7: hình lỗi — → 2; link chia việc trống → “Y:\\A”");
+  });
+
+  it("shortens a long link in the middle and keeps it whole in the tooltip (PD-045)", () => {
+    const long = `//nas/Khach hang/VD JOB-1/${"thu-muc-".repeat(8)}Batch 12/Done`;
+    const segments = describeTaskLog(log("FIELD", { workLink: "//a" }, { workLink: long }), names);
+    const value = segments.at(-1);
+    expect(value?.title).toBe(long);
+    expect(value?.text.startsWith("“//nas/Khach")).toBe(true);
+    expect(value?.text.endsWith("Batch 12/Done”")).toBe(true);
+    expect(value?.text).toContain("…");
+    expect(value?.text.length).toBe(LOG_VALUE_MAX + 2);
+    expect(logValue("  ")).toEqual({ text: "trống" });
+    expect(logValue("//a")).toEqual({ text: "“//a”", strong: true });
   });
 
   const orderField = {
@@ -685,6 +1030,7 @@ describe("timeline sentences", () => {
       {
         action: "JOB",
         taskNumber: null,
+        taskCode: null,
         fromValue: {
           deadline: `${year}-10-12T10:00:00.000Z`,
           leaderId: id(1),
@@ -714,6 +1060,7 @@ describe("timeline sentences", () => {
           {
             action: "JOB",
             taskNumber: null,
+            taskCode: null,
             fromValue: { archived: false },
             toValue: { archived: true }
           },
@@ -727,13 +1074,14 @@ describe("timeline sentences", () => {
           {
             action: "JOB",
             taskNumber: null,
+            taskCode: null,
             fromValue: { driveLink: null, name: null },
             toValue: { driveLink: "https://x", name: "Lô 2" }
           },
           richNames
         )
       )
-    ).toBe("đã sửa job: thêm link ảnh; tên job — → “Lô 2”");
+    ).toBe("đã sửa job: link thư mục ảnh trống → “https://x”; tên job — → “Lô 2”");
   });
 
   it("describes manual job status changes (PD-038), also when an Admin deleted the status", () => {
@@ -742,7 +1090,7 @@ describe("timeline sentences", () => {
     expect(
       text(
         describeTaskLog(
-          { action: "JOB", taskNumber: null, fromValue: from, toValue: to },
+          { action: "JOB", taskNumber: null, taskCode: null, fromValue: from, toValue: to },
           richNames
         )
       )
@@ -753,6 +1101,7 @@ describe("timeline sentences", () => {
           {
             action: "JOB",
             taskNumber: null,
+            taskCode: null,
             fromValue: from,
             toValue: { ...to, statusDeleted: true }
           },
@@ -775,6 +1124,68 @@ describe("timeline sentences", () => {
         )
       )
     ).toBe("sửa #7: thêm tag Gấp; Độ khó Dễ → Khó");
+  });
+});
+
+describe("job log (PD-044)", () => {
+  type Item = ProductionTimelinePage["items"][number];
+  const entry = (n: number, extra: Partial<TaskLog> = {}): Item => ({
+    kind: "log",
+    log: {
+      id: id(n),
+      taskId: id(1),
+      taskNumber: 1,
+      taskCode: "1",
+      user: null,
+      action: "STATUS",
+      fromValue: null,
+      toValue: null,
+      note: null,
+      createdAt: `2026-10-14T0${n}:00:00.000Z`,
+      ...extra
+    }
+  });
+  const comment: Item = {
+    kind: "comment",
+    comment: {
+      id: id(90),
+      entity: "JOB",
+      entityId: id(20),
+      jobId: id(20),
+      author: null,
+      body: "Bình luận",
+      mentionedUserIds: [],
+      createdAt: "2026-10-14T09:00:00.000Z",
+      editedAt: null,
+      canEdit: false
+    }
+  };
+
+  it("keeps history only, newest first, once, without a subtask's own status / assignment rows", () => {
+    const subtaskIds = new Set([id(11)]);
+    const pages = [
+      { items: [entry(5), comment, entry(3, { taskId: id(11), action: "STATUS" })] },
+      {
+        items: [
+          entry(5),
+          entry(4, { taskId: id(11), action: "ASSIGN" }),
+          entry(2, { taskId: id(11), action: "QTY" }),
+          entry(6, { action: "SUBTASK" })
+        ]
+      }
+    ];
+    expect(jobLogRows(pages, subtaskIds).map((log) => log.id)).toEqual([id(6), id(5), id(2)]);
+    expect(jobLogRows(undefined, subtaskIds)).toEqual([]);
+  });
+
+  it("says when, compactly", () => {
+    const now = new Date("2026-10-14T10:00:00.000Z");
+    expect(logTimeLabel("2026-10-14T09:59:40.000Z", VN, now)).toBe("vừa xong");
+    // A few seconds ahead of the device clock.
+    expect(logTimeLabel("2026-10-14T10:00:05.000Z", VN, now)).toBe("vừa xong");
+    expect(logTimeLabel("2026-10-14T09:35:00.000Z", VN, now)).toBe("25 phút trước");
+    expect(logTimeLabel("2026-10-14T07:00:00.000Z", VN, now)).toBe("3 giờ trước");
+    expect(logTimeLabel("2026-10-12T10:30:00.000Z", VN, now)).toBe("17:30 · 12/10");
   });
 });
 

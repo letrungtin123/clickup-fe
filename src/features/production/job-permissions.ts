@@ -38,21 +38,31 @@ export const jobScopeMeaning: Record<
   Record<Exclude<JobPermissionScope, "none">, string>
 > = {
   view: {
-    own: "Job có dòng việc mình làm hoặc mình QC, và job mình là Leader.",
+    own: "Job có task mình làm hoặc mình QC, và job mình là Leader.",
     all: "Mọi job."
   },
   create: {
-    own: "Chỉ thêm dòng việc giao cho chính mình vào job có sẵn (“Nhập công việc”).",
-    all: "Tạo job (“Tạo job”) và dòng việc cho bất kỳ ai."
+    own: "Chỉ thêm task giao cho chính mình vào job có sẵn (“Nhập công việc”, “Chia task”).",
+    all: "Tạo job (“Tạo job”) và task cho bất kỳ ai."
   },
   update: {
-    own: "Dòng việc giao cho mình; thông tin chung của job chỉ khi mọi dòng của job đều là của mình.",
-    all: "Mọi job và dòng việc."
+    own: "Task giao cho mình; thông tin chung của job chỉ khi mọi task của job đều là của mình.",
+    all: "Mọi job và task."
   },
   delete: {
-    own: "Dòng việc giao cho mình; cả job chỉ khi mọi dòng của job đều là của mình.",
-    all: "Mọi job và dòng việc."
+    own: "Task giao cho mình; cả job chỉ khi mọi task của job đều là của mình.",
+    all: "Mọi job và task."
   }
+};
+
+/**
+ * What "Không" means where it is not obvious, and what stays allowed whatever the scope (PD-047: staff default to
+ * create / delete "Không" — the Leader splits the tasks — but a worker still deletes the subtasks of their own task).
+ */
+export const jobScopeNotes: Partial<Record<JobPermissionAction, string>> = {
+  create: "Không: không có “Nhập công việc” và “Chia task” (Leader chia task cho người đó).",
+  delete:
+    "Subtask của task mình làm: người làm luôn tự xoá được trước khi Done, kể cả khi quyền Xoá là Không."
 };
 
 export type JobScopeChange = {

@@ -2,12 +2,14 @@ import { cn } from "cn";
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
+import { Link } from "@/components/shared/router-link";
 import { ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProductionTask } from "@/contracts/production-jobs";
 import type { TaskScoreEntry, TaskScores } from "@/contracts/production-scores";
 
-import { formatCredit, formatDay, formatMoney } from "../../format";
+import { formatCredit, formatDay, formatInteger, formatMoney } from "../../format";
+import { useProductionAccess } from "../../hooks";
 import { useTaskScores } from "../../jobs-hooks";
 import { Person } from "./job-bits";
 
@@ -15,11 +17,13 @@ const ROLE_LABEL = { WORKER: "Người làm", QC: "QC" } as const;
 const KIND_LABEL = { NORMAL: null, FB_WRONG: "Feedback sai", FB_EXTRA: "Feedback thêm" } as const;
 
 const sectionTitle = "text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase";
+const subTitle = "text-xs font-medium text-foreground-muted";
 
 /**
- * Points (and money when the API shows it) recorded for a task: current total per role, then the
- * ledger rows (originals, adjustments after a quantity correction or feedback). Rows appear once the
- * task is Done (worker) and checked (QC).
+ * Points (and money when the API shows it) recorded for a task and its subtasks (PD-048): per process ("Theo công
+ * đoạn": images × price, points, a missing price flagged), the current total per person and role, then the ledger rows
+ * (originals, adjustments after a quantity correction or feedback), each with its task code. Rows appear once the task
+ * is Done (worker) and checked (QC).
  */
 export const TaskScoresSection = ({ task }: { task: ProductionTask }) => {
   const scores = useTaskScores(task.id, task.doneAt !== null);
@@ -52,41 +56,71 @@ export const TaskScoresSection = ({ task }: { task: ProductionTask }) => {
           Chưa có điểm ghi nhận cho task này.
         </p>
       ) : (
-        <ScoresBody scores={scores.data} />
+        <ScoresBody task={task} scores={scores.data} />
       )}
     </section>
   );
 };
 
-const ScoresBody = ({ scores }: { scores: TaskScores }) => {
+type ProcessScore = TaskScores["byProcess"][number];
+
+const ScoresBody = ({ task, scores }: { task: ProductionTask; scores: TaskScores }) => {
   const [open, setOpen] = useState(false);
-  const missingRule = scores.items.some((item) => item.missingRule);
+  const withSubtasks = scores.items.some((item) => item.task.code !== task.code);
+  // Each process says when its price was missing; this note is only for rows no process carries.
+  const missingElsewhere =
+    !scores.byProcess.some((row) => row.missingRule) &&
+    scores.items.some((item) => item.missingRule);
   return (
-    <div className="flex flex-col gap-2">
-      <ul className="flex flex-col divide-y rounded-xl border bg-surface">
-        {scores.totals.map((total) => (
-          <li
-            key={`${total.role}-${total.user.id}`}
-            className="flex items-center gap-3 px-3 py-2.5 text-[13px]"
+    <div className="flex flex-col gap-3">
+      {scores.byProcess.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <h4 className={subTitle}>Theo công đoạn</h4>
+          <ul
+            aria-label="Điểm theo công đoạn"
+            className="flex flex-col divide-y rounded-xl border bg-surface"
           >
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-[11px] text-foreground-muted">{ROLE_LABEL[total.role]}</span>
-              <Person user={total.user} size="xs" />
-            </span>
-            <span className="flex shrink-0 flex-col items-end tabular-nums">
-              <span className="font-semibold">{formatCredit(total.credits)} điểm</span>
-              <span className="text-[11px] text-foreground-muted">
-                {total.qty} tấm
-                {total.money ? ` · ${formatMoney(total.money)}` : ""}
+            {scores.byProcess.map((row) => (
+              <ProcessScoreRow key={row.process?.id ?? "none"} row={row} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-1.5">
+        <h4 className={subTitle}>
+          Theo người
+          {withSubtasks ? (
+            <span className="font-normal text-foreground-subtle"> · gồm cả subtask</span>
+          ) : null}
+        </h4>
+        <ul
+          aria-label="Điểm theo người"
+          className="flex flex-col divide-y rounded-xl border bg-surface"
+        >
+          {scores.totals.map((total) => (
+            <li
+              key={`${total.role}-${total.user.id}`}
+              className="flex items-center gap-3 px-3 py-2.5 text-[13px]"
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-[11px] text-foreground-muted">{ROLE_LABEL[total.role]}</span>
+                <Person user={total.user} size="xs" />
               </span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      {missingRule ? (
+              <span className="flex shrink-0 flex-col items-end tabular-nums">
+                <span className="font-semibold">{formatCredit(total.credits)} điểm</span>
+                <span className="text-[11px] text-foreground-muted">
+                  {formatInteger(total.qty)} tấm
+                  {total.money ? ` · ${formatMoney(total.money)}` : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {missingElsewhere ? (
         <p className="flex items-start gap-1.5 text-xs text-warning">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          Có dòng chưa có đơn giá lúc ghi nhận nên tính 0 điểm.
+          Có task chưa có đơn giá lúc ghi nhận nên tính 0 điểm.
         </p>
       ) : null}
       <button
@@ -104,7 +138,7 @@ const ScoresBody = ({ scores }: { scores: TaskScores }) => {
       {open ? (
         <ol aria-label="Các dòng điểm" className="flex flex-col gap-1">
           {scores.items.map((item) => (
-            <ScoreRow key={item.id} item={item} />
+            <ScoreRow key={item.id} item={item} taskCode={task.code} />
           ))}
         </ol>
       ) : null}
@@ -112,10 +146,60 @@ const ScoresBody = ({ scores }: { scores: TaskScores }) => {
   );
 };
 
-/** Money only where it means something: Khoán rows (provisional) or any non-zero visible amount. */
-const ScoreRow = ({ item }: { item: TaskScoreEntry }) => {
+/**
+ * One process of the task (PD-048): "N tấm × đơn giá" (several prices: "nhiều đơn giá") and its points. A price missing
+ * when the work was recorded gave 0 points: the row says so and where to add one (a link for those who can).
+ */
+const ProcessScoreRow = ({ row }: { row: ProcessScore }) => {
+  const { can } = useProductionAccess();
+  const name = row.process?.name ?? "Không rõ công đoạn";
+  return (
+    <li className="flex flex-col gap-1.5 px-3 py-2.5 text-[13px]">
+      <div className="flex items-center gap-3">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="font-medium [overflow-wrap:anywhere]">{name}</span>
+          <span className="text-[11px] text-foreground-muted tabular-nums">
+            {formatInteger(row.qty)} tấm ×{" "}
+            {row.unitCredits === null ? "nhiều đơn giá" : formatCredit(row.unitCredits)}
+          </span>
+        </span>
+        <span
+          className={cn("shrink-0 font-semibold tabular-nums", row.missingRule && "text-warning")}
+        >
+          {formatCredit(row.credits)} điểm
+        </span>
+      </div>
+      {row.missingRule ? (
+        <p className="flex items-start gap-1.5 rounded-md bg-warning-soft px-2 py-1.5 text-xs text-foreground">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
+          <span>
+            Chưa có đơn giá cho công đoạn này lúc ghi nhận — 0 điểm. Thêm đơn giá ở{" "}
+            {can("ADMIN") ? (
+              <Link
+                to="/production/settings/credit-rules"
+                className="rounded font-medium text-brand-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring max-sm:-my-3 max-sm:inline-block max-sm:py-3"
+              >
+                Bảng đơn giá
+              </Link>
+            ) : (
+              "Bảng đơn giá"
+            )}
+            .
+          </span>
+        </p>
+      ) : null}
+    </li>
+  );
+};
+
+/**
+ * One ledger row, with its task's code ("#1237a" marks a subtask's row, PD-048). Money only where it means something:
+ * Khoán rows (provisional) or any non-zero visible amount.
+ */
+const ScoreRow = ({ item, taskCode }: { item: TaskScoreEntry; taskCode: string }) => {
   const adjustment = item.adjustsEntryId !== null;
   const kind = KIND_LABEL[item.kind];
+  const subtask = item.task.code !== taskCode;
   return (
     <li
       className={cn(
@@ -124,6 +208,15 @@ const ScoreRow = ({ item }: { item: TaskScoreEntry }) => {
       )}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span
+          title={subtask ? `Subtask #${item.task.code}` : `Task #${item.task.code}`}
+          className={cn(
+            "rounded px-1.5 py-px text-[11px] font-semibold tabular-nums",
+            subtask ? "bg-brand-soft text-brand-text" : "bg-muted text-foreground-muted"
+          )}
+        >
+          #{item.task.code}
+        </span>
         <span className="font-medium">{ROLE_LABEL[item.role]}</span>
         <span className="min-w-0 truncate text-foreground-muted">{item.user.displayName}</span>
         {adjustment ? (

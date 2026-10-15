@@ -346,7 +346,7 @@ const PermissionsPage = () => {
           <p className="flex items-start gap-2 border-t px-4 py-3 text-xs leading-relaxed text-foreground-muted md:px-5">
             <GitBranch className="mt-0.5 size-3.5 shrink-0 text-foreground-subtle" aria-hidden="true" />
             <span>
-              Việc chuyển trạng thái dòng việc (nhận việc, gửi QC, Done…) không nằm ở đây: đặt ở{" "}
+              Việc chuyển trạng thái task (nhận việc, gửi QC, Done…) không nằm ở đây: đặt ở{" "}
               {retouchAdmin ? (
                 <Link
                   to="/production/settings/workflow"

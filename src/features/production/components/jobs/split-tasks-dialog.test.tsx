@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import type { Feedback, JobDetail, ProductionTask } from "@/contracts/production-jobs";
+import type { JobDetail, ProductionTask } from "@/contracts/production-jobs";
 import { SessionValueContext } from "@/features/auth/session-context";
 import type { SessionContext } from "@/lib/api/schemas";
 
@@ -49,6 +49,7 @@ const member = (person: ReturnType<typeof user>, roles: string[]) => ({
 const sourceTask = {
   id: id(100),
   number: 7,
+  code: "7",
   jobId: id(50),
   jobCode: "Batch A",
   project: PROJECT,
@@ -80,7 +81,7 @@ const session = {
   productionRoles: ["LEADER"]
 } as unknown as SessionContext;
 
-const renderDialog = (feedback: Feedback | null = null) => {
+const renderDialog = () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } }
   });
@@ -131,15 +132,14 @@ const renderDialog = (feedback: Feedback | null = null) => {
     <QueryClientProvider client={client}>
       <SessionValueContext value={session}>
         <TooltipProvider>
-          <SplitTasksDialog open job={job} feedback={feedback} onClose={() => undefined} />
+          <SplitTasksDialog open job={job} onClose={() => undefined} />
         </TooltipProvider>
       </SessionValueContext>
     </QueryClientProvider>
   );
 };
 
-const cards = () =>
-  within(screen.getByRole("list", { name: "Các dòng công việc" })).getAllByRole("listitem");
+const cards = () => within(screen.getByRole("list", { name: "Các task" })).getAllByRole("listitem");
 
 afterEach(cleanup);
 
@@ -148,12 +148,13 @@ describe("SplitTasksDialog — line cards", () => {
     renderDialog();
     const [card] = cards();
     const scope = within(card!);
-    expect(scope.getByText("Dòng 1")).toBeTruthy();
+    expect(scope.getByText("Task 1")).toBeTruthy();
     for (const label of [
       "Nhân viên thực hiện",
       "Quy trình",
       "Ca",
       "Số lượng",
+      "QC",
       "Ngày nhận",
       "Ngày giao"
     ]) {
@@ -162,27 +163,29 @@ describe("SplitTasksDialog — line cards", () => {
     const toggle = scope.getByRole("button", { name: /Chi tiết thêm/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.textContent).toContain("Tùy chọn");
-    expect(toggle.textContent).toContain("QC, hình lỗi, giờ OT, link chia việc, ghi chú");
+    // PD-047: QC is a main (required) field, no longer an optional detail.
+    expect(toggle.textContent).toContain("Hình lỗi, giờ OT, link chia việc, ghi chú");
+    expect(toggle.textContent).not.toContain("QC");
     expect(scope.queryByPlaceholderText("Dán link hoặc đường dẫn thư mục")).toBeNull();
     // No "(tùy chọn)" label suffix anywhere.
     expect(document.body.textContent).not.toContain("(tùy chọn)");
-    expect(scope.getByRole("button", { name: "Xóa dòng 1" })).toHaveProperty("disabled", true);
+    expect(scope.getByRole("button", { name: "Xóa task 1" })).toHaveProperty("disabled", true);
   });
 
-  it("opening the details shows QC, Hình lỗi, Giờ OT, Link chia việc and Ghi chú; filled, it summarises them", async () => {
+  it("opening the details shows Hình lỗi, Giờ OT, Link chia việc and Ghi chú; filled, it summarises them", async () => {
     renderDialog();
     const scope = within(cards()[0]!);
     await act(async () => {
       fireEvent.click(scope.getByRole("button", { name: /Chi tiết thêm/ }));
       await Promise.resolve();
     });
-    for (const label of ["QC", "Hình lỗi", "Giờ OT", "Link chia việc", "Ghi chú"]) {
+    for (const label of ["Hình lỗi", "Giờ OT", "Link chia việc", "Ghi chú"]) {
       expect(scope.getByText(label)).toBeTruthy();
     }
     fireEvent.change(scope.getByPlaceholderText("Dán link hoặc đường dẫn thư mục"), {
       target: { value: FOLDER }
     });
-    fireEvent.change(scope.getByPlaceholderText("Ghi chú cho dòng này"), {
+    fireEvent.change(scope.getByPlaceholderText("Ghi chú cho task này"), {
       target: { value: "x" }
     });
     await act(async () => {
@@ -194,50 +197,42 @@ describe("SplitTasksDialog — line cards", () => {
     expect(toggle.textContent).toContain("Link · Ghi chú");
   });
 
-  it("Giao lại starts from the source line: price badge, details open with its QC and link", () => {
-    renderDialog({
-      id: id(60),
-      jobId: job.id,
-      sourceTaskId: sourceTask.id,
-      type: "EXTRA",
-      note: "Thêm ảnh",
-      status: "OPEN"
-    } as unknown as Feedback);
-    const scope = within(cards()[0]!);
-    expect(scope.getByText("5,5 điểm/tấm")).toBeTruthy();
-    expect(scope.getByText(/≈ 110,00 điểm/)).toBeTruthy();
-    expect(scope.getByRole("button", { name: /Chi tiết thêm/ }).getAttribute("aria-expanded")).toBe(
-      "true"
-    );
-    expect(
-      scope.getByPlaceholderText<HTMLInputElement>("Dán link hoặc đường dẫn thư mục").value
-    ).toBe(FOLDER);
+  it("is plain “Chia task”: no feedback / “Giao lại” mode any more (PD-045)", () => {
+    renderDialog();
+    expect(screen.getByRole("heading", { name: "Chia task · Batch A" })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Giao lại|feedback|task gốc/i);
+    expect(screen.getByRole("button", { name: "Thêm 1 task" })).toBeTruthy();
   });
 
-  it("Thêm dòng copies process, shift, dates and QC from the previous line and focuses its person", async () => {
-    renderDialog({
-      id: id(60),
-      jobId: job.id,
-      sourceTaskId: sourceTask.id,
-      type: "EXTRA",
-      note: "Thêm ảnh",
-      status: "OPEN"
-    } as unknown as Feedback);
+  it("Thêm task copies process, shift and dates from the previous line and focuses its person", async () => {
+    renderDialog();
     // Let the dialog place its initial focus first (as a person would, before clicking).
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const first = within(cards()[0]!);
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Thêm dòng/ }));
+      fireEvent.click(first.getByRole("combobox", { name: "Quy trình" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      // A real mouse click starts on the item (Base UI ignores a bare click there).
+      const option = await screen.findByRole("option", { name: /Retouch/ });
+      fireEvent.pointerDown(option);
+      fireEvent.click(option);
+      await Promise.resolve();
+    });
+    fireEvent.change(first.getByPlaceholderText("Số tấm"), { target: { value: "20" } });
+    await waitFor(() => expect(first.getByText("5,5 điểm/tấm")).toBeTruthy());
+    expect(first.getByText(/≈ 110,00 điểm/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Thêm task/ }));
       await Promise.resolve();
     });
     const [, second] = cards();
     const scope = within(second!);
-    expect(scope.getByText("Dòng 2")).toBeTruthy();
-    // Same process (its price shows), same QC (details open), no link: each line is its own batch.
+    expect(scope.getByText("Task 2")).toBeTruthy();
+    // Same process (its price shows), no link: each line is its own batch (nothing optional filled yet).
     expect(scope.getByText("5,5 điểm/tấm")).toBeTruthy();
-    expect(scope.getByText("Checker Two")).toBeTruthy();
-    expect(
-      scope.getByPlaceholderText<HTMLInputElement>("Dán link hoặc đường dẫn thư mục").value
-    ).toBe("");
+    expect(scope.getByRole("button", { name: /Chi tiết thêm/ }).textContent).not.toContain("Link");
     expect(document.activeElement?.id).toMatch(/-assignee$/);
     expect(second!.contains(document.activeElement)).toBe(true);
   });
@@ -245,15 +240,40 @@ describe("SplitTasksDialog — line cards", () => {
   it("submitting an incomplete line shows the errors under the fields and focuses the first one", async () => {
     renderDialog();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 dòng" }));
+      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 task" }));
       await Promise.resolve();
     });
     const scope = within(cards()[0]!);
     expect(scope.getByText("Chọn nhân viên thực hiện.")).toBeTruthy();
     expect(scope.getByText("Chọn quy trình.")).toBeTruthy();
     expect(scope.getByText("Số lượng nguyên ≥ 1.")).toBeTruthy();
+    expect(scope.getByText("Chọn QC.")).toBeTruthy();
     expect(document.activeElement?.getAttribute("aria-invalid")).toBe("true");
     expect(document.activeElement?.id).toMatch(/-assignee$/);
+  });
+
+  it("QC is required on a work task: no “Chưa gán QC” choice, picking one clears the error (PD-047)", async () => {
+    renderDialog();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 task" }));
+      await Promise.resolve();
+    });
+    const scope = within(cards()[0]!);
+    expect(scope.getByText("Chọn QC.")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(scope.getByRole("combobox", { name: "QC" }));
+      await Promise.resolve();
+    });
+    const options = await screen.findAllByRole("option");
+    // Only the QC people (avatar initials + name), no "none" choice.
+    expect(options).toHaveLength(1);
+    expect(options[0]!.textContent).toContain("Checker Two");
+    await act(async () => {
+      fireEvent.pointerDown(options[0]!);
+      fireEvent.click(options[0]!);
+      await Promise.resolve();
+    });
+    expect(scope.queryByText("Chọn QC.")).toBeNull();
   });
 
   it("an invalid optional detail opens the section by itself", async () => {
@@ -270,7 +290,7 @@ describe("SplitTasksDialog — line cards", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 dòng" }));
+      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 task" }));
       await Promise.resolve();
     });
     expect(scope.getByRole("button", { name: /Chi tiết thêm/ }).getAttribute("aria-expanded")).toBe(
