@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import {
   Archive,
@@ -11,6 +12,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  UsersRound,
   type LucideIcon
 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
@@ -64,13 +66,18 @@ import {
   type ChatChannelMember,
   type NamedChannelKind
 } from "@/contracts/chat";
+import { departmentLabels } from "@/contracts/departments";
 import type { UserRef } from "@/contracts/work";
 import { usePermissions, useSessionContext } from "@/features/auth/hooks";
 import { P } from "@/features/auth/permissions";
 import { useDebouncedValue } from "@/features/command/search-api";
+import { DepartmentBadge } from "@/features/departments/components/department-badge";
+import { useMyDepartments } from "@/features/departments/hooks";
 import { isApiError } from "@/lib/api/errors";
+import { qk } from "@/lib/query-keys";
 
 import { chatErrorMessage } from "../errors";
+import { useChannelDepartment } from "../hooks/use-channel-department";
 import {
   useArchiveChannel,
   useChannelMembers,
@@ -83,6 +90,7 @@ import {
 } from "../hooks/use-channels";
 import { channelLabel, channelTitle } from "../model/channels";
 import { notifyOptions } from "../model/notify";
+import { ChannelDepartmentNote } from "./channel-department";
 import { PeoplePicker } from "./people-picker";
 
 export type SettingsTab = "about" | "members" | "settings";
@@ -119,10 +127,18 @@ export const ChannelSettingsDialog = ({
             )}
             <span className="truncate">{channelLabel(channel)}</span>
           </DialogTitle>
-          <DialogDescription>
-            {direct
-              ? "Cuộc trò chuyện trực tiếp"
-              : `${channel.kind === "private" ? "Kênh riêng tư" : "Kênh công khai"} · ${channel.memberCount} thành viên${channel.archivedAt ? " · Đã lưu trữ" : ""}`}
+          <DialogDescription className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            {direct ? (
+              "Cuộc trò chuyện trực tiếp"
+            ) : (
+              <>
+                <span>{channel.kind === "private" ? "Kênh riêng tư" : "Kênh công khai"}</span>
+                {channel.department ? <DepartmentBadge department={channel.department} /> : null}
+                <span>
+                  · {channel.memberCount} thành viên{channel.archivedAt ? " · Đã lưu trữ" : ""}
+                </span>
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
         <Tabs
@@ -178,6 +194,12 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
   const [topic, setTopic] = useState(channel.topic ?? "");
   const [nameError, setNameError] = useState<string | null>(null);
   const [confirmKind, setConfirmKind] = useState<NamedChannelKind | null>(null);
+  // A channel keeps its department (PD-054); one without (legacy) turned public takes the one selected in the switcher.
+  const channelDepartment = useChannelDepartment();
+  const queryClient = useQueryClient();
+  const missingDepartment = channel.department === null;
+  const department = channel.department ?? channelDepartment.department;
+  const departmentLabel = department ? departmentLabels[department] : null;
 
   const dirty =
     name.trim() !== (channel.name ?? "") ||
@@ -212,13 +234,24 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
 
   const changeKind = (kind: NamedChannelKind) =>
     update.mutate(
-      { kind },
+      // To public: its own department, or the selected one for a channel without (never left to guess).
+      kind === "public" && department ? { kind, department } : { kind },
       {
-        onSuccess: () =>
+        onSuccess: (detail) =>
           toast.success(
-            kind === "private" ? "Kênh đã chuyển sang riêng tư" : "Kênh đã chuyển sang công khai"
+            kind === "private"
+              ? "Kênh đã chuyển sang riêng tư"
+              : detail.department
+                ? `Kênh đã chuyển sang công khai cho phòng ban ${departmentLabels[detail.department]}`
+                : "Kênh đã chuyển sang công khai"
           ),
-        onError: (error) => toast.error(chatErrorMessage(error))
+        onError: (error) => {
+          // Department membership changed meanwhile: read the departments again.
+          if (isApiError(error) && error.code === "DEPARTMENT_FORBIDDEN") {
+            void queryClient.invalidateQueries({ queryKey: qk.session() });
+          }
+          toast.error(chatErrorMessage(error));
+        }
       }
     );
 
@@ -307,7 +340,9 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
           />
           <p className="text-xs text-foreground-muted">
             {channel.kind === "public"
-              ? "Mọi người trong tổ chức có thể tìm và tham gia kênh."
+              ? departmentLabel && !missingDepartment
+                ? `Mọi thành viên phòng ban ${departmentLabel} tự động ở trong kênh.`
+                : "Mọi thành viên phòng ban tự động ở trong kênh."
               : "Chỉ thành viên thấy kênh. Quản trị kênh mời thêm người."}
           </p>
         </div>
@@ -315,7 +350,9 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
 
       <AlertDialog
         open={confirmKind !== null}
-        onOpenChange={(open) => !open && setConfirmKind(null)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmKind(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -326,10 +363,17 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmKind === "private"
-                ? "Người chưa tham gia sẽ không còn tìm thấy hay xem trước kênh. Thành viên hiện tại vẫn ở lại."
-                : "Mọi người trong tổ chức sẽ tìm thấy, xem trước và tự tham gia kênh, kể cả lịch sử tin nhắn."}
+                ? `Người mới vào ${channel.department ? `phòng ban ${departmentLabels[channel.department]}` : "phòng ban"} sẽ không còn được tự động thêm và người chưa tham gia không còn thấy kênh. Thành viên hiện tại vẫn ở lại.`
+                : `Mọi thành viên ${departmentLabel ? `phòng ban ${departmentLabel}` : "phòng ban của bạn"} sẽ tự động vào kênh và xem được cả lịch sử tin nhắn. Thành viên hiện tại vẫn ở lại.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmKind === "public" && missingDepartment && channelDepartment.department ? (
+            <ChannelDepartmentNote
+              department={channelDepartment.department}
+              kind="public"
+              fromSwitcher={channelDepartment.fromSwitcher}
+            />
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction
@@ -353,6 +397,8 @@ const AboutTab = ({ channel }: { channel: ChatChannelDetail }) => {
  */
 const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: () => void }) => {
   const session = useSessionContext();
+  // PD-054: colleagues of the department selected in the header switcher, like "Tin nhắn mới".
+  const { current: department } = useMyDepartments();
   const { can } = usePermissions();
   const openDm = useOpenDm();
   const [adding, setAdding] = useState<UserRef[]>([]);
@@ -388,6 +434,7 @@ const DirectAbout = ({ channel, onDone }: { channel: ChatChannelDetail; onDone: 
             <>
               <PeoplePicker
                 purpose="dm"
+                department={department}
                 selected={adding}
                 onChange={setAdding}
                 excludeIds={existing}
@@ -429,6 +476,8 @@ const accessLabels: Record<ChannelAccess, string> = { submit: "Gửi tin", view:
 
 const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
   const session = useSessionContext();
+  // PD-054: people are invited from the channel's department (the selected one for a channel without).
+  const { current: currentDepartment } = useMyDepartments();
   const [q, setQ] = useState("");
   const debounced = useDebouncedValue(q.trim(), 200);
   const members = useChannelMembers(
@@ -443,6 +492,8 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
   const [toRemove, setToRemove] = useState<ChatChannelMember | null>(null);
   const direct = isDirectKind(channel.kind);
   const canManage = channel.capabilities.canManageMembers && !direct && !channel.archivedAt;
+  // Public channels hold their whole department (PD-053): nobody is added by hand.
+  const canAdd = canManage && channel.kind === "private";
   const items = useMemo(
     () => members.data?.pages.flatMap((page) => page.items) ?? [],
     [members.data]
@@ -465,7 +516,7 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
             className="pl-8"
           />
         </div>
-        {canManage ? (
+        {canAdd ? (
           <Button
             variant={adding ? "secondary" : "default"}
             onClick={() => setAdding((value) => !value)}
@@ -476,10 +527,30 @@ const MembersTab = ({ channel }: { channel: ChatChannelDetail }) => {
         ) : null}
       </div>
 
-      {adding && canManage ? (
+      {channel.kind === "public" ? (
+        <p className="flex items-start gap-2 border-b bg-muted/30 px-5 py-2 text-xs text-foreground-muted">
+          <UsersRound className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            {channel.department ? (
+              <>
+                Mọi thành viên phòng ban{" "}
+                <span className="font-medium text-foreground">
+                  {departmentLabels[channel.department]}
+                </span>{" "}
+                tự động ở trong kênh — không cần thêm từng người.
+              </>
+            ) : (
+              "Mọi thành viên phòng ban tự động ở trong kênh — không cần thêm từng người."
+            )}
+          </span>
+        </p>
+      ) : null}
+
+      {adding && canAdd ? (
         <div className="flex flex-col gap-2.5 border-b bg-muted/30 px-5 py-3">
           <PeoplePicker
             autoFocus
+            department={channel.department ?? currentDepartment}
             selected={toAdd}
             onChange={setToAdd}
             excludeIds={existing}

@@ -505,6 +505,11 @@ export const DirectoryQuerySchema = z.object({
   projectId: Id.optional(),
   channelId: Id.optional(),
   purpose: DirectoryPurposeSchema.optional(),
+  /**
+   * PD-054: only people of this department — the one selected in the header switcher ("Tin nhắn mới", the
+   * private-channel member picker). Mention pickers never send it.
+   */
+  department: DepartmentSchema.optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20)
 });
 export const DirectoryCollectionSchema = z.object({ items: z.array(UserRefSchema) });

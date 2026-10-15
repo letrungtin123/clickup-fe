@@ -45,6 +45,15 @@ const useDepartmentState = () => {
 export const useCurrentDepartment = () => useDepartmentState().current;
 
 /**
+ * The signed-in user's departments (stable order), the one shown and whether the switcher is offered, read-only: e.g.
+ * the department of a new chat channel, the conversations shown in chat (PD-054).
+ */
+export const useMyDepartments = () => {
+  const { current, departments, canSwitch } = useDepartmentState();
+  return { current, departments, canSwitch };
+};
+
+/**
  * The signed-in user's departments and the one shown (PD-041). `setDepartment` switches instantly (no reload): the
  * choice is cached on this device, a route of the other department is left for Trang chủ, and the server remembers it
  * in the background (PUT /workspace/department); a failure puts the previous department back with an error toast.

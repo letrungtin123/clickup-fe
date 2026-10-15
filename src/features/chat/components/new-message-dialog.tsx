@@ -12,9 +12,11 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { chatLimits } from "@/contracts/chat";
+import { departmentLabels } from "@/contracts/departments";
 import type { UserRef } from "@/contracts/work";
 import { usePermissions } from "@/features/auth/hooks";
 import { P } from "@/features/auth/permissions";
+import { useMyDepartments } from "@/features/departments/hooks";
 
 import { useOpenDm } from "../hooks/use-channels";
 import { dmPickLimit } from "../model/channels";
@@ -48,6 +50,8 @@ const NewMessageForm = ({
   const max = dmPickLimit(canGroup);
   const [selected, setSelected] = useState<UserRef[]>(() => initialUsers.slice(0, max));
   const openDm = useOpenDm();
+  // PD-054: colleagues of the department selected in the header switcher.
+  const { current: department, canSwitch } = useMyDepartments();
 
   const start = () => {
     if (selected.length === 0) return;
@@ -92,6 +96,7 @@ const NewMessageForm = ({
         <PeoplePicker
           autoFocus
           purpose="dm"
+          department={department}
           selected={selected}
           onChange={setSelected}
           max={max}
@@ -101,6 +106,13 @@ const NewMessageForm = ({
               : "Bạn nhắn được 1:1 với đồng nghiệp; tạo nhóm cần quyền tạo kênh."
           }
         />
+        {canSwitch && department ? (
+          <p className="mt-2 text-xs text-foreground-muted">
+            Đang tìm trong phòng ban{" "}
+            <span className="font-medium text-foreground">{departmentLabels[department]}</span>.
+            Đổi phòng ban trên thanh trên cùng để nhắn người ở phòng ban khác.
+          </p>
+        ) : null}
       </div>
       <DialogFooter className="mx-0 mb-0">
         <Button type="button" variant="outline" onClick={onDone}>

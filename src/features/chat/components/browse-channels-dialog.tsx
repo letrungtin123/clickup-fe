@@ -17,9 +17,12 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { ChatChannelInfo } from "@/contracts/chat";
+import { departmentLabels } from "@/contracts/departments";
 import { P } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
 import { useDebouncedValue } from "@/features/command/search-api";
+import { DepartmentBadge } from "@/features/departments/components/department-badge";
+import { useMyDepartments } from "@/features/departments/hooks";
 
 import { chatApi } from "../api";
 import { chatErrorMessage } from "../errors";
@@ -46,7 +49,9 @@ export const BrowseChannelsDialog = ({
 const BrowseBody = ({ onDone }: { onDone: () => void }) => {
   const [q, setQ] = useState("");
   const debounced = useDebouncedValue(q.trim(), 200);
-  const browse = useBrowseChannels(debounced);
+  // PD-054: the public channels of the department selected in the header switcher.
+  const { current: department } = useMyDepartments();
+  const browse = useBrowseChannels(debounced, department);
   const navigate = useNavigate();
   const { can } = usePermissions();
   const openDialog = useChatDialogStore((state) => state.open);
@@ -65,7 +70,16 @@ const BrowseBody = ({ onDone }: { onDone: () => void }) => {
           Duyệt kênh
         </DialogTitle>
         <DialogDescription>
-          Các kênh công khai bạn chưa tham gia. Bấm vào kênh để xem trước tin nhắn.
+          {department ? (
+            <>
+              Kênh công khai thuộc phòng ban{" "}
+              <span className="font-medium text-foreground">{departmentLabels[department]}</span>{" "}
+              mà bạn chưa tham gia.
+            </>
+          ) : (
+            "Kênh công khai thuộc phòng ban của bạn mà bạn chưa tham gia."
+          )}{" "}
+          Bấm vào kênh để xem trước tin nhắn.
         </DialogDescription>
         <div className="relative mt-2">
           <Search
@@ -198,7 +212,12 @@ const BrowseRow = ({
           <Hash className="size-4" aria-hidden="true" />
         </span>
         <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium">{channel.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{channel.name}</span>
+            {channel.kind === "public" && channel.department ? (
+              <DepartmentBadge department={channel.department} />
+            ) : null}
+          </span>
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-muted">
             <Users className="size-3 shrink-0" aria-hidden="true" />
             <span className="shrink-0">{channel.memberCount} thành viên</span>

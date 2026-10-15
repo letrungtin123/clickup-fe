@@ -17,6 +17,8 @@ import {
   type Department
 } from "@/contracts/departments";
 
+import { useOtherDepartmentUnread } from "@/features/chat/hooks/use-department-channels";
+import { formatCount } from "@/features/chat/model/channels";
 import { toneClass } from "@/lib/colors";
 
 import { useDepartment } from "../hooks";
@@ -38,14 +40,18 @@ const triggerClass: Record<Variant, string> = {
 
 /**
  * "Photo Retouch ▾": switches the department shown (PD-041). Only rendered for people in more than one department;
- * the caller checks `canSwitch` so single-department users get no extra control at all.
+ * the caller checks `canSwitch` so single-department users get no extra control at all. Chat follows it (PD-054): a red
+ * count on the trigger (and per department in the menu) tells what waits in the other departments' chat.
  */
 export const DepartmentSwitcher = ({ variant }: { variant: Variant }) => {
   const { current, departments, setDepartment } = useDepartment();
+  const unread = useOtherDepartmentUnread();
   if (!current) return null;
   const Icon = departmentIcons[current];
   const label = departmentLabels[current];
-  const triggerLabel = `Phòng ban: ${label}. Đổi phòng ban`;
+  const triggerLabel =
+    `Phòng ban: ${label}. Đổi phòng ban` +
+    (unread.total > 0 ? `. ${unread.total} tin chưa đọc ở phòng ban khác` : "");
 
   const menu = (
     <DropdownMenuContent
@@ -64,7 +70,11 @@ export const DepartmentSwitcher = ({ variant }: { variant: Variant }) => {
           }}
         >
           {departments.map((department) => (
-            <DepartmentOption key={department} department={department} />
+            <DepartmentOption
+              key={department}
+              department={department}
+              unread={department === current ? 0 : (unread.byDepartment[department] ?? 0)}
+            />
           ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuGroup>
@@ -82,8 +92,18 @@ export const DepartmentSwitcher = ({ variant }: { variant: Variant }) => {
               className={cn(toneClass(departmentTones[current]), "text-(--tone-text)")}
               aria-hidden="true"
             />
+            {unread.total > 0 ? (
+              <UnreadCount
+                count={unread.total}
+                cap={9}
+                className="absolute top-0.5 right-0.5 h-3.5 min-w-3.5 px-0.5 text-[9px] ring-2 ring-canvas"
+              />
+            ) : null}
           </TooltipTrigger>
-          <TooltipContent side="right">Phòng ban: {label}</TooltipContent>
+          <TooltipContent side="right">
+            Phòng ban: {label}
+            {unread.total > 0 ? ` · ${unread.total} tin chưa đọc ở phòng ban khác` : ""}
+          </TooltipContent>
         </Tooltip>
         {menu}
       </DropdownMenu>
@@ -99,6 +119,9 @@ export const DepartmentSwitcher = ({ variant }: { variant: Variant }) => {
             aria-hidden="true"
           />
           <span className="min-w-0 truncate">{departmentShortLabels[current]}</span>
+          {unread.total > 0 ? (
+            <UnreadCount count={unread.total} cap={9} className="h-4 min-w-4 px-1 text-[10px]" />
+          ) : null}
           <ChevronDown
             className="size-3 shrink-0 text-foreground-subtle max-[359px]:hidden"
             aria-hidden="true"
@@ -114,6 +137,7 @@ export const DepartmentSwitcher = ({ variant }: { variant: Variant }) => {
       <DropdownMenuTrigger aria-label={triggerLabel} className={triggerClass.sidebar}>
         <DepartmentTile department={current} />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+        {unread.total > 0 ? <UnreadCount count={unread.total} /> : null}
         <ChevronDown className="size-3.5 shrink-0 text-foreground-subtle" aria-hidden="true" />
       </DropdownMenuTrigger>
       {menu}
@@ -144,14 +168,44 @@ const DepartmentTile = ({
   );
 };
 
-const DepartmentOption = ({ department }: { department: Department }) => (
+/**
+ * Red count of chat waiting in other departments (PD-054): mentions and unread direct messages, muted excluded — the
+ * chat badge rule. Decorative: the trigger / item names say it in words.
+ */
+const UnreadCount = ({
+  count,
+  cap = 99,
+  className
+}: {
+  count: number;
+  cap?: number;
+  className?: string;
+}) => (
+  <span
+    aria-hidden="true"
+    className={cn(
+      "flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-none font-semibold text-white tabular-nums",
+      className
+    )}
+  >
+    {formatCount(count, cap)}
+  </span>
+);
+
+const DepartmentOption = ({ department, unread }: { department: Department; unread: number }) => (
   <DropdownMenuRadioItem value={department} className="gap-2.5 py-1.5">
     <DepartmentTile department={department} size="md" />
-    <span className="flex min-w-0 flex-col">
+    <span className="flex min-w-0 flex-1 flex-col">
       <span className="truncate text-[13px] font-medium">{departmentLabels[department]}</span>
       <span className="truncate text-xs text-foreground-muted">
         {departmentDescriptions[department]}
       </span>
     </span>
+    {unread > 0 ? (
+      <>
+        <UnreadCount count={unread} />
+        <span className="sr-only">, {unread} tin chưa đọc</span>
+      </>
+    ) : null}
   </DropdownMenuRadioItem>
 );

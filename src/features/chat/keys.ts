@@ -8,7 +8,7 @@ import { qk } from "@/lib/query-keys";
  *   ["chat", "channel", id, "messages", "root"]   message window (MessageWindow)
  *   ["chat", "channel", id, "members", q]         members (infinite)
  *   ["chat", "thread", rootId]                    thread (ThreadState)
- *   ["chat", "browse", q]                         browse public channels (infinite)
+ *   ["chat", "browse", department, q]             browse public channels of a department (infinite)
  *   ["chat", "attachment-url", id]                signed URL for one attachment
  *   ["chat", "mentions"]                          "mentions of me" feed
  *   ["chat", "search", q]                         message search (infinite)
@@ -22,11 +22,12 @@ export const chatKeys = {
   /** Who reacted to a message (tooltip / reactions sheet). */
   reactions: (messageId: string) => ["chat", "reactions", messageId] as const,
   threads: () => ["chat", "thread"] as const,
-  browse: (q = "") => ["chat", "browse", q.trim().toLocaleLowerCase()] as const,
+  browse: (q = "", department: string | null = null) =>
+    ["chat", "browse", department ?? "all", q.trim().toLocaleLowerCase()] as const,
   attachmentUrl: (attachmentId: string) => ["chat", "attachment-url", attachmentId] as const,
   mentions: () => ["chat", "mentions"] as const,
   search: (q: string) => ["chat", "search", q.trim().toLocaleLowerCase()] as const,
-  /** People search: org-wide, in a channel, or for a DM ("dm"). */
+  /** People search: org-wide, in a channel, or for a DM ("dm"); a department suffix when scoped (PD-054). */
   people: (q: string, scope?: string) =>
     ["chat", "people", scope ?? "org", q.trim().toLocaleLowerCase()] as const
 } as const;

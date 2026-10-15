@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { Ellipsis, History, MessageSquare, Pencil, Send, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
 import { SegmentedControl } from "@/components/shared/radio-controls";
@@ -472,6 +472,9 @@ const CommentRow = ({
   );
 };
 
+/** Most people the @mention list offers at once (it scrolls); the whole production team fits. */
+const MENTION_MAX = 50;
+
 /** Plain-text composer with @mentions of production people (Ctrl/⌘+Enter sends). */
 const CommentComposer = ({
   entity,
@@ -499,8 +502,19 @@ const CommentComposer = ({
           person.id !== session.user.id &&
           (!q || foldText(`${person.displayName} ${person.email ?? ""}`).includes(q))
       )
-      .slice(0, 6);
+      .slice(0, MENTION_MAX);
   }, [mention, people, session.user.id]);
+
+  // Keyboard navigation keeps the highlighted person visible inside the scrolling list (not the page).
+  const listRef = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    const list = listRef.current;
+    const item = list?.children[active] as HTMLElement | undefined;
+    if (!list || !item) return;
+    if (item.offsetTop < list.scrollTop) list.scrollTop = item.offsetTop;
+    else if (item.offsetTop + item.offsetHeight > list.scrollTop + list.clientHeight)
+      list.scrollTop = item.offsetTop + item.offsetHeight - list.clientHeight;
+  }, [active, matches]);
 
   const refreshMention = (value: string, caret: number) => {
     setMention(mentionAt(value, caret));
@@ -590,9 +604,10 @@ const CommentComposer = ({
       />
       {mention && matches.length > 0 ? (
         <ul
+          ref={listRef}
           role="listbox"
           aria-label="Nhắc tên"
-          className="absolute top-full right-2 left-2 z-20 mt-1 flex flex-col gap-0.5 rounded-lg bg-popover p-1 shadow-lg ring-1 ring-foreground/10"
+          className="absolute top-full right-2 left-2 z-20 mt-1 flex max-h-64 flex-col gap-0.5 overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 shadow-lg ring-1 ring-foreground/10"
         >
           {matches.map((person, index) => (
             <li key={person.id} role="option" aria-selected={index === active}>

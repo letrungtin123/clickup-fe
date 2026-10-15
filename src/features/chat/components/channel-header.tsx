@@ -16,6 +16,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isDirectKind, type ChatChannelDetail, type NotifyLevel } from "@/contracts/chat";
+import { DepartmentBadge } from "@/features/departments/components/department-badge";
 import { usePresence } from "@/lib/realtime/hooks";
 
 import { useChannelMembers, useJoinChannel, useNotifyLevel } from "../hooks/use-channels";
@@ -90,6 +91,9 @@ export const ChannelHeader = ({
             <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em]">
               {channelTitle(channel)}
             </h1>
+            {channel.department ? (
+              <DepartmentBadge department={channel.department} className="ml-0.5" />
+            ) : null}
             <ChevronDown
               className="size-3.5 shrink-0 text-foreground-subtle transition-colors group-hover/title:text-foreground"
               aria-hidden="true"

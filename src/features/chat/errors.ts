@@ -38,6 +38,9 @@ const chatMessages: Record<string, string> = {
   CHANNEL_MEMBER_NOT_FOUND: "Không tìm thấy thành viên kênh.",
   CHANNEL_NOT_MEMBER: "Bạn không phải thành viên của kênh này.",
   CHANNEL_CREATE_FAILED: "Không tạo được kênh. Vui lòng thử lại.",
+  // PD-053 / PD-054: every channel belongs to one department (the one selected in the switcher).
+  CHANNEL_DEPARTMENT_REQUIRED: "Kênh cần thuộc một phòng ban. Chọn phòng ban trên thanh trên cùng rồi thử lại.",
+  DEPARTMENT_FORBIDDEN: "Bạn không thuộc phòng ban này.",
   INVALID_RICH_TEXT: "Nội dung tin nhắn không hợp lệ hoặc quá dài.",
   INVALID_CURSOR: "Danh sách đã thay đổi. Hãy tải lại."
 };

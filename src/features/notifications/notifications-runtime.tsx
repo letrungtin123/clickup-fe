@@ -10,6 +10,7 @@ import { onUntypedServerEvent, scheduleInvalidate } from "@/lib/realtime/socket"
 import { useUiStore } from "@/stores/ui-store";
 
 import { allowsPopup, shouldToastNotification } from "./bell";
+import { chatToastId } from "./chat-toast";
 import { describeNotification, sentenceText } from "./describe";
 import { parseArchivedEvent } from "./feeds";
 import {
@@ -64,8 +65,10 @@ export const NotificationsRuntime = () => {
     const allowed = allowsPopup(popup, webEnabled);
     if (!shouldToastNotification({ pathname: location.pathname, bellOpen, popup: allowed })) return;
     const description = describeNotification(notification);
+    const chatChannelId = notification.type.startsWith("chat.") ? notification.target.channelId : null;
     toast(sentenceText(description), {
-      id: `notification:${notification.id}`,
+      // A chat notification (an @mention, a thread reply) takes over that conversation's message toast.
+      id: chatChannelId ? chatToastId(chatChannelId) : `notification:${notification.id}`,
       description: description.excerpt ?? description.subject ?? undefined,
       action: { label: "Xem", onClick: () => open(notification) },
       duration: 6000

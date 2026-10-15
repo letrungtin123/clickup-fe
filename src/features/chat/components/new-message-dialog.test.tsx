@@ -91,7 +91,11 @@ describe("dmPickLimit", () => {
 describe("NewMessageDialog — staff DM 1:1", () => {
   it("searches colleagues for a DM and keeps exactly one person (a new pick replaces the old one)", async () => {
     const { directory, openDm } = await setup([]);
-    expect(directory).toHaveBeenCalledWith(expect.objectContaining({ purpose: "dm" }), expect.anything());
+    // PD-054: colleagues of the department selected in the switcher (sent with one department too).
+    expect(directory).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: "dm", department: "PHOTO_RETOUCH" }),
+      expect.anything()
+    );
     expect(screen.getByText(/Bạn nhắn được 1:1 với đồng nghiệp/)).toBeTruthy();
     // No e-mail search without member.view.
     expect(screen.getByPlaceholderText("Tìm theo tên…")).toBeTruthy();

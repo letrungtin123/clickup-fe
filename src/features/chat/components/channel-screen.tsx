@@ -22,6 +22,7 @@ import { isApiError } from "@/lib/api/errors";
 import { useUploads } from "../hooks/use-attachments";
 import { useChannel } from "../hooks/use-channels";
 import { useConversationActions } from "../hooks/use-conversation-actions";
+import { useEnsureConversationDepartment } from "../hooks/use-department-channels";
 import { useMentionSource } from "../hooks/use-mention-source";
 import { useMarkRead } from "../hooks/use-message-actions";
 import { useMessageWindow } from "../hooks/use-message-window";
@@ -56,6 +57,8 @@ const useDocumentVisible = () =>
 export const ChannelScreen = ({ channelId }: { channelId: string }) => {
   const detail = useChannel(channelId);
   const setActive = useActiveChannelStore((state) => state.setActive);
+  // Opened from a link / notification while another department is selected: switch to one that shows it (PD-054).
+  useEnsureConversationDepartment(detail.data);
 
   useEffect(() => {
     setActive(channelId);

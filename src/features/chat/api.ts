@@ -24,6 +24,7 @@ import {
   type NamedChannelKind,
   type NotifyLevel
 } from "@/contracts/chat";
+import type { Department } from "@/contracts/departments";
 import type { RichTextDoc } from "@/contracts/rich-text";
 import { DirectoryCollectionSchema, type DirectoryPurpose } from "@/contracts/work";
 import { api, apiPath } from "@/lib/api/client";
@@ -41,6 +42,11 @@ export type CreateChannelInput = {
   name: string;
   description?: string | null;
   memberIds?: string[];
+  /**
+   * Public and private channels (PD-053 / PD-054): the department selected in the header switcher; required when the
+   * creator belongs to several departments.
+   */
+  department?: Department;
 };
 
 export type UpdateChannelInput = {
@@ -48,6 +54,8 @@ export type UpdateChannelInput = {
   description?: string | null;
   topic?: string | null;
   kind?: NamedChannelKind;
+  /** With `kind` (PD-053 / PD-054): the department of a channel that has none yet (the one in the switcher). */
+  department?: Department;
 };
 
 export type SendMessageInput = {
@@ -60,9 +68,18 @@ export type SendMessageInput = {
 export const chatApi = {
   // Channels ---------------------------------------------------------------------------------------
   channels: (signal?: AbortSignal) => api.get("/channels", ChatChannelCollectionSchema, { signal }),
-  browse: (params: { q?: string; cursor?: string; limit?: number }, signal?: AbortSignal) =>
+  /** Public channels to join; `department` (PD-054): only that department's (the one in the switcher). */
+  browse: (
+    params: { q?: string; department?: Department | null; cursor?: string; limit?: number },
+    signal?: AbortSignal
+  ) =>
     api.get("/channels/browse", ChannelBrowsePageSchema, {
-      query: { q: params.q?.trim(), cursor: params.cursor, limit: params.limit ?? 30 },
+      query: {
+        q: params.q?.trim(),
+        department: params.department ?? undefined,
+        cursor: params.cursor,
+        limit: params.limit ?? 30
+      },
       signal
     }),
   channel: (channelId: string, signal?: AbortSignal) =>
@@ -171,10 +188,17 @@ export const chatApi = {
 
   /**
    * People picker (mentions are scoped to channel members for private channels and DMs). `purpose: "dm"`
-   * ("Tin nhắn mới"): open to every member — the colleagues they may message.
+   * ("Tin nhắn mới"): open to every member — the colleagues they may message. `department` (PD-054): only people of
+   * that department ("Tin nhắn mới", private-channel member pickers; never mentions).
    */
   directory: (
-    params: { q?: string; channelId?: string; purpose?: DirectoryPurpose; limit?: number },
+    params: {
+      q?: string;
+      channelId?: string;
+      purpose?: DirectoryPurpose;
+      department?: Department | null;
+      limit?: number;
+    },
     signal?: AbortSignal
   ) =>
     api.get("/directory/users", DirectoryCollectionSchema, {
@@ -182,6 +206,7 @@ export const chatApi = {
         q: params.q?.trim(),
         channelId: params.channelId,
         purpose: params.purpose,
+        department: params.department ?? undefined,
         limit: params.limit ?? 20
       },
       signal

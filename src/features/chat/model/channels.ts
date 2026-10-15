@@ -6,6 +6,9 @@ import {
   type ChatChannelDetail,
   type ChatChannelInfo
 } from "@/contracts/chat";
+import type { Department } from "@/contracts/departments";
+
+import { departmentAudience } from "./departments";
 
 export type ChannelLike = Pick<ChatChannel, "kind" | "name" | "participants">;
 
@@ -109,17 +112,27 @@ export const upsertSidebarChannel = (
   };
 };
 
-/** Merges viewer-independent metadata from a realtime `chat:channel` event. */
-export const mergeChannelInfo = <T extends ChatChannelInfo>(
+/**
+ * Merges viewer-independent metadata from a realtime `chat:channel` event. The payload carries no
+ * `audienceDepartments` (viewer-specific, PD-054): the cached one is kept, except for a named channel whose
+ * department changed, where it follows the department (the server's rule for named channels).
+ */
+export const mergeChannelInfo = <T extends ChatChannelInfo & { audienceDepartments?: Department[] }>(
   channel: T,
   info: ChatChannelInfo
 ): T => ({
   ...channel,
+  ...(channel.audienceDepartments &&
+  !isDirectKind(info.kind) &&
+  (channel.department ?? null) !== (info.department ?? null)
+    ? { audienceDepartments: departmentAudience(info.department) }
+    : {}),
   name: info.name,
   description: info.description,
   topic: info.topic,
   kind: info.kind,
   archivedAt: info.archivedAt,
+  department: info.department,
   memberCount: info.memberCount,
   updatedAt: info.updatedAt,
   lastMessageSeq: Math.max(channel.lastMessageSeq, info.lastMessageSeq),
@@ -162,14 +175,22 @@ export const markSidebarRead = (channel: ChatChannel, seq: number): ChatChannel 
 
 /**
  * Must the viewer's capabilities (canPost, canJoin…) be re-read after a `chat:channel` event? They
- * follow the archived flag and the channel kind. Unarchiving arrives as an "updated" event, so the
- * flag is compared, not the event kind (BUG-WK-43: viewers could not post until a manual refetch).
+ * follow the archived flag, the channel kind and (public channels, PD-053) its department. Unarchiving
+ * arrives as an "updated" event, so the flag is compared, not the event kind (BUG-WK-43: viewers could
+ * not post until a manual refetch).
  */
+type CapabilityFields = Pick<ChatChannelInfo, "archivedAt" | "kind"> & {
+  department?: ChatChannelInfo["department"];
+};
 export const channelEventChangesCapabilities = (
-  cached: Pick<ChatChannelInfo, "archivedAt" | "kind"> | undefined,
-  event: { kind: string; channel: Pick<ChatChannelInfo, "archivedAt" | "kind"> | null }
+  cached: CapabilityFields | undefined,
+  event: { kind: string; channel: CapabilityFields | null }
 ) => {
   if (event.kind === "archived") return true;
   if (!event.channel || !cached) return false;
-  return Boolean(cached.archivedAt) !== Boolean(event.channel.archivedAt) || cached.kind !== event.channel.kind;
+  return (
+    Boolean(cached.archivedAt) !== Boolean(event.channel.archivedAt) ||
+    cached.kind !== event.channel.kind ||
+    (cached.department ?? null) !== (event.channel.department ?? null)
+  );
 };

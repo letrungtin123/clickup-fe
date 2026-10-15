@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { DepartmentSchema } from "./departments.js";
 import { createCursorPageSchema, PageInfoSchema } from "./pagination.js";
 import { RichTextDocSchema } from "./rich-text.js";
 import {
@@ -151,6 +152,13 @@ export const ChatChannelInfoSchema = z.object({
   createdAt: IsoDate,
   updatedAt: IsoDate,
   archivedAt: IsoDate.nullable(),
+  /**
+   * PD-053: the department a public channel belongs to. Every member of that department (superadmins included) is a
+   * member of the channel, kept in sync as people join / leave the department; only that department sees, browses and
+   * joins it. PD-054: a private channel also belongs to the department chosen at creation (explicit members, shown
+   * only in that department). null for DMs and legacy org-wide channels.
+   */
+  department: DepartmentSchema.nullable(),
   memberCount: z.number().int(),
   lastMessageSeq: Seq,
   lastMessageAt: IsoDate.nullable()
@@ -168,7 +176,13 @@ export const ChatChannelSchema = ChatChannelInfoSchema.extend({
   /** Unread top-level messages mentioning the caller, capped at chatLimits.mentionCountCap. */
   mentionCount: z.number().int().min(0),
   /** dm / group_dm: the other participants. Empty for channels. */
-  participants: z.array(UserRefSchema)
+  participants: z.array(UserRefSchema),
+  /**
+   * PD-054, viewer-specific: the departments whose chat shows this conversation (the header department switcher
+   * filters the sidebar with it). Named channel with a department → [it]; null department → every department;
+   * dm / group_dm → the union of the other participants' departments (every department when that is empty).
+   */
+  audienceDepartments: z.array(DepartmentSchema)
 });
 export type ChatChannel = z.infer<typeof ChatChannelSchema>;
 
@@ -201,6 +215,8 @@ export const ChannelBrowseQuerySchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  /** PD-054: only channels of this department (clients send the one selected in the header switcher). */
+  department: DepartmentSchema.optional(),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(chatLimits.pageMax).default(50)
 });
@@ -213,7 +229,13 @@ export const CreateChannelRequestSchema = z
     kind: NamedChannelKindSchema.default("public"),
     name: ChannelNameSchema,
     description: OptionalText(chatLimits.descriptionMax),
-    memberIds: z.array(Id).max(chatLimits.createMembersMax).default([])
+    memberIds: z.array(Id).max(chatLimits.createMembersMax).default([]),
+    /**
+     * PD-053 / PD-054, public and private channels: the department the channel belongs to (clients send the one
+     * selected in the header switcher). Optional when the creator has exactly one department (that one is used);
+     * required when they have several (CHANNEL_DEPARTMENT_REQUIRED) and must be one of theirs (DEPARTMENT_FORBIDDEN).
+     */
+    department: DepartmentSchema.optional()
   })
   .strict();
 export type CreateChannelRequest = z.infer<typeof CreateChannelRequestSchema>;
@@ -224,7 +246,12 @@ export const UpdateChannelRequestSchema = z
     description: OptionalText(chatLimits.descriptionMax),
     topic: OptionalText(chatLimits.topicMax),
     /** public <-> private; channel admins (and superadmins) only. */
-    kind: NamedChannelKindSchema.optional()
+    kind: NamedChannelKindSchema.optional(),
+    /**
+     * PD-053 / PD-054: the department the channel belongs to, same rule as on create (public and private). Clients
+     * send the one selected in the header switcher when the channel changes kind and has none yet.
+     */
+    department: DepartmentSchema.optional()
   })
   .strict()
   .refine((value) => Object.values(value).some((entry) => entry !== undefined), "Nothing to update.");

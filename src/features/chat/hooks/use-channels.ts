@@ -15,6 +15,7 @@ import type {
   ChatChannelDetail,
   NotifyLevel
 } from "@/contracts/chat";
+import type { Department } from "@/contracts/departments";
 import type { DirectoryPurpose } from "@/contracts/work";
 import { useSessionContext } from "@/features/auth/hooks";
 
@@ -68,11 +69,12 @@ export const forgetChannel = (queryClient: QueryClient, channelId: string) => {
   queryClient.removeQueries({ queryKey: chatKeys.membersAll(channelId) });
 };
 
-export const useBrowseChannels = (q: string, enabled = true) =>
+/** Public channels to join, of `department` (the one in the header switcher, PD-054). */
+export const useBrowseChannels = (q: string, department: Department | null, enabled = true) =>
   useInfiniteQuery({
-    queryKey: chatKeys.browse(q),
+    queryKey: chatKeys.browse(q, department),
     queryFn: ({ signal, pageParam }) =>
-      chatApi.browse({ q, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+      chatApi.browse({ q, department, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => (page.pageInfo.hasMore ? page.pageInfo.nextCursor : null),
     enabled,
@@ -263,14 +265,24 @@ export const useMemberMutations = (channelId: string) => {
 
 /**
  * People search for pickers (create channel, add members), channel-scoped mention search, or the
- * people the viewer may message (`purpose: "dm"`, open to every member).
+ * people the viewer may message (`purpose: "dm"`, open to every member). `department` (PD-054) keeps
+ * the results to one department (the one in the header switcher).
  */
 export const usePeopleSearch = (
   q: string,
-  options: { channelId?: string; purpose?: DirectoryPurpose; enabled?: boolean } = {}
-) =>
-  useQuery({
-    queryKey: chatKeys.people(q, options.purpose ?? options.channelId),
+  options: {
+    channelId?: string;
+    purpose?: DirectoryPurpose;
+    department?: Department | null;
+    enabled?: boolean;
+  } = {}
+) => {
+  const scope = options.purpose ?? options.channelId;
+  return useQuery({
+    queryKey: chatKeys.people(
+      q,
+      options.department ? `${scope ?? "org"}:${options.department}` : scope
+    ),
     queryFn: ({ signal }) =>
       chatApi.directory(
         {
@@ -280,7 +292,8 @@ export const usePeopleSearch = (
             ? { purpose: options.purpose }
             : options.channelId
               ? { channelId: options.channelId }
-              : {})
+              : {}),
+          ...(options.department ? { department: options.department } : {})
         },
         signal
       ),
@@ -288,3 +301,4 @@ export const usePeopleSearch = (
     staleTime: 60_000,
     placeholderData: (previous) => previous
   });
+};

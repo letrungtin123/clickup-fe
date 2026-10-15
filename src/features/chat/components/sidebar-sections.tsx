@@ -26,11 +26,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatChannel } from "@/contracts/chat";
+import { departmentLabels } from "@/contracts/departments";
 import { P } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
 import { usePresence } from "@/lib/realtime/hooks";
 
-import { useChannels } from "../hooks/use-channels";
+import { useChatDepartmentScope, useDepartmentChannels } from "../hooks/use-department-channels";
 import {
   channelTitle,
   formatCount,
@@ -40,23 +41,23 @@ import {
   splitSidebar,
   type ChannelSort
 } from "../model/channels";
+import { badgeCount } from "../model/departments";
 import { useChatDialogStore, useChatPrefs } from "../model/ui-state";
 import { ChannelGlyph } from "./channel-glyph";
 
 /**
  * Sidebar chat sections (PD-001). Data: GET /channels (qk.chat.channels) kept live by ChatRuntime —
- * unread/mention badges, ordering and presence update without refetching.
+ * unread/mention badges, ordering and presence update without refetching. Only the conversations of
+ * the department selected in the header switcher are listed (PD-054).
  */
 
 const COLLAPSED_LIMIT = 15;
 
 export const ChannelsSection = () => {
-  const channels = useChannels();
+  const { query: channels, items: shown } = useDepartmentChannels();
+  const { current } = useChatDepartmentScope();
   const sort = useChatPrefs((state) => state.channelSort);
-  const items = useMemo(
-    () => sortChannels(splitSidebar(channels.data?.items ?? []).channels, sort),
-    [channels.data, sort]
-  );
+  const items = useMemo(() => sortChannels(splitSidebar(shown).channels, sort), [shown, sort]);
   const openDialog = useChatDialogStore((state) => state.open);
 
   if (channels.isPending) return <SectionSkeleton icon={Hash} />;
@@ -64,7 +65,11 @@ export const ChannelsSection = () => {
   if (items.length === 0) {
     return (
       <SectionEmpty
-        text="Bạn chưa tham gia kênh nào."
+        text={
+          current
+            ? `Bạn chưa tham gia kênh nào của ${departmentLabels[current]}.`
+            : "Bạn chưa tham gia kênh nào."
+        }
         actionLabel="Duyệt kênh"
         onAction={() => openDialog("browse-channels")}
       />
@@ -74,11 +79,8 @@ export const ChannelsSection = () => {
 };
 
 export const DirectMessagesSection = () => {
-  const channels = useChannels();
-  const items = useMemo(
-    () => sortChannels(splitSidebar(channels.data?.items ?? []).directs, "activity"),
-    [channels.data]
-  );
+  const { query: channels, items: shown } = useDepartmentChannels();
+  const items = useMemo(() => sortChannels(splitSidebar(shown).directs, "activity"), [shown]);
   const openDialog = useChatDialogStore((state) => state.open);
   // Presence for 1:1 DM partners shown in the sidebar.
   const partnerIds = useMemo(
@@ -160,14 +162,8 @@ const ConversationRow = memo(function ConversationRow({
 }) {
   const muted = isMuted(channel);
   const unread = hasUnread(channel);
-  const direct = channel.kind === "dm" || channel.kind === "group_dm";
   const title = channelTitle(channel);
-  const badge =
-    channel.mentionCount > 0
-      ? channel.mentionCount
-      : direct && channel.unreadCount > 0 && !muted
-        ? channel.unreadCount
-        : 0;
+  const badge = badgeCount(channel);
   const label = [
     title,
     channel.kind === "private" ? "kênh riêng tư" : null,

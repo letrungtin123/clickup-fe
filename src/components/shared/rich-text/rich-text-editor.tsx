@@ -141,6 +141,30 @@ const comparable = (input: RichTextDocLike | null | undefined, variant: RichText
   return JSON.stringify(sanitizedOrRaw(doc, variant));
 };
 
+/**
+ * Most @mention suggestions shown at once (the people directory's page maximum). The popup scrolls, so a source may
+ * return everyone who can be mentioned; a short cap used to hide people (PD-053).
+ */
+const mentionSuggestionMax = 50;
+
+type FloatingMiddleware = NonNullable<NonNullable<SuggestionOptions["floatingUi"]>["middleware"]>[number];
+
+/** Space kept between the @mention popup and the viewport edges. */
+const viewportGutter = 8;
+
+/**
+ * Keeps the @mention popup inside the viewport horizontally: a caret near the right edge of a phone used to push it
+ * off-screen and scroll the page sideways. Runs after Tiptap's offset / flip; page coordinates for "absolute".
+ */
+const keepInViewport: FloatingMiddleware = {
+  name: "keepInViewport",
+  fn: ({ x, rects, strategy }) => {
+    const scrollX = strategy === "fixed" ? 0 : window.scrollX;
+    const right = scrollX + document.documentElement.clientWidth - rects.floating.width - viewportGutter;
+    return { x: Math.max(scrollX + viewportGutter, Math.min(x, right)) };
+  }
+};
+
 const buildExtensions = (
   variant: RichTextVariant,
   placeholder: string | undefined,
@@ -191,12 +215,13 @@ const buildExtensions = (
     pluginKey: mentionKey,
     allowSpaces: false,
     debounce: 180,
+    floatingUi: { middleware: [keepInViewport] },
     allow: () => Boolean(bridge.callbacks.mentionSource),
     items: async ({ query, signal }) => {
       const source = bridge.callbacks.mentionSource;
       if (!source) return [];
       try {
-        return (await source(query, signal)).slice(0, 8);
+        return (await source(query, signal)).slice(0, mentionSuggestionMax);
       } catch {
         return [];
       }

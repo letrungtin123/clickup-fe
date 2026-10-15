@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Globe, Hash, Lock } from "lucide-react";
 import { useId, useState } from "react";
 import { useNavigate } from "react-router";
@@ -20,9 +21,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChannelNameSchema, chatLimits, type NamedChannelKind } from "@/contracts/chat";
 import type { UserRef } from "@/contracts/work";
 import { isApiError } from "@/lib/api/errors";
+import { qk } from "@/lib/query-keys";
 
 import { chatErrorMessage } from "../errors";
+import { useChannelDepartment } from "../hooks/use-channel-department";
 import { useCreateChannel } from "../hooks/use-channels";
+import { ChannelDepartmentNote } from "./channel-department";
 import { PeoplePicker } from "./people-picker";
 
 const kindOptions = [
@@ -30,7 +34,7 @@ const kindOptions = [
     value: "public",
     label: "Công khai",
     icon: Globe,
-    description: "Mọi người trong tổ chức có thể tìm, xem và tham gia."
+    description: "Dành cho cả phòng ban: mọi thành viên tự động vào kênh."
   },
   {
     value: "private",
@@ -57,7 +61,9 @@ export const CreateChannelDialog = ({
 const CreateChannelForm = ({ onDone }: { onDone: () => void }) => {
   const ids = useId();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const create = useCreateChannel();
+  const channelDepartment = useChannelDepartment();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [kind, setKind] = useState<NamedChannelKind>("public");
@@ -78,13 +84,18 @@ const CreateChannelForm = ({ onDone }: { onDone: () => void }) => {
       return;
     }
     setNameError(null);
+    // Both kinds belong to the department selected in the header switcher (PD-054).
+    const base = {
+      kind,
+      name: parsed.data,
+      description: description.trim() || null,
+      ...(channelDepartment.requestDepartment
+        ? { department: channelDepartment.requestDepartment }
+        : {})
+    };
     create.mutate(
-      {
-        kind,
-        name: parsed.data,
-        description: description.trim() || null,
-        memberIds: members.map((user) => user.id)
-      },
+      // Public (PD-053): the whole department is added by the server; private: the people picked here.
+      kind === "public" ? base : { ...base, memberIds: members.map((user) => user.id) },
       {
         onSuccess: (channel) => {
           toast.success(`Đã tạo kênh #${channel.name ?? parsed.data}`);
@@ -95,6 +106,10 @@ const CreateChannelForm = ({ onDone }: { onDone: () => void }) => {
           if (isApiError(error) && error.code === "CHANNEL_NAME_TAKEN") {
             setNameError(chatErrorMessage(error));
             return;
+          }
+          // Department membership changed meanwhile: read the departments again.
+          if (isApiError(error) && error.code === "DEPARTMENT_FORBIDDEN") {
+            void queryClient.invalidateQueries({ queryKey: qk.session() });
           }
           setFormError(chatErrorMessage(error, "Không tạo được kênh. Vui lòng thử lại."));
         }
@@ -161,7 +176,10 @@ const CreateChannelForm = ({ onDone }: { onDone: () => void }) => {
           <SegmentedControl
             aria-labelledby={`${ids}-kind`}
             value={kind}
-            onChange={setKind}
+            onChange={(next) => {
+              setKind(next);
+              setFormError(null);
+            }}
             options={kindOptions}
             className="w-full"
           />
@@ -170,23 +188,30 @@ const CreateChannelForm = ({ onDone }: { onDone: () => void }) => {
           </FieldDescription>
         </Field>
 
-        <Field>
-          <FieldLabel>
-            Thêm thành viên{" "}
-            <span className="font-normal text-foreground-subtle">(không bắt buộc)</span>
-          </FieldLabel>
-          <PeoplePicker
-            selected={members}
-            onChange={setMembers}
-            max={chatLimits.createMembersMax}
-            listClassName="max-h-44"
-          />
-          <FieldDescription className="text-xs">
-            {kind === "public"
-              ? "Người được thêm có thể gửi tin ngay; những người khác vẫn tự tham gia được."
-              : "Chỉ những người bạn thêm (và quản trị kênh mời sau này) mới thấy kênh."}
-          </FieldDescription>
-        </Field>
+        <ChannelDepartmentNote
+          department={channelDepartment.department}
+          kind={kind}
+          fromSwitcher={channelDepartment.fromSwitcher}
+        />
+
+        {kind === "public" ? null : (
+          <Field>
+            <FieldLabel>
+              Thêm thành viên{" "}
+              <span className="font-normal text-foreground-subtle">(không bắt buộc)</span>
+            </FieldLabel>
+            <PeoplePicker
+              selected={members}
+              onChange={setMembers}
+              max={chatLimits.createMembersMax}
+              department={channelDepartment.department}
+              listClassName="max-h-44"
+            />
+            <FieldDescription className="text-xs">
+              Chỉ những người bạn thêm (và quản trị kênh mời sau này) mới thấy kênh.
+            </FieldDescription>
+          </Field>
+        )}
 
         {formError ? (
           <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-[13px] text-danger">

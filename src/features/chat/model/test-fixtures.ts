@@ -67,6 +67,7 @@ export const makeChannel = (overrides: Partial<ChatChannel> = {}): ChatChannel =
   createdAt: "2026-10-01T08:00:00.000Z",
   updatedAt: "2026-10-01T08:00:00.000Z",
   archivedAt: null,
+  department: "PHOTO_RETOUCH",
   memberCount: 3,
   lastMessageSeq: 10,
   lastMessageAt: "2026-10-09T08:00:00.000Z",
@@ -78,5 +79,6 @@ export const makeChannel = (overrides: Partial<ChatChannel> = {}): ChatChannel =
   unreadCount: 0,
   mentionCount: 0,
   participants: [],
+  audienceDepartments: ["PHOTO_RETOUCH"],
   ...overrides
 });

@@ -7,6 +7,7 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { roleLabel } from "@/components/layout/role-label";
 import { ChangePasswordForm } from "@/features/auth/components/change-password-form";
 import { useLogout, useSessionContext } from "@/features/auth/hooks";
+import { DesktopNotificationsPanel } from "@/features/desktop-notifications/components/desktop-notifications-panel";
 import { NotificationPreferencesPanel } from "@/features/production/components/notification-preferences";
 import {
   gradientAccentOptions,
@@ -61,6 +62,13 @@ export const ProfileSettingsRoute = () => {
 
       <Card title="Thông báo" description="Chọn kênh nhận thông báo về việc được giao, QC và tin nhắn.">
         <NotificationPreferencesPanel />
+      </Card>
+
+      <Card
+        title="Thông báo trên máy tính"
+        description="Thông báo của Windows / macOS khi có tin nhắn mới, kể cả khi bạn đang ở tab hoặc ứng dụng khác. Lưu trên thiết bị này."
+      >
+        <DesktopNotificationsPanel />
       </Card>
 
       <Card

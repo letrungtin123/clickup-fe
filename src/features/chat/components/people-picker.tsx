@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Command, CommandEmpty, CommandItem, CommandList } from "@/components/ui/command";
 import { Spinner } from "@/components/ui/spinner";
+import type { Department } from "@/contracts/departments";
 import type { DirectoryPurpose, UserRef } from "@/contracts/work";
 import { useDebouncedValue } from "@/features/command/search-api";
 import { usePermissions, useSessionContext } from "@/features/auth/hooks";
@@ -27,6 +28,8 @@ type PeoplePickerProps = {
   listClassName?: string;
   /** "dm": the people the viewer may message (open to every member), not the member directory. */
   purpose?: DirectoryPurpose;
+  /** Only people of this department (PD-054: "Tin nhắn mới" and private-channel pickers follow the switcher). */
+  department?: Department | null;
 };
 
 /**
@@ -43,7 +46,8 @@ export const PeoplePicker = ({
   autoFocus = false,
   maxHint,
   listClassName,
-  purpose
+  purpose,
+  department
 }: PeoplePickerProps) => {
   const session = useSessionContext();
   const { can } = usePermissions();
@@ -51,7 +55,10 @@ export const PeoplePicker = ({
   const label = placeholder ?? (can(P.MemberView) ? "Tìm theo tên hoặc email…" : "Tìm theo tên…");
   const [q, setQ] = useState("");
   const debounced = useDebouncedValue(q, 180);
-  const people = usePeopleSearch(debounced, purpose ? { purpose } : {});
+  const people = usePeopleSearch(debounced, {
+    ...(purpose ? { purpose } : {}),
+    ...(department ? { department } : {})
+  });
   const inputRef = useRef<HTMLInputElement | null>(null);
   const selectedIds = new Set(selected.map((user) => user.id));
   const single = max === 1;

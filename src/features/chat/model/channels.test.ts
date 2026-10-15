@@ -6,6 +6,7 @@ import {
   channelTitle,
   formatCount,
   markSidebarRead,
+  mergeChannelInfo,
   roomCandidates,
   sortChannels
 } from "./channels";
@@ -77,5 +78,43 @@ describe("channelEventChangesCapabilities (BUG-WK-43)", () => {
     expect(channelEventChangesCapabilities(live, { kind: "updated", channel: { ...live, kind: "private" } })).toBe(true);
     expect(channelEventChangesCapabilities(live, { kind: "updated", channel: live })).toBe(false);
     expect(channelEventChangesCapabilities(undefined, { kind: "updated", channel: live })).toBe(false);
+  });
+
+  it("re-reads them when a public channel moves to another department (PD-053)", () => {
+    const retouch = { ...live, department: "PHOTO_RETOUCH" as const };
+    const production = { ...live, department: "PRODUCTION" as const };
+    expect(channelEventChangesCapabilities(retouch, { kind: "updated", channel: production })).toBe(true);
+    expect(channelEventChangesCapabilities(retouch, { kind: "updated", channel: retouch })).toBe(false);
+  });
+});
+
+describe("mergeChannelInfo (PD-053)", () => {
+  it("carries the department of a realtime channel update", () => {
+    const cached = makeChannel({ kind: "private", department: null, unreadCount: 2 });
+    const info = makeChannel({ kind: "public", department: "PRODUCTION", memberCount: 12, unreadCount: 0 });
+    const merged = mergeChannelInfo(cached, info);
+    expect(merged).toMatchObject({ kind: "public", department: "PRODUCTION", memberCount: 12, unreadCount: 2 });
+  });
+
+  it("keeps the viewer's audience departments (PD-054: not in realtime payloads)", () => {
+    const { audienceDepartments: _omitted, ...info } = makeChannel({ kind: "dm", name: null, department: null });
+    const cached = makeChannel({ kind: "dm", name: null, department: null, audienceDepartments: ["PRODUCTION"] });
+    expect(mergeChannelInfo(cached, { ...info, memberCount: 2 }).audienceDepartments).toEqual(["PRODUCTION"]);
+
+    const named = makeChannel({ department: "PHOTO_RETOUCH", audienceDepartments: ["PHOTO_RETOUCH"] });
+    const { audienceDepartments: _same, ...renamed } = { ...named, name: "mới" };
+    expect(mergeChannelInfo(named, renamed).audienceDepartments).toEqual(["PHOTO_RETOUCH"]);
+  });
+
+  it("moves a named channel to its new department's audience", () => {
+    const cached = makeChannel({ kind: "private", department: null, audienceDepartments: ["PHOTO_RETOUCH", "PRODUCTION"] });
+    const { audienceDepartments: _omitted, ...info } = makeChannel({ kind: "public", department: "PRODUCTION" });
+    expect(mergeChannelInfo(cached, info).audienceDepartments).toEqual(["PRODUCTION"]);
+    const { audienceDepartments: _none, ...orgWide } = makeChannel({ kind: "public", department: null });
+    expect(mergeChannelInfo(cached, orgWide).audienceDepartments).toEqual(["PHOTO_RETOUCH", "PRODUCTION"]);
+    expect(
+      mergeChannelInfo(makeChannel({ department: "PRODUCTION", audienceDepartments: ["PRODUCTION"] }), orgWide)
+        .audienceDepartments
+    ).toEqual(["PHOTO_RETOUCH", "PRODUCTION"]);
   });
 });

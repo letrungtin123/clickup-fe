@@ -1,28 +1,29 @@
 import { cn } from "cn";
 import { useMemo } from "react";
 
-import { useChannels } from "../hooks/use-channels";
-import { formatCount, hasUnread, isMuted } from "../model/channels";
+import { useDepartmentChannels } from "../hooks/use-department-channels";
+import { formatCount, hasUnread } from "../model/channels";
+import { badgeCount } from "../model/departments";
 
 /**
  * Unread indicator for chat entry points that are not the sidebar sections (mobile top bar,
  * tablet icon rail). Counts what the sidebar badges count — mentions everywhere plus unread
  * direct messages that are not muted — and falls back to a plain dot for other unread channels.
- * Data comes from the channel list ChatRuntime keeps live, so no extra request is made.
+ * Like the sidebar, only the conversations of the selected department count (PD-054): the other
+ * departments' unread shows on the department switcher. Data comes from the channel list
+ * ChatRuntime keeps live, so no extra request is made.
  */
 export const ChatNavBadge = ({ className }: { className?: string }) => {
-  const channels = useChannels();
+  const { items } = useDepartmentChannels();
   const { count, unread } = useMemo(() => {
     let total = 0;
     let any = false;
-    for (const channel of channels.data?.items ?? []) {
-      const direct = channel.kind === "dm" || channel.kind === "group_dm";
-      if (channel.mentionCount > 0) total += channel.mentionCount;
-      else if (direct && channel.unreadCount > 0 && !isMuted(channel)) total += channel.unreadCount;
+    for (const channel of items) {
+      total += badgeCount(channel);
       if (hasUnread(channel)) any = true;
     }
     return { count: total, unread: any };
-  }, [channels.data]);
+  }, [items]);
 
   if (count > 0) {
     return (

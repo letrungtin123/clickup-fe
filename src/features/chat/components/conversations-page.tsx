@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { Compass, MessageSquarePlus, MessagesSquare, Plus, Search } from "lucide-react";
+import { ArrowRight, Compass, MessageSquarePlus, MessagesSquare, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "@/components/shared/router-link";
 
@@ -9,11 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ChatChannel } from "@/contracts/chat";
+import { departmentLabels, type Department } from "@/contracts/departments";
 import { P } from "@/features/auth/permissions";
 import { usePermissions } from "@/features/auth/hooks";
+import { useDepartment } from "@/features/departments/hooks";
+import { departmentIcons, departmentTones } from "@/features/departments/meta";
+import { toneClass } from "@/lib/colors";
 import { usePresence } from "@/lib/realtime/hooks";
 
-import { useChannels } from "../hooks/use-channels";
+import {
+  useChatDepartmentScope,
+  useDepartmentChannels,
+  useOtherDepartmentUnread
+} from "../hooks/use-department-channels";
 import { channelTitle, formatCount, hasUnread, isMuted, sortChannels } from "../model/channels";
 import { timeAgo } from "../model/time";
 import { useChatDialogStore } from "../model/ui-state";
@@ -27,19 +35,21 @@ const fold = (value: string) =>
     .toLocaleLowerCase("vi");
 
 /**
- * `/c` — every conversation in one list (the first pane of the mobile stack: list → channel →
- * thread). On wide screens it doubles as a landing page with quick actions.
+ * `/c` — every conversation of the selected department in one list (PD-054; the first pane of the
+ * mobile stack: list → channel → thread). On wide screens it doubles as a landing page with quick
+ * actions.
  */
 export const ConversationsPage = () => {
-  const channels = useChannels();
+  const { query: channels, items: shown } = useDepartmentChannels();
+  const { current } = useChatDepartmentScope();
   const { can } = usePermissions();
   const openDialog = useChatDialogStore((state) => state.open);
   const [q, setQ] = useState("");
   const items = useMemo(() => {
-    const sorted = sortChannels(channels.data?.items ?? [], "activity");
+    const sorted = sortChannels(shown, "activity");
     const term = fold(q.trim());
     return term ? sorted.filter((channel) => fold(channelTitle(channel)).includes(term)) : sorted;
-  }, [channels.data, q]);
+  }, [shown, q]);
   const partnerIds = useMemo(
     () =>
       items
@@ -55,7 +65,11 @@ export const ConversationsPage = () => {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Tin nhắn"
-        description="Kênh, nhóm và tin nhắn trực tiếp của bạn."
+        description={
+          current
+            ? `Kênh, nhóm và tin nhắn trực tiếp của bạn ở phòng ban ${departmentLabels[current]}.`
+            : "Kênh, nhóm và tin nhắn trực tiếp của bạn."
+        }
         actions={
           <>
             {/* Phones show the icons only: the labels stay available to screen readers. */}
@@ -101,6 +115,7 @@ export const ConversationsPage = () => {
         </div>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
+        <OtherDepartmentsHint />
         {channels.isPending ? (
           <div className="flex flex-col gap-1 p-3" aria-hidden="true">
             {Array.from({ length: 8 }, (_, index) => (
@@ -204,5 +219,52 @@ const ConversationLink = ({
         </span>
       ) : null}
     </Link>
+  );
+};
+
+/**
+ * "3 tin chưa đọc ở Production → Chuyển": unread waiting in the other departments (PD-054), one tap
+ * away on the conversation list (phones reach the switcher from the top bar too).
+ */
+const OtherDepartmentsHint = () => {
+  const { byDepartment } = useOtherDepartmentUnread();
+  const { setDepartment } = useDepartment();
+  const entries = (Object.entries(byDepartment) as [Department, number][]).filter(
+    ([, count]) => count > 0
+  );
+  if (entries.length === 0) return null;
+  return (
+    <ul className="mx-auto flex w-full max-w-3xl flex-col gap-1 px-2 pt-2 md:px-4 md:pt-4">
+      {entries.map(([department, count]) => {
+        const Icon = departmentIcons[department];
+        return (
+          <li key={department}>
+            <button
+              type="button"
+              onClick={() => setDepartment(department)}
+              className={cn(
+                toneClass(departmentTones[department]),
+                "flex w-full items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2 text-left text-[13px] outline-none transition-colors duration-150 pointer-coarse:py-2.5 hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md bg-(--tone-soft) text-(--tone-text)"
+              >
+                <Icon className="size-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-semibold tabular-nums">{formatCount(count)}</span> tin chưa
+                đọc ở <span className="font-medium">{departmentLabels[department]}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-brand-text">
+                Chuyển
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
