@@ -26,8 +26,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import type { RichTextDoc } from "@/contracts/rich-text";
-import type { UserRef } from "@/contracts/work";
+import { MENTION_ALL_ID, type RichTextDoc } from "@/contracts/rich-text";
 
 import { EditorToolbar } from "./editor-toolbar";
 import {
@@ -38,6 +37,12 @@ import {
   type RichTextDocLike,
   type RichTextVariant
 } from "./helpers";
+import {
+  isMentionAllCandidate,
+  withoutMentioned,
+  type MentionCandidate,
+  type MentionSource
+} from "./mention-candidates";
 import { MentionList, type MentionListHandle, type MentionListProps } from "./mention-list";
 import "./rich-text.css";
 
@@ -54,7 +59,7 @@ export type RichTextEditorHandle = {
   setDoc: (doc: RichTextDocLike | null) => void;
 };
 
-export type MentionSource = (query: string, signal?: AbortSignal) => Promise<UserRef[]>;
+export type { MentionSource } from "./mention-candidates";
 
 export type RichTextEditorProps = {
   /**
@@ -71,8 +76,16 @@ export type RichTextEditorProps = {
   variant: RichTextVariant;
   /** Enter submits, Shift+Enter inserts a line break (lists and code blocks keep normal Enter). */
   submitOnEnter?: boolean | undefined;
-  /** Async people search for @mentions (debounced by the editor, aborted when the query changes). */
+  /**
+   * Async people search for @mentions (debounced by the editor, aborted when the query changes). A chat channel /
+   * group DM source may put the "@all" candidate first (PD-061; pair it with `allowMentionAll`).
+   */
   mentionSource?: MentionSource | undefined;
+  /**
+   * Keep @all mentions when sanitizing (chat channels and group DMs only, PD-061). Without it an @all node becomes
+   * the text "@all", as on the server.
+   */
+  allowMentionAll?: boolean | undefined;
   autoFocus?: boolean | undefined;
   disabled?: boolean | undefined;
   /** Show the formatting toolbar above the document. */
@@ -104,7 +117,14 @@ export type RichTextEditorProps = {
 
 type Callbacks = Pick<
   RichTextEditorProps,
-  "onChange" | "onSubmit" | "onPasteFiles" | "onFocus" | "onBlur" | "mentionSource" | "submitOnEnter"
+  | "onChange"
+  | "onSubmit"
+  | "onPasteFiles"
+  | "onFocus"
+  | "onBlur"
+  | "mentionSource"
+  | "submitOnEnter"
+  | "allowMentionAll"
 >;
 
 /** Mutable bridge between React props and long-lived editor extensions (latest callbacks, popup state). */
@@ -130,15 +150,19 @@ const toEditorContent = (input: RichTextDocLike | null | undefined): RichTextDoc
   return doc?.content && doc.content.length > 0 ? doc : { type: "doc", content: [{ type: "paragraph" }] };
 };
 
-const sanitizedOrRaw = (doc: RichTextDoc, variant: RichTextVariant) => {
-  const prepared = prepareDoc(doc, variant, { allowEmpty: true });
+const sanitizedOrRaw = (doc: RichTextDoc, variant: RichTextVariant, allowMentionAll = false) => {
+  const prepared = prepareDoc(doc, variant, { allowEmpty: true, allowMentionAll });
   return prepared.ok ? prepared.doc : doc;
 };
 
-const comparable = (input: RichTextDocLike | null | undefined, variant: RichTextVariant) => {
+const comparable = (
+  input: RichTextDocLike | null | undefined,
+  variant: RichTextVariant,
+  allowMentionAll: boolean
+) => {
   const doc = asRichTextDoc(input);
   if (!doc || isEmptyDoc(doc)) return "";
-  return JSON.stringify(sanitizedOrRaw(doc, variant));
+  return JSON.stringify(sanitizedOrRaw(doc, variant, allowMentionAll));
 };
 
 /**
@@ -178,7 +202,9 @@ const buildExtensions = (
     if (!onSubmit) return false;
     // Disabled while a previous submit is in flight: swallow the shortcut (callers also guard).
     if (!editor.isEditable) return true;
-    const prepared = prepareDoc(editor.getJSON() as RichTextDoc, variant);
+    const prepared = prepareDoc(editor.getJSON() as RichTextDoc, variant, {
+      allowMentionAll: Boolean(bridge.callbacks.allowMentionAll)
+    });
     if (!prepared.ok) {
       if (prepared.reason === "too-large") toast.error(prepared.message);
       return true;
@@ -210,18 +236,26 @@ const buildExtensions = (
     }
   });
 
-  const suggestion: Omit<SuggestionOptions<UserRef, MentionNodeAttrs>, "editor"> = {
+  const suggestion: Omit<SuggestionOptions<MentionCandidate, MentionNodeAttrs>, "editor"> = {
     char: "@",
     pluginKey: mentionKey,
     allowSpaces: false,
     debounce: 180,
     floatingUi: { middleware: [keepInViewport] },
     allow: () => Boolean(bridge.callbacks.mentionSource),
-    items: async ({ query, signal }) => {
+    items: async ({ query, signal, editor }) => {
       const source = bridge.callbacks.mentionSource;
       if (!source) return [];
+      // Who is already @mentioned in this draft is not offered again.
+      const mentioned = new Set<string>();
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "mention" && typeof node.attrs.id === "string") mentioned.add(node.attrs.id);
+      });
       try {
-        return (await source(query, signal)).slice(0, mentionSuggestionMax);
+        const items = withoutMentioned(await source(query, signal), mentioned);
+        // "@all" (PD-061) comes on top of the people, it does not take one of their rows.
+        const first = items[0];
+        return items.slice(0, mentionSuggestionMax + (first && isMentionAllCandidate(first) ? 1 : 0));
       } catch {
         return [];
       }
@@ -288,7 +322,13 @@ const buildExtensions = (
       renderText: ({ node }) => `@${String(node.attrs.label ?? "")}`,
       renderHTML: ({ node }) => [
         "span",
-        mergeAttributes({ class: "rt-mention", "data-type": "mention", "data-id": node.attrs.id as string }),
+        mergeAttributes({
+          class: "rt-mention",
+          "data-type": "mention",
+          "data-id": node.attrs.id as string,
+          // @all (PD-061) reads differently from a person: amber, bold (rich-text.css).
+          ...(node.attrs.id === MENTION_ALL_ID ? { "data-all": "true" } : {})
+        }),
         `@${String(node.attrs.label ?? node.attrs.id ?? "")}`
       ],
       suggestion
@@ -300,7 +340,7 @@ const buildExtensions = (
 /**
  * Tiptap v3 editor that only produces nodes/marks the server keeps (contracts/rich-text.ts):
  * paragraphs, headings 1–3 (description), lists, task lists, quotes, code, rules, hard breaks,
- * links (http/https/mailto) and @mentions {id,label}.
+ * links (http/https/mailto) and @mentions {id,label} (`{ id: "all", label: "all" }` = @all with `allowMentionAll`).
  *
  *   <RichTextEditor variant="message" submitOnEnter mentionSource={search} onSubmit={send} ref={handle} />
  */
@@ -312,6 +352,7 @@ export const RichTextEditor = ({
   variant,
   submitOnEnter = false,
   mentionSource,
+  allowMentionAll = false,
   autoFocus = false,
   disabled = false,
   toolbar = false,
@@ -330,7 +371,16 @@ export const RichTextEditor = ({
 }: RichTextEditorProps) => {
   const [bridge] = useState(createBridge);
   useLayoutEffect(() => {
-    bridge.sync({ onChange, onSubmit, onPasteFiles, onFocus, onBlur, mentionSource, submitOnEnter });
+    bridge.sync({
+      onChange,
+      onSubmit,
+      onPasteFiles,
+      onFocus,
+      onBlur,
+      mentionSource,
+      submitOnEnter,
+      allowMentionAll
+    });
   });
   const hasMentions = Boolean(mentionSource);
 
@@ -387,9 +437,14 @@ export const RichTextEditor = ({
   // External value → editor, never while the user is typing.
   useEffect(() => {
     if (editor.isDestroyed || editor.isFocused) return;
-    if (comparable(editor.getJSON() as RichTextDoc, variant) === comparable(value, variant)) return;
+    if (
+      comparable(editor.getJSON() as RichTextDoc, variant, allowMentionAll) ===
+      comparable(value, variant, allowMentionAll)
+    ) {
+      return;
+    }
     editor.commands.setContent(toEditorContent(value), { emitUpdate: false });
-  }, [editor, value, variant]);
+  }, [allowMentionAll, editor, value, variant]);
 
   const announceEditor = useEffectEvent((instance: Editor) => onEditorReady?.(instance));
   useEffect(() => {
@@ -411,13 +466,13 @@ export const RichTextEditor = ({
       clear: () => {
         editor.commands.setContent(toEditorContent(null), { emitUpdate: false });
       },
-      getDoc: () => sanitizedOrRaw(editor.getJSON() as RichTextDoc, variant),
+      getDoc: () => sanitizedOrRaw(editor.getJSON() as RichTextDoc, variant, allowMentionAll),
       isEmpty: () => isEmptyDoc(editor.getJSON() as RichTextDoc),
       setDoc: (doc) => {
         editor.commands.setContent(toEditorContent(doc), { emitUpdate: false });
       }
     }),
-    [editor, variant]
+    [allowMentionAll, editor, variant]
   );
 
   return (

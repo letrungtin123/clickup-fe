@@ -1,14 +1,17 @@
 import { cn } from "cn";
+import { Megaphone } from "lucide-react";
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Spinner } from "@/components/ui/spinner";
-import type { UserRef } from "@/contracts/work";
+
+import { isMentionAllCandidate, mentionAttrsOf, type MentionCandidate } from "./mention-candidates";
 
 export type MentionListHandle = { onKeyDown: (event: KeyboardEvent) => boolean };
 
 export type MentionListProps = {
-  items: UserRef[];
+  /** People, and @all first where the source offers it (chat channels and group DMs, PD-061). */
+  items: MentionCandidate[];
   loading: boolean;
   query: string;
   command: (item: { id: string; label: string }) => void;
@@ -20,7 +23,8 @@ const listPadding = 4;
 
 /**
  * Suggestion popup for @mentions: keyboard navigable (↑/↓/Enter/Tab), avatars, async loading and
- * empty states. Rendered by Tiptap's suggestion plugin through ReactRenderer.
+ * empty states. Rendered by Tiptap's suggestion plugin through ReactRenderer. Chat channels and group DMs
+ * put "@all" first (megaphone, member count, PD-061): it inserts `{ id: "all", label: "all" }`.
  *
  * Long lists (every channel member, PD-053) scroll inside a fixed max height; the highlighted row is
  * kept in view by scrolling the list only (scrollIntoView would also move the page or the
@@ -41,7 +45,7 @@ export const MentionList = ({ items, loading, query, command, ref }: MentionList
   const select = (index: number) => {
     const item = items[index];
     if (item) {
-      command({ id: item.id, label: item.displayName });
+      command(mentionAttrsOf(item));
     }
   };
 
@@ -100,36 +104,59 @@ export const MentionList = ({ items, loading, query, command, ref }: MentionList
           )}
         </div>
       ) : (
-        items.map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            role="option"
-            data-index={index}
-            aria-selected={index === active}
-            onMouseDown={(event) => event.preventDefault()}
-            onPointerMove={(event) => {
-              if (event.pointerType !== "mouse") return;
-              const at = `${event.screenX},${event.screenY}`;
-              if (at === pointer.current) return;
-              pointer.current = at;
-              if (index !== active) setActive(index);
-            }}
-            onClick={() => select(index)}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none pointer-coarse:py-2",
-              index === active ? "bg-accent text-accent-foreground" : "text-foreground"
-            )}
-          >
-            <UserAvatar user={item} size="xs" />
-            <span className="min-w-0 flex-1 truncate">{item.displayName}</span>
-            {item.email ? (
-              <span className="max-w-[45%] truncate text-xs text-foreground-subtle">
-                {item.email}
-              </span>
-            ) : null}
-          </button>
-        ))
+        items.map((item, index) => {
+          const all = isMentionAllCandidate(item);
+          return (
+            <button
+              key={all ? "@all" : item.id}
+              type="button"
+              role="option"
+              data-index={index}
+              data-mention-all={all || undefined}
+              aria-selected={index === active}
+              onMouseDown={(event) => event.preventDefault()}
+              onPointerMove={(event) => {
+                if (event.pointerType !== "mouse") return;
+                const at = `${event.screenX},${event.screenY}`;
+                if (at === pointer.current) return;
+                pointer.current = at;
+                if (index !== active) setActive(index);
+              }}
+              onClick={() => select(index)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none pointer-coarse:py-2",
+                index === active ? "bg-accent text-accent-foreground" : "text-foreground",
+                // @all is set apart from the people below it.
+                all && index < items.length - 1 && "mb-1 after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-[3px] after:h-px after:bg-border relative"
+              )}
+            >
+              {all ? (
+                <>
+                  <span
+                    className="flex size-5 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning ring-1 ring-warning/30"
+                    aria-hidden="true"
+                  >
+                    <Megaphone className="size-3" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-semibold">@all</span>
+                    <span className="truncate text-xs text-foreground-muted">{item.description}</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <UserAvatar user={item} size="xs" />
+                  <span className="min-w-0 flex-1 truncate">{item.displayName}</span>
+                  {item.email ? (
+                    <span className="max-w-[45%] truncate text-xs text-foreground-subtle">
+                      {item.email}
+                    </span>
+                  ) : null}
+                </>
+              )}
+            </button>
+          );
+        })
       )}
       {loading && items.length > 0 ? (
         <div className="flex justify-center py-1" aria-hidden="true">

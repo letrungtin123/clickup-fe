@@ -31,6 +31,9 @@ const productionMessages: Record<string, string> = {
     "Chức năng feedback riêng đã bỏ. Dùng trạng thái job “Feedback” và “Chia task” cho các task làm lại.",
   // PD-047: a work task's QC can be changed, never removed (the server words it the same way).
   QC_REQUIRED: "Task phải có QC — chỉ đổi sang QC khác.",
+  // PD-058: the quantity is optional until Done; an empty one is filled in directly, never through a request.
+  TASK_QTY_REQUIRED: "Nhập số lượng trước khi chuyển Done.",
+  TASK_QTY_EMPTY: "Task chưa có số lượng — điền trực tiếp vào ô số lượng.",
   // Fallbacks when the server sends no message (the server-worded set below wins otherwise).
   QTY_DONE_TOO_HIGH:
     "Số tấm hoàn thành vượt mức cho phép. Nếu thực tế làm nhiều hơn, hãy báo Leader của job sửa sau khi Done.",
@@ -88,6 +91,9 @@ const serverWorded = new Set([
   "QTY_REQUEST_INVALID",
   "QTY_REQUEST_CLOSED",
   "QTY_REQUEST_NOT_FOUND",
+  // PD-058: Done without the missing quantities / a request on a task that has none yet.
+  "TASK_QTY_REQUIRED",
+  "TASK_QTY_EMPTY",
   "JOB_NOT_READY",
   "NOTE_REQUIRED",
   "TASK_LINES_INVALID",

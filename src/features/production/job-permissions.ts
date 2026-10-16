@@ -42,7 +42,7 @@ export const jobScopeMeaning: Record<
     all: "Mọi job."
   },
   create: {
-    own: "Chỉ thêm task giao cho chính mình vào job có sẵn (“Nhập công việc”, “Chia task”).",
+    own: "Chỉ thêm task giao cho chính mình vào job có sẵn (“Nhập Task”, “Chia task”).",
     all: "Tạo job (“Tạo job”) và task cho bất kỳ ai."
   },
   update: {
@@ -60,7 +60,7 @@ export const jobScopeMeaning: Record<
  * create / delete "Không" — the Leader splits the tasks — but a worker still deletes the subtasks of their own task).
  */
 export const jobScopeNotes: Partial<Record<JobPermissionAction, string>> = {
-  create: "Không: không có “Nhập công việc” và “Chia task” (Leader chia task cho người đó).",
+  create: "Không: không có “Nhập Task” và “Chia task” (Leader chia task cho người đó).",
   delete:
     "Subtask của task mình làm: người làm luôn tự xoá được trước khi Done, kể cả khi quyền Xoá là Không."
 };

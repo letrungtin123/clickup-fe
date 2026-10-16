@@ -27,7 +27,8 @@ import type { NotificationDescription, SentenceSegment } from "./describe";
  * Vietnamese sentences for the production (Photo Retouch) notification types — PLAN §8. Payloads come
  * from BE modules/production/notifications.ts: { jobCode, taskCode, taskNumber, processName, qty, deadline,
  * note, from, to, feedbackType, requesterName, fromDate, toDate, status, period, points, target, … };
- * quantity change requests (PD-044) add { requestId, fromQty, toQty, reason, approved, decisionNote }; a job
+ * quantity change requests (PD-044) add { requestId, fromQty, toQty, reason, approved, decisionNote }; a filled-in
+ * quantity (PD-058) adds { filledQty, atDone } (a task without a quantity has `qty: null` — no "· N tấm"); a job
  * status change (PD-045) is { jobId, jobCode, jobName, from: { id, name, color }, to: { id, name, color } }.
  * A task is named by its code ("#1216" / "#1216a", PD-045); notifications sent before codes only hold the number.
  */
@@ -188,6 +189,24 @@ export const describeProductionNotification = (
         tone: approved ? "success" : "danger"
       };
     }
+    case "production.qty_filled": {
+      // PD-058, to the job's Leader (or the Admins): { …task, filledQty, atDone } — someone filled in the quantity of a
+      // task that had none, directly or when moving it to Done.
+      const filled = num(notification.payload.filledQty);
+      return {
+        segments: [
+          actor,
+          { text: " đã điền số lượng " },
+          ...(filled !== null ? [{ text: `${filled}`, strong: true }, { text: " " }] : []),
+          { text: "cho task " },
+          ref
+        ],
+        subject,
+        excerpt: notification.payload.atDone === true ? "Điền khi chuyển Done" : null,
+        icon: FilePenLine,
+        tone: "brand"
+      };
+    }
     case "production.task_due_soon": {
       const due = formatDeadline(notification.payload.deadline);
       return {
@@ -306,7 +325,8 @@ export const describeProductionNotification = (
           { text: ` xin nghỉ${span}` }
         ],
         subject: null,
-        excerpt: null,
+        // PD-057: the body says which part and why ("Nghỉ buổi sáng 20/10: Khám bệnh") for the approver.
+        excerpt,
         icon: CalendarClock,
         tone: "brand"
       };

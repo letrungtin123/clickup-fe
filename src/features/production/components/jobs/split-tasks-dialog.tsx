@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -48,7 +48,9 @@ import {
   expectedEarnings,
   isoToDay,
   lineOptionalNumbers,
+  missingQtyLabel,
   optionalDetailsSummary,
+  qtyOptionalHint as qtyHint,
   receivedDayToIso,
   taskLineProblems,
   unitPriceLabel,
@@ -243,6 +245,10 @@ export const SplitTasksDialog = ({
     assignedNormalQty(job.tasks),
     lines.map((line) => Number(line.qty))
   );
+  // PD-058: tasks without a quantity — the job's own and the new lines left empty — are not in the numbers.
+  const withoutQty = missingQtyLabel(
+    (job.tasksWithoutQty ?? 0) + lines.filter((line) => line.qty.trim() === "").length
+  );
   const pending = create.isPending;
 
   const update = (key: string, patch: Partial<Line>) =>
@@ -299,7 +305,8 @@ export const SplitTasksDialog = ({
         assigneeId: line.assigneeId ?? "",
         processId: line.processId ?? "",
         shiftId: line.shiftId ?? "",
-        qtyAssigned: Number(line.qty),
+        // PD-058: optional — an empty quantity is left out ("chưa có số lượng", filled in by Done).
+        ...(line.qty.trim() !== "" ? { qtyAssigned: Number(line.qty) } : {}),
         qcId: line.processId && qcProcessIds.has(line.processId) ? null : line.qcId,
         ...(assignedAt ? { assignedAt } : {}),
         ...(deadline ? { deadline } : {}),
@@ -348,6 +355,12 @@ export const SplitTasksDialog = ({
               {ownOnly
                 ? "Mỗi task là một hàng work log của bạn: quy trình, ca, số lượng, QC, ngày nhận / giao."
                 : "Mỗi task là một hàng work log: một người, một quy trình, N tấm và QC kiểm. Task Checking là việc của người QC (không có QC)."}
+              {/* Desktop: the quantity hint once here (each card's column is narrow). */}
+              <span className="max-lg:hidden" aria-hidden="true">
+                {" "}
+                Số lượng: {qtyHint.charAt(0).toLowerCase()}
+                {qtyHint.slice(1)}
+              </span>
             </DialogDescription>
           </DialogHeader>
 
@@ -422,6 +435,7 @@ export const SplitTasksDialog = ({
                     : totals.remaining > 0
                       ? ` · còn ${formatInteger(totals.remaining)}`
                       : " · đủ"}
+                  {withoutQty ? ` · ${withoutQty}` : ""}
                 </>
               ) : (
                 // Tổng tấm not typed: it follows the lines (PD-035).
@@ -429,6 +443,7 @@ export const SplitTasksDialog = ({
                   Đã có {formatInteger(assignedNormalQty(job.tasks))} + mới{" "}
                   {formatInteger(totals.adding)} → Tổng tấm{" "}
                   <b className="text-foreground">{formatInteger(totals.total)}</b>
+                  {withoutQty ? ` · ${withoutQty}` : ""}
                 </>
               )}
             </p>
@@ -705,19 +720,34 @@ const LineCard = ({
             />
             {problems.shift ? <FieldError className="text-xs">{problems.shift}</FieldError> : null}
           </Field>
+          {/* PD-058: optional — the person who splits often does not know the number yet; the worker fills it in. */}
           <Field data-invalid={Boolean(problems.qty)}>
-            <FieldLabel htmlFor={id("qty")}>Số lượng</FieldLabel>
+            <FieldLabel htmlFor={id("qty")} className="flex-wrap gap-x-1 gap-y-0">
+              Số lượng{" "}
+              <span className="font-normal whitespace-nowrap text-foreground-subtle">(tùy chọn)</span>
+            </FieldLabel>
             <Input
               id={id("qty")}
               inputMode="numeric"
               autoComplete="off"
               placeholder="Số tấm"
+              title={qtyHint}
               value={line.qty}
               onChange={(event) => onChange({ qty: event.target.value })}
               aria-invalid={Boolean(problems.qty)}
+              aria-describedby={id("qty-hint")}
               className="text-right tabular-nums"
             />
-            {problems.qty ? <FieldError className="text-xs">{problems.qty}</FieldError> : null}
+            {problems.qty ? (
+              <FieldError id={id("qty-hint")} className="text-xs">
+                {problems.qty}
+              </FieldError>
+            ) : (
+              // Desktop: the narrow column keeps the input; the hint is the dialog's (and the input's tooltip).
+              <FieldDescription id={id("qty-hint")} className="text-xs lg:sr-only">
+                {qtyHint}
+              </FieldDescription>
+            )}
           </Field>
           {/* PD-047: every work task names its QC; a Checking task has none (PD-037). */}
           <Field data-invalid={Boolean(problems.qc)}>

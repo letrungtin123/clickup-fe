@@ -17,6 +17,7 @@ import type { RichTextDoc } from "@/contracts/rich-text";
 import { useSessionContext } from "@/features/auth/hooks";
 
 import type { MessageActions } from "../components/message-context";
+import { allowsMentionAll } from "../model/mention-all";
 import { messageHref } from "@/features/search/model";
 import {
   useDeleteMessage,
@@ -106,11 +107,13 @@ export const useConversationActions = (input: {
       retry,
       discard,
       nameOf,
-      mentionSource
+      mentionSource,
+      allowMentionAll: allowsMentionAll(channel.kind)
     }),
     [
       channel.archivedAt,
       channel.capabilities,
+      channel.kind,
       discard,
       editingId,
       inThread,

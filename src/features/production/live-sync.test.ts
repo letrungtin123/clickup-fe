@@ -131,6 +131,7 @@ const makeJob = (n: number, extra: Partial<JobSummary> = {}): JobSummary => ({
   qtyDone: 0,
   qtyChecked: 0,
   taskCount: 0,
+  tasksWithoutQty: 0,
   lateTaskCount: 0,
   openFeedbackCount: 0,
   people: { workers: [], qc: [] },

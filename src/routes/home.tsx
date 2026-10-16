@@ -7,9 +7,9 @@ import {
   Factory,
   FolderPlus,
   Globe,
-  ListTodo,
   Lock,
-  Search
+  Search,
+  type LucideIcon
 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Link } from "@/components/shared/router-link";
@@ -26,7 +26,6 @@ import { useCurrentDepartment } from "@/features/departments/hooks";
 import { InboxWidgetContent } from "@/features/notifications/components/inbox-widget";
 import { useProductionNavEntries } from "@/features/production/hooks";
 import { useProjects } from "@/features/projects/hooks";
-import { MyTasksWidget } from "@/features/tasks/components/my-tasks-list";
 import { greetingFor } from "@/lib/greeting";
 import { useUiStore } from "@/stores/ui-store";
 
@@ -39,8 +38,9 @@ const HomeProductionAgenda = lazy(() =>
 
 /**
  * Trang chủ follows the department shown (PD-041):
- *   Production     Việc của tôi + Hộp thư, Dự án của bạn, "Dự án mới"
+ *   Production     Hộp thư, Dự án của bạn, "Dự án mới"
  *   Photo Retouch  the production agenda (Việc cần làm) + Hộp thư, no project widgets
+ * "Việc của tôi" is not repeated here in either department: it has its own sidebar page (owner, 2026-10-16).
  *   no department  Hộp thư only (shared content)
  */
 export const HomeRoute = () => {
@@ -88,12 +88,7 @@ export const HomeRoute = () => {
 
         {department === "PRODUCTION" ? (
           <>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <Widget title="Việc của tôi" icon={ListTodo} href="/my-tasks">
-                <MyTasksWidget />
-              </Widget>
-              <InboxWidget />
-            </div>
+            <InboxWidget />
             <RecentProjects />
           </>
         ) : department === "PHOTO_RETOUCH" ? (
@@ -135,7 +130,7 @@ const Widget = ({
   children
 }: {
   title: string;
-  icon: typeof ListTodo;
+  icon: LucideIcon;
   href: string;
   children: React.ReactNode;
 }) => (

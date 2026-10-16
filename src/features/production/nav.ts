@@ -5,7 +5,6 @@ import {
   CalendarClock,
   CalendarDays,
   ChartColumnBig,
-  ChartNoAxesCombined,
   CircleDot,
   ClipboardList,
   Coins,
@@ -52,6 +51,12 @@ export type ProductionNavEntry = {
   byJobView?: boolean;
 };
 
+/**
+ * The "Báo cáo" module is hidden from the UI (owner, 2026-10-16): no menu entry and no buttons leading to it (Bất
+ * thường, Quản trị số liệu). Set to true — and restore its menu entry below — to bring it back.
+ */
+export const REPORTS_MODULE_VISIBLE = false;
+
 export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
   {
@@ -78,7 +83,9 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production/scores", label: "Bảng điểm", icon: ChartColumnBig, roles: [], end: true },
   { to: "/production/scores/board", label: "Xếp hạng", icon: Trophy, roles: [] },
   { to: "/production/leave", label: "Lịch nghỉ", icon: CalendarDays, roles: [] },
-  { to: "/production/reports", label: "Báo cáo", icon: ChartNoAxesCombined, roles: ["LEADER"] },
+  // "Báo cáo" is hidden for now (owner, 2026-10-16: hard to use, not needed yet; see REPORTS_MODULE_VISIBLE). The route
+  // /production/reports still works by URL; restore this entry to bring the menu item back:
+  // { to: "/production/reports", label: "Báo cáo", icon: ChartNoAxesCombined, roles: ["LEADER"] },
   { to: "/production/anomalies", label: "Bất thường", icon: ScanSearch, roles: ["LEADER"] },
   { to: "/production/clients", label: "Khách hàng", icon: Building2, roles: ["ACCOUNT"] },
   // Every role reaches "Trạng thái & luồng chuyển" read-only (PD-049); other pages keep their roles.

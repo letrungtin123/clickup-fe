@@ -65,6 +65,11 @@ export const adminApi = {
     api.post("/organization/members", CreatedMemberResponseSchema, input),
   updateMember: (membershipId: string, input: UpdateMemberInput) =>
     api.patch(apiPath`/organization/members/${membershipId}`, AdminMemberSchema, input),
+  /** PD-062: superadmin only. */
+  renameMember: (membershipId: string, displayName: string) =>
+    api.patch(apiPath`/organization/members/${membershipId}/display-name`, AdminMemberSchema, {
+      displayName
+    }),
   resetPassword: (membershipId: string) =>
     api.post(
       apiPath`/organization/members/${membershipId}/reset-password`,
@@ -165,6 +170,13 @@ export const useMemberMutations = () => {
     resetPassword: useMutation({
       mutationFn: adminApi.resetPassword,
       meta: { errorMessage: false }
+    }),
+    /** "Đổi tên" (PD-062): the dialog shows the error itself. */
+    rename: useMutation({
+      mutationFn: ({ membershipId, displayName }: { membershipId: string; displayName: string }) =>
+        adminApi.renameMember(membershipId, displayName),
+      meta: { successMessage: "Đã đổi tên", errorMessage: false },
+      onSuccess: refresh
     })
   };
 };

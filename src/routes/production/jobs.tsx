@@ -65,7 +65,7 @@ const JobsForbidden = ({ canEnter }: { canEnter: boolean }) => {
           canEnter ? (
             <Button size="sm" onClick={() => setEntering(true)}>
               <ClipboardPen />
-              Nhập công việc
+              Nhập Task
             </Button>
           ) : undefined
         }
@@ -162,7 +162,7 @@ const JobsPage = () => {
             {canEnter ? (
               <Button onClick={() => setEntering(true)}>
                 <ClipboardPen />
-                Nhập công việc
+                Nhập Task
               </Button>
             ) : null}
           </>
@@ -218,7 +218,7 @@ const JobsPage = () => {
                   canEnter ? (
                     <Button size="sm" onClick={() => setEntering(true)}>
                       <ClipboardPen />
-                      Nhập công việc
+                      Nhập Task
                     </Button>
                   ) : undefined
                 }

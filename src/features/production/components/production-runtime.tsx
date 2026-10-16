@@ -34,12 +34,14 @@ const myTaskNotifications = new Set<NotificationType>([
 
 /**
  * Notifications about one line whose page may be open (PD-044): QC asking for rework, a quantity request and its
- * decision. The line, its job and their timelines (the job's "Nhật ký" included, same key prefix) refresh at once.
+ * decision, a quantity filled in (PD-058). The line, its job and their timelines (the job's "Nhật ký" included, same
+ * key prefix) refresh at once.
  */
 const lineNotifications = new Set<NotificationType>([
   "production.qc_failed",
   "production.qty_change_requested",
-  "production.qty_change_decided"
+  "production.qty_change_decided",
+  "production.qty_filled"
 ]);
 
 /**

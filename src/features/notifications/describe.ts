@@ -7,6 +7,7 @@ import {
   CircleCheckBig,
   FolderPlus,
   Hash,
+  Megaphone,
   MessageSquare,
   MessagesSquare,
   Reply,
@@ -26,7 +27,7 @@ import { mentionTypeList } from "./feeds";
 /**
  * Turns a notification into a Vietnamese sentence (product §30), e.g.
  *   "Linh đã giao cho bạn WEB-12", "WEB-101 sắp đến hạn lúc 17:00, 10/10",
- *   "Minh đã nhắc đến bạn trong #thiết-kế".
+ *   "Minh đã nhắc đến bạn trong #thiết-kế", "Minh đã nhắc @all trong #thiết-kế".
  * Rendering is split into segments so the actor / target can be emphasised.
  */
 export type SentenceSegment = {
@@ -57,6 +58,21 @@ const channelTarget = (notification: Notification): SentenceSegment[] =>
   isDirect(notification)
     ? [{ text: "tin nhắn trực tiếp" }]
     : [{ text: `#${notification.title}`, strong: true }];
+
+/** Placeholder title the server gives conversations without a name (DMs). */
+const unnamedConversation = "Direct message";
+
+/**
+ * Where an @all happened (PD-061): "#kênh" for a channel; a group DM by its name (the notification title) when the
+ * server gives one, else "cuộc trò chuyện nhóm".
+ */
+const mentionAllTarget = (notification: Notification): SentenceSegment[] => {
+  if (!isDirect(notification)) return [{ text: `#${notification.title}`, strong: true }];
+  const name = notification.title.trim();
+  return name && name !== unnamedConversation
+    ? [{ text: "nhóm " }, { text: name, strong: true }]
+    : [{ text: "cuộc trò chuyện nhóm" }];
+};
 
 const taskKeyOf = (notification: Notification) =>
   notification.target.taskKey ?? str(notification.payload.taskKey) ?? "công việc";
@@ -182,6 +198,22 @@ export const describeNotification = (notification: Notification): NotificationDe
         tone: "brand"
       };
     case "chat.mentioned":
+      if (notification.payload.all === true) {
+        // @all (PD-061): everyone in the conversation was mentioned, the reader among them.
+        return {
+          segments: [
+            actor,
+            { text: " đã nhắc " },
+            { text: "@all", strong: true },
+            { text: " trong " },
+            ...mentionAllTarget(notification)
+          ],
+          subject: null,
+          excerpt,
+          icon: Megaphone,
+          tone: "warning"
+        };
+      }
       return {
         segments: [actor, { text: " đã nhắc đến bạn trong " }, ...channelTarget(notification)],
         subject: null,

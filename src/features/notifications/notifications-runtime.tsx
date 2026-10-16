@@ -9,7 +9,7 @@ import { useRealtimeEvent } from "@/lib/realtime/hooks";
 import { onUntypedServerEvent, scheduleInvalidate } from "@/lib/realtime/socket";
 import { useUiStore } from "@/stores/ui-store";
 
-import { allowsPopup, shouldToastNotification } from "./bell";
+import { allowsPopup, isReadingChatTarget, shouldToastNotification } from "./bell";
 import { chatToastId } from "./chat-toast";
 import { describeNotification, sentenceText } from "./describe";
 import { parseArchivedEvent } from "./feeds";
@@ -52,12 +52,15 @@ export const NotificationsRuntime = () => {
 
     const active = useActiveChannelStore.getState();
     if (
-      notification.target.channelId &&
-      active.channelId === notification.target.channelId &&
-      active.live &&
-      document.visibilityState === "visible"
+      isReadingChatTarget({
+        notification,
+        activeChannelId: active.channelId,
+        live: active.live,
+        visible: document.visibilityState === "visible",
+        openThreadId: new URLSearchParams(window.location.search).get("thread")
+      })
     ) {
-      // Already reading that conversation: the mention is seen.
+      // Already reading it (the conversation for a mention, the open thread for a thread reply): it is seen.
       markRead([notification.id]);
       return;
     }

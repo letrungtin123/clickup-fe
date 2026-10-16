@@ -20,6 +20,7 @@ import { PageBody } from "@/features/production/scores/components/kit";
 import { periodLabel } from "@/features/production/scores/periods";
 import { touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { REPORTS_MODULE_VISIBLE } from "@/features/production/nav";
 
 /**
  * /production/admin — Admin dashboard (SPEC Phase 5 §3, PLAN §7): the six fixed cards (points today, late
@@ -83,10 +84,12 @@ const AdminDashboardPage = () => {
               <ScanSearch />
               <span className="max-md:sr-only">Bất thường</span>
             </Button>
-            <Button render={<Link to="/production/reports" />} nativeButton={false}>
-              <ChartNoAxesCombined />
-              <span className="max-sm:sr-only">Báo cáo</span>
-            </Button>
+            {REPORTS_MODULE_VISIBLE ? (
+              <Button render={<Link to="/production/reports" />} nativeButton={false}>
+                <ChartNoAxesCombined />
+                <span className="max-sm:sr-only">Báo cáo</span>
+              </Button>
+            ) : null}
           </div>
         }
       />

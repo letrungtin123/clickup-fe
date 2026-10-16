@@ -173,8 +173,9 @@ export const workEntryProblems = (
   if (!draft.dueDay) problems.dueDay = "Chọn ngày giao.";
   else if (draft.receivedDay && draft.dueDay < draft.receivedDay)
     problems.dueDay = "Ngày giao phải từ Ngày nhận trở đi.";
+  // PD-058: optional (empty = "chưa có số lượng", filled in by the worker at Done); a typed one is a whole number ≥ 1.
   const qty = parseWholeNumber(draft.qty);
-  if (qty === null || !Number.isFinite(qty) || qty < 1 || qty > MAX_QTY)
+  if (qty !== null && (!Number.isFinite(qty) || qty < 1 || qty > MAX_QTY))
     problems.qty = "Số lượng nguyên ≥ 1.";
   const errorQty = parseWholeNumber(draft.errorQty);
   if (errorQty !== null && (!Number.isFinite(errorQty) || errorQty > MAX_QTY))
@@ -222,8 +223,7 @@ export const workEntryPayload = (
     !draft.shiftId ||
     !assignedAt ||
     !deadline ||
-    qty === null ||
-    !Number.isFinite(qty)
+    (qty !== null && !Number.isFinite(qty))
   )
     return null;
   const errorQty = parseWholeNumber(draft.errorQty);
@@ -237,7 +237,8 @@ export const workEntryPayload = (
     ...(qcId ? { qcId } : {}),
     processId: draft.processId,
     shiftId: draft.shiftId,
-    qtyAssigned: qty,
+    // PD-058: left out while empty ("chưa có số lượng").
+    ...(qty !== null ? { qtyAssigned: qty } : {}),
     assignedAt,
     deadline,
     ...(errorQty !== null && Number.isFinite(errorQty) ? { errorQty } : {}),

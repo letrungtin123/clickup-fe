@@ -16,9 +16,10 @@ import { toneClass } from "@/lib/colors";
 
 import { formatInteger, formatNumber } from "../../format";
 import { formatWorkDay, jobLines, lacksQc } from "../../jobs-model";
+import { allQtyKnown } from "../../task-edit-model";
 import { CustomFieldValue } from "../custom-field-input";
 import { CustomFieldChips } from "../list-filters";
-import { Fact, KindBadge, LateBadge, Person, StatusChip } from "./job-bits";
+import { Fact, KindBadge, LateBadge, NoQtyChip, Person, StatusChip } from "./job-bits";
 import { StatusSelect } from "./transition-controls";
 import { WorkLinkIcon, WorkLinkValue } from "./work-link";
 
@@ -148,20 +149,36 @@ const SubtaskBadge = ({ className }: { className?: string }) => (
   </span>
 );
 
-/** "Xong / giao" of a line: its own numbers; with subtasks, the total the Leader gave below. */
+/**
+ * "Xong / giao" of a line: its own numbers; with subtasks, the total the Leader gave below. PD-058: a line without a
+ * quantity shows the "Chưa có SL" chip; the total is only given once every part has a number.
+ */
 const QtyCell = ({ task }: { task: ProductionTask }) => (
   <>
-    <span className="whitespace-nowrap">
-      {task.qtyDone === null ? "—" : formatInteger(task.qtyDone)} /{" "}
-      {formatInteger(task.qtyAssigned)}
-    </span>
-    {task.subtasks.length > 0 ? (
-      <span
-        className="text-[11px] whitespace-nowrap text-foreground-muted"
-        title="Số lượng Leader giao: task này cộng các subtask"
-      >
-        tổng {formatInteger(task.allocatedQty)}
+    {task.qtyAssigned === null ? (
+      <NoQtyChip />
+    ) : (
+      <span className="whitespace-nowrap">
+        {task.qtyDone === null ? "—" : formatInteger(task.qtyDone)} /{" "}
+        {formatInteger(task.qtyAssigned)}
       </span>
+    )}
+    {task.subtasks.length > 0 ? (
+      allQtyKnown(task) ? (
+        <span
+          className="text-[11px] whitespace-nowrap text-foreground-muted"
+          title="Số lượng Leader giao: task này cộng các subtask"
+        >
+          tổng {formatInteger(task.allocatedQty)}
+        </span>
+      ) : (
+        <span
+          className="text-[11px] whitespace-nowrap text-foreground-subtle"
+          title="Có phần chưa có số lượng — tổng tính khi đủ số"
+        >
+          tổng chưa đủ SL
+        </span>
+      )
     ) : null}
     {task.pendingQtyRequest ? <QtyRequestBadge request={task.pendingQtyRequest} /> : null}
   </>
@@ -192,8 +209,11 @@ const LineStatus = ({
   />
 );
 
+/** "2/3" (Done / given) of a subtask as text; PD-058: "chưa có SL" while it has no quantity. */
 const subtaskQty = (subtask: ProductionSubtask) =>
-  `${subtask.qtyDone === null ? "—" : formatInteger(subtask.qtyDone)}/${formatInteger(subtask.qtyAssigned)}`;
+  subtask.qtyAssigned === null
+    ? "chưa có SL"
+    : `${subtask.qtyDone === null ? "—" : formatInteger(subtask.qtyDone)}/${formatInteger(subtask.qtyAssigned)}`;
 
 /**
  * Tasks of a job: a table with pinned "#" (and "Người làm") and "Trạng thái" columns (scrolls inside its card) on
@@ -233,7 +253,7 @@ export const JobTasks = ({
         title="Chưa có task"
         description={
           canAdd
-            ? "Bấm “Chia task” hoặc “Nhập công việc” để thêm task: người làm, quy trình, QC, ca, số lượng, ngày nhận / giao."
+            ? "Bấm “Chia task” hoặc “Nhập Task” để thêm task: người làm, quy trình, QC, ca, số lượng, ngày nhận / giao."
             : "Leader của job sẽ chia task."
         }
       />
@@ -264,13 +284,17 @@ export const JobTasks = ({
                     {task.isLate ? <LateBadge /> : null}
                   </span>
                   <span className="text-xs text-foreground-muted">
-                    <span className="whitespace-nowrap tabular-nums">
-                      {task.qtyDone !== null ? `${formatInteger(task.qtyDone)}/` : ""}
-                      {formatInteger(task.qtyAssigned)} tấm
-                      {task.subtasks.length > 0
-                        ? ` · tổng ${formatInteger(task.allocatedQty)}`
-                        : ""}
-                    </span>{" "}
+                    {task.qtyAssigned === null ? (
+                      <NoQtyChip className="align-middle" />
+                    ) : (
+                      <span className="whitespace-nowrap tabular-nums">
+                        {task.qtyDone !== null ? `${formatInteger(task.qtyDone)}/` : ""}
+                        {formatInteger(task.qtyAssigned)} tấm
+                        {task.subtasks.length > 0 && allQtyKnown(task)
+                          ? ` · tổng ${formatInteger(task.allocatedQty)}`
+                          : ""}
+                      </span>
+                    )}{" "}
                     ·{" "}
                     <span className="whitespace-nowrap tabular-nums">
                       {formatWorkDay(task.assignedAt, timeZone)} →{" "}
@@ -338,7 +362,11 @@ export const JobTasks = ({
                       <span aria-hidden="true">·</span>
                       <span className="min-w-0 truncate">{subtask.process.name}</span>
                       <span aria-hidden="true">·</span>
-                      <span className="shrink-0 tabular-nums">{subtaskQty(subtask)}</span>
+                      {subtask.qtyAssigned === null ? (
+                        <NoQtyChip />
+                      ) : (
+                        <span className="shrink-0 tabular-nums">{subtaskQty(subtask)}</span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -579,7 +607,7 @@ const SubtaskRow = ({
   <div
     role="row"
     tabIndex={0}
-    aria-label={`Subtask #${subtask.code} của task #${line.code}: ${subtask.process.name}, ${subtaskQty(subtask)} tấm`}
+    aria-label={`Subtask #${subtask.code} của task #${line.code}: ${subtask.process.name}, ${subtask.qtyAssigned === null ? "chưa có số lượng" : `${subtaskQty(subtask)} tấm`}`}
     onClick={() => onOpen(line.id)}
     onKeyDown={(event) => {
       if (event.key === "Enter" && event.target === event.currentTarget) onOpen(line.id);
@@ -615,9 +643,15 @@ const SubtaskRow = ({
       {subtask.process.name}
     </span>
     <span role="cell" />
-    <span role="cell" className="px-3 text-right text-foreground tabular-nums">
-      {subtask.qtyDone === null ? "—" : formatInteger(subtask.qtyDone)} /{" "}
-      {formatInteger(subtask.qtyAssigned)}
+    <span role="cell" className="flex justify-end px-3 text-right text-foreground tabular-nums">
+      {subtask.qtyAssigned === null ? (
+        <NoQtyChip />
+      ) : (
+        <span>
+          {subtask.qtyDone === null ? "—" : formatInteger(subtask.qtyDone)} /{" "}
+          {formatInteger(subtask.qtyAssigned)}
+        </span>
+      )}
     </span>
     <span role="cell" />
     <span role="cell" />

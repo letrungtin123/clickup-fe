@@ -27,6 +27,8 @@ export type MessageActions = {
   discard: (clientMessageId: string) => void;
   nameOf: (userId: string) => string | null;
   mentionSource: MentionSource | undefined;
+  /** The conversation offers @all (channels and group DMs, PD-061): the inline editor keeps it. */
+  allowMentionAll: boolean;
 };
 
 export const MessageActionsContext = createContext<MessageActions | null>(null);

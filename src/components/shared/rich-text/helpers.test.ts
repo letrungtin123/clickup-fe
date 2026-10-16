@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { RichTextDoc } from "@/contracts/rich-text";
+import { MENTION_ALL_ID, messageLimits, sanitizeRichText, type RichTextDoc } from "@/contracts/rich-text";
 
 import {
   docMentions,
+  docMentionsAll,
   docsEqual,
   docToPlainText,
   isEmptyDoc,
@@ -111,6 +112,65 @@ describe("prepareDoc", () => {
   it("reports oversized documents", () => {
     const long = plainTextToDoc("a".repeat(10_001));
     expect(prepareDoc(long, "message")).toMatchObject({ ok: false, reason: "too-large" });
+  });
+});
+
+describe("@all mentions (PD-061, mirror of the server sanitizer)", () => {
+  const withAll = (attrs: Record<string, string>): RichTextDoc => ({
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "mention", attrs },
+          { type: "text", text: " họp lúc 3 giờ " },
+          { type: "mention", attrs: { id: mentionId, label: "Linh Trần" } }
+        ]
+      }
+    ]
+  });
+
+  it("keeps the @all node (label always \"all\") where allowed; mentions stay user ids only", () => {
+    const result = sanitizeRichText(withAll({ id: "all", label: "Everyone!" }), messageLimits, { allowMentionAll: true });
+    expect(MENTION_ALL_ID).toBe("all");
+    expect(result.doc.content?.[0]?.content?.[0]).toEqual({ type: "mention", attrs: { id: "all", label: "all" } });
+    expect(result.mentionsAll).toBe(true);
+    expect(result.mentions).toEqual([mentionId]);
+    expect(result.text).toBe("@all họp lúc 3 giờ @Linh Trần");
+  });
+
+  it("turns @all into the plain text \"@all\" where it is not allowed (1:1 DMs, tasks, knowledge)", () => {
+    const result = sanitizeRichText(withAll({ id: "all", label: "all" }), messageLimits);
+    expect(result.doc.content?.[0]?.content?.[0]).toEqual({ type: "text", text: "@all" });
+    expect(result.mentionsAll).toBe(false);
+    expect(result.mentions).toEqual([mentionId]);
+    expect(result.text).toBe("@all họp lúc 3 giờ @Linh Trần");
+  });
+
+  it("is not a person: server labels never apply and it does not count as a mention", () => {
+    const labels = new Map([[mentionId, "Linh T."]]);
+    const result = sanitizeRichText(withAll({ id: "all", label: "x" }), { ...messageLimits, maxMentions: 1 }, {
+      allowMentionAll: true,
+      mentionLabels: labels
+    });
+    expect(result.text).toBe("@all họp lúc 3 giờ @Linh T.");
+    expect(result.mentions).toEqual([mentionId]);
+    // Any other id ("ALL", "everyone") is not @all: dropped like any invalid mention.
+    expect(sanitizeRichText(withAll({ id: "ALL", label: "all" }), messageLimits, { allowMentionAll: true }).mentionsAll).toBe(false);
+  });
+
+  it("prepareDoc keeps @all only with allowMentionAll; docMentionsAll / docMentions read documents", () => {
+    const doc = withAll({ id: "all", label: "all" });
+    const kept = prepareDoc(doc, "message", { allowMentionAll: true });
+    expect(kept.ok && kept.mentionsAll).toBe(true);
+    expect(kept.ok && docMentionsAll(kept.doc)).toBe(true);
+    const dropped = prepareDoc(doc, "message");
+    expect(dropped.ok && dropped.mentionsAll).toBe(false);
+    expect(dropped.ok && docMentionsAll(dropped.doc)).toBe(false);
+    expect(docMentions(doc)).toEqual([mentionId]);
+    expect(docMentionsAll(sample)).toBe(false);
+    expect(docMentionsAll(null)).toBe(false);
+    expect(docToPlainText(doc)).toBe("@all họp lúc 3 giờ @Linh Trần");
   });
 });
 

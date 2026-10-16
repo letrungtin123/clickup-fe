@@ -104,6 +104,22 @@ export const selectTypers = (key: string, excludeId: string) => (state: TypingSt
 
 export type ChatDialog = "create-channel" | "browse-channels" | "new-message";
 
+/** A tab of the conversation settings dialog (same values as its SettingsTab). */
+export type ConversationSettingsTab = "about" | "members" | "settings";
+
+/** Conversation settings opened from a sidebar row's "…" (the open conversation keeps its own, in ChannelScreen). */
+export const useChannelSettingsStore = create<{
+  target: { channelId: string; tab: ConversationSettingsTab } | null;
+  open: (channelId: string, tab: ConversationSettingsTab) => void;
+  setTab: (tab: ConversationSettingsTab) => void;
+  close: () => void;
+}>()((set) => ({
+  target: null,
+  open: (channelId, tab) => set({ target: { channelId, tab } }),
+  setTab: (tab) => set((state) => (state.target ? { target: { ...state.target, tab } } : state)),
+  close: () => set({ target: null })
+}));
+
 /** App-wide chat dialogs, openable from the sidebar, the command palette and empty states. */
 export const useChatDialogStore = create<{
   dialog: ChatDialog | null;

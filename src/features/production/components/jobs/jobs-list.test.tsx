@@ -70,6 +70,7 @@ const job = (extra: Partial<JobSummary> = {}): JobSummary => ({
   qtyDone: 0,
   qtyChecked: 0,
   taskCount: 5,
+  tasksWithoutQty: 0,
   lateTaskCount: 0,
   openFeedbackCount: 0,
   people: { workers: [], qc: [] },
@@ -172,5 +173,62 @@ describe("JobsList — Tổng tấm per process (PD-048)", () => {
     expect(within(cell).getByText("+3").getAttribute("title")).toBe(
       "Light Retouch 4 · Cắt nền 3 · Ghép nền 2"
     );
+  });
+});
+
+describe("JobsList — tasks without a quantity (PD-058)", () => {
+  it("phone cards say how many tasks the “Giao” number leaves out", () => {
+    breakpoint.current = "mobile";
+    renderList([job({ qtyAssigned: 120, tasksWithoutQty: 2 })]);
+    const card = screen.getByRole("link", { name: /JOB-1/ });
+    expect(within(card).getByText("2 task chưa có số lượng")).toBeTruthy();
+  });
+
+  it("the table's “Đã giao” cell adds “2 chưa có SL” under its bar (full sentence as tooltip)", () => {
+    breakpoint.current = "desktop";
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    renderList([job({ qtyAssigned: 120, tasksWithoutQty: 2 }), job({ id: "x", code: "JOB-2" })]);
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+    const row = screen.getByRole("row", { name: /JOB-1/ });
+    const cell = within(row).getAllByRole("cell")[headers.indexOf("Đã giao")]!;
+    expect(cell.textContent).toContain("120");
+    expect(within(cell).getByText("2 chưa có SL")).toBeTruthy();
+    expect(within(cell).getByTitle("2 task chưa có số lượng")).toBeTruthy();
+    // Every task has a number: nothing added.
+    expect(within(screen.getByRole("row", { name: /JOB-2/ })).queryByText(/chưa có SL/)).toBeNull();
+  });
+});
+
+describe("JobsList — Người tạo (owner, 2026-10-16)", () => {
+  const creator = { id: id(77), displayName: "Người Tạo Thử", email: null, avatarUrl: null };
+
+  it("the table has a “Người tạo” column after “Người làm” with the creator's name", () => {
+    breakpoint.current = "desktop";
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    renderList([job({ createdBy: creator })]);
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers.indexOf("Người tạo")).toBe(headers.indexOf("Người làm") + 1);
+    const row = screen.getByRole("row", { name: /JOB-1/ });
+    expect(within(within(row).getAllByRole("cell")[headers.indexOf("Người tạo")]!).getByText("Người Tạo Thử")).toBeTruthy();
+  });
+
+  it("phone cards say who created the job", () => {
+    breakpoint.current = "mobile";
+    renderList([job({ createdBy: creator })]);
+    expect(within(screen.getByRole("link", { name: /JOB-1/ })).getByText("Tạo bởi Người Tạo Thử")).toBeTruthy();
   });
 });

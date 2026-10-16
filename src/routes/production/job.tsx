@@ -36,6 +36,7 @@ import {
   Fact,
   LateBadge,
   MiniBar,
+  MissingQtyNote,
   Person,
   ProcessTotalChips
 } from "@/features/production/components/jobs/job-bits";
@@ -339,7 +340,13 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                 percent={progress.assigned}
                 tone={overBy > 0 ? "warning" : "muted"}
                 hint={overBy > 0 ? `vượt ${formatInteger(overBy)}` : undefined}
-              />
+              >
+                {/* PD-058: the number counts known quantities only. */}
+                <MissingQtyNote
+                  count={job.tasksWithoutQty}
+                  className="text-xs leading-snug whitespace-normal"
+                />
+              </ProgressStat>
               <ProgressStat
                 label="Đã xong"
                 value={job.qtyDone}
@@ -390,7 +397,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   // "create: own" (PD-036): one's own work-log rows, straight into this package.
                   <Button onClick={() => setDialog("entry")}>
                     <ListPlus />
-                    Nhập công việc
+                    Nhập Task
                   </Button>
                 ) : (
                   <Button onClick={() => setDialog("split")}>

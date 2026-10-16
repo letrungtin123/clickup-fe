@@ -190,6 +190,20 @@
   color: var(--foreground);
 }
 
+/* @all (PD-061): everyone in the conversation — amber and bold, never a profile link. For everyone but the author it
+   is also "a mention of me" (data-self): a stronger fill, like a direct mention. */
+.rt-content .rt-mention[data-all="true"] {
+  background: var(--warning-soft);
+  color: color-mix(in oklch, var(--warning) 70%, var(--foreground));
+  font-weight: 650;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warning) 32%, transparent);
+}
+
+.rt-content .rt-mention[data-all="true"][data-self="true"] {
+  background: color-mix(in oklch, var(--warning) 24%, transparent);
+  color: var(--foreground);
+}
+
 .rt-content button.rt-mention {
   cursor: pointer;
   font: inherit;

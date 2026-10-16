@@ -106,6 +106,36 @@ describe("notification sentences", () => {
     ).toBe("Minh Nguyễn đã thêm bạn vào kênh #thiết-kế");
   });
 
+  it("describes an @all mention (PD-061) in a channel or a group DM", () => {
+    const target = {
+      projectId: null,
+      taskId: null,
+      taskKey: null,
+      commentId: null,
+      channelId: "00000000-0000-4000-8000-0000000000c1",
+      messageId: "00000000-0000-4000-8000-0000000000d1",
+      productionTaskId: null,
+      jobId: null,
+      knowledgeSpaceId: null,
+      knowledgeItemId: null
+    };
+    const all = (channelKind: string, title: string) =>
+      make({ type: "chat.mentioned", target, title, body: "@all họp lúc 3 giờ nhé", payload: { channelKind, all: true } });
+
+    const channel = describeNotification(all("public", "thiết-kế"));
+    expect(sentenceText(channel)).toBe("Minh Nguyễn đã nhắc @all trong #thiết-kế");
+    expect(channel.segments.find((segment) => segment.text === "@all")?.strong).toBe(true);
+    expect(channel.excerpt).toBe("@all họp lúc 3 giờ nhé");
+    expect(channel.tone).toBe("warning");
+    expect(sentence(all("private", "dự-án-x"))).toBe("Minh Nguyễn đã nhắc @all trong #dự-án-x");
+    expect(sentence(all("group_dm", "An, Bình, Chi"))).toBe("Minh Nguyễn đã nhắc @all trong nhóm An, Bình, Chi");
+    expect(sentence(all("group_dm", "Direct message"))).toBe("Minh Nguyễn đã nhắc @all trong cuộc trò chuyện nhóm");
+    // A direct mention keeps its sentence.
+    expect(sentence(make({ type: "chat.mentioned", target, title: "thiết-kế", payload: { channelKind: "public", all: false } }))).toBe(
+      "Minh Nguyễn đã nhắc đến bạn trong #thiết-kế"
+    );
+  });
+
   it("falls back to 'Ai đó' when the actor is unknown", () => {
     expect(
       sentence(make({ type: "project.member_added", actor: null, payload: { projectName: "Web" } }))

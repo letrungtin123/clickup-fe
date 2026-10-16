@@ -24,7 +24,7 @@ import { isApiError } from "@/lib/api/errors";
 
 import { fieldsFor, toCustomValuesPayload, validateCustomValues } from "../../custom-fields";
 import { productionErrorMessage } from "../../errors";
-import { formatInteger, todayIn } from "../../format";
+import { todayIn } from "../../format";
 import {
   useCustomFields,
   useProcesses,
@@ -34,7 +34,7 @@ import {
   useShifts
 } from "../../hooks";
 import { useCreateWorkEntry } from "../../jobs-hooks";
-import { optionalDetailsSummary, WORK_LINK_MAX } from "../../jobs-model";
+import { optionalDetailsSummary, qtyOptionalHint, qtyText, WORK_LINK_MAX } from "../../jobs-model";
 import { productionKeys } from "../../keys";
 import { useProductionPeople, type Person } from "../../people";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
@@ -187,7 +187,7 @@ export const WorkEntryDialog = ({
     create.mutate(payload, {
       onSuccess: (result) => {
         toast.success(`Đã nhập vào gói ${shortPackage(result.task.jobCode)}`, {
-          description: `${result.task.assignee.displayName} · ${result.task.process.name} · ${formatInteger(result.task.qtyAssigned)} tấm`,
+          description: `${result.task.assignee.displayName} · ${result.task.process.name} · ${qtyText(result.task.qtyAssigned)}`,
           // "view: none" has no job page to open.
           ...(scopes.view !== "none"
             ? {
@@ -241,7 +241,7 @@ export const WorkEntryDialog = ({
           }}
         >
           <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
-            <DialogTitle>Nhập công việc</DialogTitle>
+            <DialogTitle>Nhập Task</DialogTitle>
             <DialogDescription>
               Một task (một hàng của file work log), thêm vào một gói công việc đã có của dự án. Gói
               mới do Leader / Account tạo bằng “Tạo job”.
@@ -431,19 +431,31 @@ export const WorkEntryDialog = ({
                 />
                 {shown.shift ? <FieldError>{shown.shift}</FieldError> : null}
               </Field>
+              {/* PD-058: optional — the worker fills it in at the latest when moving to Done. */}
               <Field data-invalid={Boolean(shown.qty)}>
-                <FieldLabel htmlFor={`${ids}-qty`}>Số lượng</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-qty`}>
+                  Số lượng{" "}
+                  <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+                </FieldLabel>
                 <Input
                   ref={qtyRef}
                   id={`${ids}-qty`}
                   inputMode="numeric"
                   autoComplete="off"
+                  placeholder="Số tấm"
                   value={draft.qty}
                   aria-invalid={Boolean(shown.qty)}
+                  aria-describedby={`${ids}-qty-hint`}
                   onChange={(event) => set({ qty: event.target.value })}
                   className="tabular-nums"
                 />
-                {shown.qty ? <FieldError>{shown.qty}</FieldError> : null}
+                {shown.qty ? (
+                  <FieldError id={`${ids}-qty-hint`}>{shown.qty}</FieldError>
+                ) : (
+                  <FieldDescription id={`${ids}-qty-hint`} className="text-xs">
+                    {qtyOptionalHint}
+                  </FieldDescription>
+                )}
               </Field>
             </div>
 

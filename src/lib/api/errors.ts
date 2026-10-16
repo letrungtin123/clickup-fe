@@ -6,13 +6,22 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId: string | null;
+  /** The API's optional machine-readable `error.details` (never secrets); null when absent. */
+  readonly details: Record<string, unknown> | null;
 
-  constructor(input: { status: number; code: string; message: string; requestId?: string | null }) {
+  constructor(input: {
+    status: number;
+    code: string;
+    message: string;
+    requestId?: string | null;
+    details?: Record<string, unknown> | null;
+  }) {
     super(input.message);
     this.name = "ApiError";
     this.status = input.status;
     this.code = input.code;
     this.requestId = input.requestId ?? null;
+    this.details = input.details ?? null;
   }
 }
 

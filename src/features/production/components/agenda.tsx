@@ -14,15 +14,25 @@ import { Link } from "@/components/shared/router-link";
 import { ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProductionRole } from "@/contracts/production-catalog";
-import { JobStatusChip, LateBadge, StatusChip } from "@/features/production/components/jobs/job-bits";
+import {
+  JobStatusChip,
+  LateBadge,
+  StatusChip
+} from "@/features/production/components/jobs/job-bits";
 import { isProductionHidden } from "@/features/production/errors";
-import { formatCredit, formatDay, formatKpiPeriod, formatNumber } from "@/features/production/format";
+import {
+  formatCredit,
+  formatDay,
+  formatKpiPeriod,
+  formatNumber
+} from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
 import { useJobs, useMyTasks, useQcQueue } from "@/features/production/jobs-hooks";
 import {
   flattenPages,
   formatDateTime,
   formatWorkDay,
+  qtyText,
   relativeDeadline,
   taskAgenda
 } from "@/features/production/jobs-model";
@@ -51,7 +61,13 @@ export const HomeProductionAgenda = () => {
       />
     );
   }
-  return <ProductionAgenda roles={me.data.roles} timeZone={me.data.settings.timezone} />;
+  return (
+    <ProductionAgenda
+      roles={me.data.roles}
+      timeZone={me.data.settings.timezone}
+      withMyTasks={false}
+    />
+  );
 };
 
 /** Placeholder with the agenda's footprint while /production/me loads. */
@@ -69,14 +85,37 @@ const taskRoles: readonly ProductionRole[] = ["STAFF", "QC", "LEADER"];
 
 /**
  * What needs doing now, per role: my open tasks (Staff / QC / Leader), the QC queue (QC) and late
- * jobs (Leader / Account / Admin, who all see every job).
+ * jobs (Leader / Account / Admin, who all see every job). `withMyTasks: false` (the module overview, owner
+ * 2026-10-16) leaves "Việc của tôi" out — it is a sidebar page of its own — and lays the other cards out in a grid.
  */
-export const ProductionAgenda = ({ roles, timeZone }: { roles: readonly ProductionRole[]; timeZone: string }) => {
+export const ProductionAgenda = ({
+  roles,
+  timeZone,
+  withMyTasks = true
+}: {
+  roles: readonly ProductionRole[];
+  timeZone: string;
+  withMyTasks?: boolean;
+}) => {
   const hasTasks = roles.some((role) => taskRoles.includes(role));
   const isQc = roles.includes("QC");
   const watchesJobs =
     roles.includes("LEADER") || roles.includes("ACCOUNT") || roles.includes("ADMIN");
   if (!hasTasks && !isQc && !watchesJobs) return null;
+  if (!withMyTasks) {
+    return (
+      <section aria-labelledby="production-agenda" className="flex flex-col gap-3">
+        <h2 id="production-agenda" className="text-sm font-semibold">
+          Việc cần làm
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {isQc ? <QcCard timeZone={timeZone} /> : null}
+          {watchesJobs ? <LateJobsCard timeZone={timeZone} /> : null}
+          {hasTasks ? <MyPointsCard /> : null}
+        </div>
+      </section>
+    );
+  }
   return (
     <section aria-labelledby="production-agenda" className="flex flex-col gap-3">
       <h2 id="production-agenda" className="text-sm font-semibold">
@@ -252,7 +291,7 @@ const MyTasksCard = ({ timeZone }: { timeZone: string }) => {
                         #{task.code} · {task.process.name}
                       </span>
                       <span className="truncate text-xs text-foreground-muted">
-                        {task.jobCode} · {task.qtyAssigned} tấm
+                        {task.jobCode} · {qtyText(task.qtyAssigned)}
                       </span>
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-0.5">

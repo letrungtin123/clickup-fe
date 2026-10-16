@@ -316,7 +316,9 @@ const TaskDetailBody = ({
         title={`Xoá ${noun} #${task.code}?`}
         description={
           task.isSubtask
-            ? `${task.qtyAssigned} tấm của subtask trả về task gốc. Việc xoá được ghi vào lịch sử của task.`
+            ? task.qtyAssigned === null || (parent.data && parent.data.qtyAssigned === null)
+              ? "Việc xoá được ghi vào lịch sử của task gốc."
+              : `${task.qtyAssigned} tấm của subtask trả về task gốc. Việc xoá được ghi vào lịch sử của task.`
             : task.doneAt
               ? "Task bị ẩn khỏi mọi danh sách nhưng vẫn giữ trong lịch sử. Điểm / tiền đã ghi cho task này được trừ lại bằng dòng điều chỉnh (sổ điểm không bị sửa)."
               : "Task bị ẩn khỏi mọi danh sách nhưng vẫn giữ trong lịch sử của job."

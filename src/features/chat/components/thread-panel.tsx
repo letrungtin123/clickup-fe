@@ -167,7 +167,7 @@ const ThreadBody = ({
   );
   const allMessages = useMemo(() => (thread ? [thread.root, ...thread.items] : []), [thread]);
   const nameOf = useUserLookup(channel, allMessages);
-  const mentionSource = useMentionSource(channel.id);
+  const mentionSource = useMentionSource(channel);
   const uploads = useUploads(channel.id);
   const noopOpen = useCallback(() => undefined, []);
   const { actions, deleteDialog, setEditingId } = useConversationActions({

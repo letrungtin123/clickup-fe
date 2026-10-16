@@ -45,6 +45,7 @@ export const makeMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage =
   systemEvent: null,
   clientMessageId: null,
   mentions: [],
+  mentionsAll: false,
   attachments: [],
   reactions: [],
   replyCount: 0,

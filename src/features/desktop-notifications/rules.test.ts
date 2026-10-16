@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   STALE_EVENT_MS,
+  isChannelThreadReply,
   chatAlertVerdict,
   chatVerdict,
   conversationIdFromPath,
@@ -29,6 +30,7 @@ const input = (overrides: {
     author: { id: OTHER, displayName: "An", email: null, avatarUrl: null },
     threadRootId: null,
     mentions: [],
+    mentionsAll: false,
     isDeleted: false,
     createdAt: new Date(NOW - 1000).toISOString(),
     ...overrides.message
@@ -111,6 +113,45 @@ describe("chat pop-up rules", () => {
   });
 });
 
+describe("@all (PD-061)", () => {
+  const all = { mentionsAll: true };
+
+  it("alerts every member but the author, even those who muted the conversation", () => {
+    const mine = { ...all, author: { id: ME, displayName: "Tôi", email: null, avatarUrl: null } };
+    expect(chatVerdict(input({ message: mine }))).toBe("own");
+    expect(chatVerdict(input({ message: all, channel: { kind: "public", notifyLevel: "none" } }))).toBe("show");
+    expect(chatVerdict(input({ message: all, channel: { kind: "private", notifyLevel: "none" } }))).toBe("show");
+    expect(chatVerdict(input({ message: all, channel: { kind: "group_dm", notifyLevel: "none" } }))).toBe("show");
+    // A direct mention still respects "Tắt thông báo"; @all does not.
+    expect(chatVerdict(input({ message: { mentions: [ME] }, channel: { kind: "public", notifyLevel: "none" } }))).toBe(
+      "muted"
+    );
+  });
+
+  it("passes “Chỉ khi nhắc tên”, the thread rule and an uncached conversation", () => {
+    expect(chatVerdict(input({ message: all, channel: { kind: "public", notifyLevel: "mentions" } }))).toBe("show");
+    const reply = { ...all, threadRootId: "00000000-0000-4000-8000-0000000000a0" };
+    expect(chatVerdict(input({ message: reply }))).toBe("show");
+    expect(chatVerdict(input({ message: reply, channel: { kind: "public", notifyLevel: "none" } }))).toBe("show");
+    expect(chatVerdict(input({ message: all, channel: null }))).toBe("show");
+  });
+
+  it("keeps the other gates: deleted, stale, reading the conversation, app in front", () => {
+    expect(chatVerdict(input({ message: { ...all, isDeleted: true } }))).toBe("deleted");
+    const old = new Date(NOW - STALE_EVENT_MS - 1000).toISOString();
+    expect(chatVerdict(input({ message: { ...all, createdAt: old } }))).toBe("stale");
+    const here: ViewerState = { focusedHere: true, pathname: `/c/${CHANNEL}`, focusedElsewherePath: null };
+    expect(chatVerdict(input({ message: all, viewer: here }))).toBe("reading");
+    expect(chatVerdict(input({ message: all, viewer: { ...here, pathname: "/inbox" } }))).toBe("focused");
+    // The in-app toast uses the same alert rule.
+    const { viewer: _viewer, channelId: _channelId, ...base } = input({
+      message: all,
+      channel: { kind: "public", notifyLevel: "none" }
+    });
+    expect(chatAlertVerdict(base)).toBe("show");
+  });
+});
+
 describe("inbox pop-up rules", () => {
   const notification = (type: string, ageMs = 1000) =>
     ({ type, createdAt: new Date(NOW - ageMs).toISOString() }) as Parameters<
@@ -136,5 +177,18 @@ describe("inbox pop-up rules", () => {
     expect(
       inboxVerdict({ notification: notification("task.assigned", STALE_EVENT_MS + 1), now: NOW, viewer: away })
     ).toBe("stale");
+  });
+});
+
+describe("thread replies (owner, 2026-10-16)", () => {
+  it("lets the server's channel thread-reply notification pop up; DM threads stay with the chat rule", () => {
+    const reply = (channelKind: string) => ({ type: "chat.thread_replied" as const, createdAt: new Date(NOW - 1000).toISOString(), payload: { channelKind } });
+    expect(isChannelThreadReply(reply("public"))).toBe(true);
+    expect(isChannelThreadReply(reply("private"))).toBe(true);
+    expect(isChannelThreadReply(reply("dm"))).toBe(false);
+    expect(isChannelThreadReply({ type: "chat.mentioned", payload: { channelKind: "public" } })).toBe(false);
+    expect(inboxVerdict({ notification: reply("public"), now: NOW, viewer: away })).toBe("show");
+    expect(inboxVerdict({ notification: reply("dm"), now: NOW, viewer: away })).toBe("chat");
+    expect(inboxVerdict({ notification: reply("public"), now: NOW, viewer: { ...away, focusedHere: true } })).toBe("focused");
   });
 });

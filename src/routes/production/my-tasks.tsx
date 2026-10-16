@@ -145,7 +145,7 @@ export const ProductionMyTasksRoute = () => {
           canEnter ? (
             <Button onClick={() => setEntering(true)}>
               <ClipboardPen />
-              Nhập công việc
+              Nhập Task
             </Button>
           ) : undefined
         }

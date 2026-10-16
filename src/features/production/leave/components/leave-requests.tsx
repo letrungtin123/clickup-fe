@@ -26,6 +26,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { leaveLimits, type LeaveRequest } from "@/contracts/production-leave";
+import { isApiError } from "@/lib/api/errors";
 
 import { FormAlert } from "../../components/settings-kit";
 import { scoreErrorMessage } from "../../scores/errors";
@@ -35,10 +36,11 @@ import {
   formatLeaveSpan,
   KPI_WORKDAY_HINT,
   leavePartLabels,
-  leaveWorkdays
+  leaveWorkdays,
+  showsAdminOnlyNote
 } from "../calendar";
 import { useDecideLeave } from "../hooks";
-import { LeaveStatusBadge } from "./leave-bits";
+import { AdminOnlyDecisionNote, LeaveStatusBadge } from "./leave-bits";
 
 // "10:05 06/10/2026": full dates like the rest of the module (dateStyle short gives "6/10/26").
 const dateTime = new Intl.DateTimeFormat("vi-VN", {
@@ -54,16 +56,20 @@ type Decision = "APPROVED" | "REJECTED";
 
 /**
  * One leave request with the actions the API allows (`canCancel`, `canDecide`). Notes are only
- * present when the caller may read them (owner, LEADER/ADMIN).
+ * present when the caller may read them (owner, LEADER/ADMIN). In the approval queue a pending
+ * request the viewer may not decide shows “Chỉ Quản trị duyệt đơn nghỉ.” instead (PD-057).
  */
 export const LeaveRequestRow = ({
   request,
   showUser,
+  inQueue = false,
   onDecide,
   onCancel
 }: {
   request: LeaveRequest;
   showUser: boolean;
+  /** Rendered in the “Chờ duyệt” queue. */
+  inQueue?: boolean;
   onDecide: (request: LeaveRequest, decision: Decision) => void;
   onCancel: (request: LeaveRequest) => void;
 }) => (
@@ -92,7 +98,9 @@ export const LeaveRequestRow = ({
           <p className="text-[11px] text-foreground-subtle">{KPI_WORKDAY_HINT}</p>
         ) : null}
         {request.note ? (
-          <p className="text-xs break-words whitespace-pre-line text-foreground-muted">{request.note}</p>
+          <p className="text-xs break-words whitespace-pre-line text-foreground-muted">
+            {request.note}
+          </p>
         ) : null}
         {request.status === "CANCELLED" && request.cancelledAt ? (
           <p className="text-[11px] text-foreground-subtle">
@@ -100,8 +108,8 @@ export const LeaveRequestRow = ({
           </p>
         ) : request.decidedBy && request.decidedAt ? (
           <p className="text-[11px] text-foreground-subtle">
-            {request.status === "REJECTED" ? "Từ chối" : "Duyệt"} bởi {request.decidedBy.displayName} ·{" "}
-            {dateTime.format(new Date(request.decidedAt))}
+            {request.status === "REJECTED" ? "Từ chối" : "Duyệt"} bởi{" "}
+            {request.decidedBy.displayName} · {dateTime.format(new Date(request.decidedAt))}
             {request.decisionNote ? ` · “${request.decisionNote}”` : ""}
           </p>
         ) : (
@@ -111,8 +119,9 @@ export const LeaveRequestRow = ({
         )}
       </div>
     </div>
-    {request.canDecide || request.canCancel ? (
+    {request.canDecide || request.canCancel || showsAdminOnlyNote(request, inQueue) ? (
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+        {showsAdminOnlyNote(request, inQueue) ? <AdminOnlyDecisionNote /> : null}
         {request.canDecide ? (
           <>
             <Button size="sm" variant="outline" onClick={() => onDecide(request, "REJECTED")}>
@@ -169,7 +178,13 @@ export const DecideDialog = ({
           );
           onClose();
         },
-        onError: (failure) => setError(scoreErrorMessage(failure))
+        // PD-057: only Quản trị decides (a role changed since the page loaded).
+        onError: (failure) =>
+          setError(
+            isApiError(failure) && failure.status === 403
+              ? "Chỉ Quản trị mới duyệt được đơn nghỉ."
+              : scoreErrorMessage(failure)
+          )
       }
     );
   };
@@ -207,7 +222,11 @@ export const DecideDialog = ({
           <Button variant="ghost" onClick={onClose} disabled={decide.isPending}>
             Hủy
           </Button>
-          <Button variant={approve ? "default" : "destructive"} onClick={submit} disabled={decide.isPending}>
+          <Button
+            variant={approve ? "default" : "destructive"}
+            onClick={submit}
+            disabled={decide.isPending}
+          >
             {decide.isPending ? <Spinner /> : approve ? <Check /> : <X />}
             {approve ? "Duyệt" : "Từ chối"}
           </Button>

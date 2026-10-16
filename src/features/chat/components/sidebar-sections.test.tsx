@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +15,7 @@ import { notifySessionEnd } from "@/lib/session-cleanup";
 import { chatApi } from "../api";
 import { chatKeys } from "../keys";
 import { makeChannel, userA, userB } from "../model/test-fixtures";
+import { useChannelSettingsStore } from "../model/ui-state";
 import { ChatNavBadge } from "./chat-nav-badge";
 import { ChannelsSection, DirectMessagesSection } from "./sidebar-sections";
 
@@ -129,5 +130,23 @@ describe("sidebar chat sections follow the department switcher (PD-054)", () => 
     renderSidebar(["PHOTO_RETOUCH"], "PHOTO_RETOUCH");
     expect(titles("Kênh")).toEqual(["retouch-chung", "production-kín", "toàn-công-ty"]);
     expect(titles("Tin nhắn trực tiếp")).toEqual([userA.displayName, userB.displayName]);
+  });
+});
+
+describe("row \"…\" menu (owner, 2026-10-16)", () => {
+  it("opens the conversation settings at the chosen tab, without opening the conversation", async () => {
+    renderSidebar(both, "PHOTO_RETOUCH");
+    const trigger = screen.getByRole("button", { name: "Tùy chọn cho retouch-chung" });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Cài đặt & thông báo" }));
+    expect(useChannelSettingsStore.getState().target).toEqual({ channelId: id(11), tab: "settings" });
+    act(() => useChannelSettingsStore.getState().close());
+  });
+
+  it("offers Thành viên for channels and group DMs, not for a 1:1 DM", async () => {
+    renderSidebar(both, "PHOTO_RETOUCH");
+    fireEvent.click(screen.getByRole("button", { name: `Tùy chọn cho ${userB.displayName}` }));
+    expect(await screen.findByRole("menuitem", { name: "Thông tin cuộc trò chuyện" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Thành viên" })).toBeNull();
   });
 });

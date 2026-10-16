@@ -5,6 +5,7 @@ import {
   channelEventChangesCapabilities,
   channelTitle,
   formatCount,
+  isDeleteConfirmation,
   markSidebarRead,
   mergeChannelInfo,
   roomCandidates,
@@ -116,5 +117,12 @@ describe("mergeChannelInfo (PD-053)", () => {
       mergeChannelInfo(makeChannel({ department: "PRODUCTION", audienceDepartments: ["PRODUCTION"] }), orgWide)
         .audienceDepartments
     ).toEqual(["PHOTO_RETOUCH", "PRODUCTION"]);
+  });
+});
+
+describe("isDeleteConfirmation", () => {
+  it("accepts the word xóa with or without diacritics, in any case", () => {
+    for (const text of ["xóa", "xoá", "xoa", "XÓA", " Xoa "]) expect(isDeleteConfirmation(text), text).toBe(true);
+    for (const text of ["", "xo", "xóa kênh", "delete"]) expect(isDeleteConfirmation(text), text).toBe(false);
   });
 });

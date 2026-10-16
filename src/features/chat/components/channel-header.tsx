@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { ArrowLeft, Bell, BellOff, ChevronDown, AtSign, Info, LogIn, Users } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, AtSign, LogIn, Users } from "lucide-react";
 import { Link } from "@/components/shared/router-link";
 
 import { AvatarGroup } from "@/components/shared/user-avatar";
@@ -22,20 +22,20 @@ import { usePresence } from "@/lib/realtime/hooks";
 import { useChannelMembers, useJoinChannel, useNotifyLevel } from "../hooks/use-channels";
 import { channelTitle } from "../model/channels";
 import { ChannelGlyph } from "./channel-glyph";
-import type { SettingsTab } from "./channel-settings-dialog";
 import { notifyOptions } from "../model/notify";
 
 const notifyIcon: Record<NotifyLevel, typeof Bell> = { all: Bell, mentions: AtSign, none: BellOff };
 
-/** Conversation header: identity, topic, members, notification level, details. */
+/**
+ * Conversation header: identity, topic, members, notification level. It does not open the conversation settings
+ * any more (owner, 2026-10-16): those live behind the "…" of the conversation's row (sidebar / conversation list).
+ */
 export const ChannelHeader = ({
   channel,
-  mobile,
-  onOpenSettings
+  mobile
 }: {
   channel: ChatChannelDetail;
   mobile: boolean;
-  onOpenSettings: (tab: SettingsTab) => void;
 }) => {
   const direct = isDirectKind(channel.kind);
   const partner = channel.kind === "dm" ? channel.participants[0] : undefined;
@@ -73,11 +73,7 @@ export const ChannelHeader = ({
           <ArrowLeft />
         </Button>
       ) : null}
-      <button
-        type="button"
-        onClick={() => onOpenSettings("about")}
-        className="group/title flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
-      >
+      <div className="flex min-w-0 items-center gap-2 px-1.5 py-1">
         <span className="flex shrink-0 items-center justify-center">
           <ChannelGlyph
             channel={channel}
@@ -94,16 +90,12 @@ export const ChannelHeader = ({
             {channel.department ? (
               <DepartmentBadge department={channel.department} className="ml-0.5" />
             ) : null}
-            <ChevronDown
-              className="size-3.5 shrink-0 text-foreground-subtle transition-colors group-hover/title:text-foreground"
-              aria-hidden="true"
-            />
           </span>
           {subtitle ? (
             <span className="truncate text-xs text-foreground-muted">{subtitle}</span>
           ) : null}
         </span>
-      </button>
+      </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {!channel.isMember && channel.capabilities.canJoin ? (
@@ -114,28 +106,19 @@ export const ChannelHeader = ({
         ) : null}
 
         {!direct ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={() => onOpenSettings("members")}
-                  aria-label={`${channel.memberCount} thành viên`}
-                  className="flex h-8 items-center gap-1.5 rounded-md px-1.5 text-xs text-foreground-muted outline-none pointer-coarse:h-10 pointer-coarse:px-2 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              }
-            >
-              {preview.length > 0 && !mobile ? (
-                <span className="pointer-events-none">
-                  <AvatarGroup users={preview} max={3} size="xs" />
-                </span>
-              ) : (
-                <Users className="size-4" aria-hidden="true" />
-              )}
-              <span className="tabular-nums">{channel.memberCount}</span>
-            </TooltipTrigger>
-            <TooltipContent>Xem thành viên</TooltipContent>
-          </Tooltip>
+          <span
+            role="img"
+            aria-label={`${channel.memberCount} thành viên`}
+            title={`${channel.memberCount} thành viên`}
+            className="flex h-8 items-center gap-1.5 px-1.5 text-xs text-foreground-muted pointer-coarse:h-10 pointer-coarse:px-2"
+          >
+            {preview.length > 0 && !mobile ? (
+              <AvatarGroup users={preview} max={3} size="xs" />
+            ) : (
+              <Users className="size-4" aria-hidden="true" />
+            )}
+            <span className="tabular-nums">{channel.memberCount}</span>
+          </span>
         ) : null}
 
         {channel.isMember ? (
@@ -176,22 +159,6 @@ export const ChannelHeader = ({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={() => onOpenSettings(channel.isMember ? "settings" : "about")}
-                aria-label="Chi tiết cuộc trò chuyện"
-                className="flex size-8 items-center justify-center rounded-md text-foreground-muted outline-none pointer-coarse:size-10 hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-4"
-              />
-            }
-          >
-            <Info />
-          </TooltipTrigger>
-          <TooltipContent>Chi tiết</TooltipContent>
-        </Tooltip>
       </div>
     </header>
   );

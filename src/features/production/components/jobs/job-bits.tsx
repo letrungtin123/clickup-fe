@@ -164,6 +164,69 @@ export const MiniBar = ({
   </span>
 );
 
+/**
+ * PD-058: a task without a quantity yet — a muted dashed chip in place of the number, one line and no wider than a
+ * number column ("Chưa có SL"; screen readers hear "chưa có số lượng"). The worker fills it in, at the latest at Done.
+ */
+export const NoQtyChip = ({ className }: { className?: string | undefined }) => (
+  <span
+    title="Chưa có số lượng — người làm điền khi chuyển Done"
+    className={cn(
+      "inline-flex h-5 shrink-0 items-center rounded-md border border-dashed border-border-strong bg-muted/50 px-1.5 text-[11px] leading-none font-medium whitespace-nowrap text-foreground-muted",
+      className
+    )}
+  >
+    <span aria-hidden="true">Chưa có SL</span>
+    <span className="sr-only">chưa có số lượng</span>
+  </span>
+);
+
+/** A task's quantity: the number (tabular), or the "Chưa có SL" chip while it has none (PD-058). */
+export const QtyValue = ({
+  value,
+  className,
+  chipClassName
+}: {
+  value: number | null;
+  className?: string | undefined;
+  chipClassName?: string | undefined;
+}) =>
+  value === null ? (
+    <NoQtyChip className={chipClassName} />
+  ) : (
+    <span className={cn("tabular-nums", className)}>{formatInteger(value)}</span>
+  );
+
+/** PD-058 beside a total: "2 task chưa có số lượng" (the total counts known numbers only); nothing when 0. */
+export const MissingQtyNote = ({
+  count,
+  short = false,
+  className
+}: {
+  count: number;
+  /** Narrow cells: "2 chưa có SL" (the full sentence is the tooltip and what screen readers hear). */
+  short?: boolean;
+  className?: string | undefined;
+}) => {
+  if (count <= 0) return null;
+  const full = `${formatInteger(count)} task chưa có số lượng`;
+  return (
+    <span
+      title={full}
+      className={cn("block truncate text-[11px] text-foreground-muted tabular-nums", className)}
+    >
+      {short ? (
+        <>
+          <span aria-hidden="true">{formatInteger(count)} chưa có SL</span>
+          <span className="sr-only">{full}</span>
+        </>
+      ) : (
+        full
+      )}
+    </span>
+  );
+};
+
 /** Label/value pair used in detail headers. */
 export const Fact = ({
   label,

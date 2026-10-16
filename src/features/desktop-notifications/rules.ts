@@ -57,7 +57,7 @@ export type ChatNotifyInput = {
   channelId: string;
   message: Pick<
     ChatMessage,
-    "id" | "kind" | "author" | "threadRootId" | "mentions" | "isDeleted" | "createdAt"
+    "id" | "kind" | "author" | "threadRootId" | "mentions" | "mentionsAll" | "isDeleted" | "createdAt"
   >;
   /** The sidebar entry (kind + my notify level), null when the conversation is not cached. */
   channel: Pick<ChatChannel, "kind" | "notifyLevel"> | null;
@@ -73,7 +73,9 @@ export type ChatNotifyInput = {
  * - muted ("Tắt thông báo") → never;
  * - DM / group DM → always; channel at "Mọi tin nhắn" → every top-level message; "Chỉ khi nhắc tên" → only when
  *   I am @mentioned; thread replies → only DMs or when I am @mentioned;
- * - unknown conversation (sidebar not loaded yet) → only an @mention.
+ * - unknown conversation (sidebar not loaded yet) → only an @mention;
+ * - @all (PD-061) is a mention of every member but its author, and it reaches everyone: it passes the muted level,
+ *   "Chỉ khi nhắc tên", the thread rule and an unknown conversation (owner: muted members still get @all).
  */
 export const chatAlertVerdict = ({
   message,
@@ -85,11 +87,13 @@ export const chatAlertVerdict = ({
   if (message.kind === "system" || !message.author) return "system";
   if (message.isDeleted) return "deleted";
   if (isStale(message.createdAt, now)) return "stale";
-  const mentionsMe = message.mentions.includes(myId);
+  // @all mentions every member but its author (the author already returned "own" above).
+  const mentionsAll = message.mentionsAll === true && message.author.id !== myId;
+  const mentionsMe = mentionsAll || message.mentions.includes(myId);
   if (!channel) {
     if (!mentionsMe) return "unknown-channel";
   } else {
-    if (channel.notifyLevel === "none") return "muted";
+    if (channel.notifyLevel === "none" && !mentionsAll) return "muted";
     const direct = isDirectKind(channel.kind);
     if (message.threadRootId !== null) {
       if (!direct && !mentionsMe) return "thread";
@@ -116,7 +120,19 @@ export const chatVerdict = ({ channelId, message, channel, myId, now, viewer }: 
 export type InboxVerdict = "show" | "chat" | "stale" | "focused";
 
 /**
- * Inbox notification → pop-up? Chat types ("chat.*", "channel.*") are covered by the chat rule; the rest
+ * A reply in a channel thread (not a DM): the chat:message event does not say who is in the thread, so the server's
+ * "chat.thread_replied" notification (sent to the root's author and earlier repliers) brings the OS pop-up instead.
+ * DM threads already pop up through the chat rule.
+ */
+export const isChannelThreadReply = (notification: { type: string; payload?: unknown }) => {
+  if (notification.type !== "chat.thread_replied") return false;
+  const kind = (notification.payload as Record<string, unknown> | null | undefined)?.channelKind;
+  return kind !== "dm" && kind !== "group_dm";
+};
+
+/**
+ * Inbox notification → pop-up? Chat types ("chat.*", "channel.*") are covered by the chat rule, except a reply in a
+ * channel thread (isChannelThreadReply); the rest
  * pops up only while no tab of the app is in front (a focused tab shows its own in-app toast).
  */
 export const inboxVerdict = ({
@@ -124,11 +140,13 @@ export const inboxVerdict = ({
   now,
   viewer
 }: {
-  notification: Pick<Notification, "type" | "createdAt">;
+  notification: Pick<Notification, "type" | "createdAt"> & { payload?: Notification["payload"] };
   now: number;
   viewer: ViewerState;
 }): InboxVerdict => {
-  if (notification.type.startsWith("chat.") || notification.type.startsWith("channel.")) return "chat";
+  if ((notification.type.startsWith("chat.") || notification.type.startsWith("channel.")) && !isChannelThreadReply(notification)) {
+    return "chat";
+  }
   if (isStale(notification.createdAt, now)) return "stale";
   if (isAppFocused(viewer)) return "focused";
   return "show";

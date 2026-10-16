@@ -54,6 +54,7 @@ const MessageInlineEditor = ({ message }: { message: ChatMessage }) => {
         submitOnEnter
         autoFocus
         mentionSource={actions.mentionSource}
+        allowMentionAll={actions.allowMentionAll}
         onSubmit={submit}
         aria-label="Sửa tin nhắn"
       />

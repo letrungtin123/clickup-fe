@@ -88,7 +88,7 @@ import {
   useOpenDm,
   useUpdateChannel
 } from "../hooks/use-channels";
-import { channelLabel, channelTitle } from "../model/channels";
+import { channelLabel, channelTitle, isDeleteConfirmation } from "../model/channels";
 import { notifyOptions } from "../model/notify";
 import { ChannelDepartmentNote } from "./channel-department";
 import { PeoplePicker } from "./people-picker";
@@ -860,7 +860,14 @@ const SettingsTabPanel = ({
               danger
               description="Xóa vĩnh viễn kênh và toàn bộ tin nhắn với mọi thành viên."
               action={
-                <Button variant="destructive" size="sm" onClick={() => setConfirm("delete")}>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    setDeleteName("");
+                    setConfirm("delete");
+                  }}
+                >
                   Xóa kênh
                 </Button>
               }
@@ -884,7 +891,7 @@ const SettingsTabPanel = ({
                 ? "Bạn sẽ không còn nhận tin nhắn và thông báo từ kênh này."
                 : confirm === "archive"
                   ? "Không ai gửi được tin mới cho tới khi kênh được khôi phục."
-                  : "Thao tác này không thể hoàn tác. Nhập tên kênh để xác nhận."}
+                  : "Thao tác này không thể hoàn tác. Gõ “xóa” để xác nhận."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {confirm === "delete" ? (
@@ -892,15 +899,16 @@ const SettingsTabPanel = ({
               autoFocus
               value={deleteName}
               onChange={(event) => setDeleteName(event.target.value)}
-              placeholder={channel.name ?? ""}
-              aria-label="Nhập tên kênh để xác nhận"
+              placeholder="xóa"
+              aria-label="Gõ xóa để xác nhận"
             />
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction
               variant={confirm === "archive" ? "default" : "destructive"}
-              disabled={confirm === "delete" && deleteName.trim() !== (channel.name ?? "")}
+              // Typing the whole channel name was too much for long job chats (owner, 2026-10-16): the word "xóa" will do.
+              disabled={confirm === "delete" && !isDeleteConfirmation(deleteName)}
               onClick={() => {
                 const action = confirm;
                 setConfirm(null);

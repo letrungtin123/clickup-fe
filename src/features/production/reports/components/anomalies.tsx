@@ -24,6 +24,7 @@ import { reportErrorMessage } from "../errors";
 import { formatReportValue } from "../format";
 import { useReviewAnomaly, useUnreviewAnomaly } from "../hooks";
 import { reportBuilderHref } from "../model";
+import { REPORTS_MODULE_VISIBLE } from "../../nav";
 
 /**
  * Rows of the anomalies report (SPEC Phase 5 §5, PLAN §10): what happened, who / which task, and the
@@ -413,7 +414,7 @@ export const AnomalyRow = ({
         {formatDeadline(item.at, timeZone)}
       </time>
       <div className="flex items-center gap-1">
-        {item.kind === "WORKER_FAIL_RATE" && item.user ? (
+        {REPORTS_MODULE_VISIBLE && item.kind === "WORKER_FAIL_RATE" && item.user ? (
           <Button
             variant="ghost"
             size="sm"

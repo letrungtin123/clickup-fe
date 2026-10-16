@@ -8,6 +8,7 @@ import {
   Copy,
   Ellipsis,
   KeyRound,
+  PenLine,
   Search,
   ShieldAlert,
   UserPlus,
@@ -274,8 +275,11 @@ const MemberRow = ({
   const session = useSessionContext();
   const mutations = useMemberMutations();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const isSelf = member.user.id === session.user.id;
   const full = session.hasFullOrganizationAuthority;
+  // PD-062: only the superadmin renames accounts — anyone's, their own too.
+  const canRename = full;
   // Mirrors the API escalation guards: only superadmins touch superadmin accounts or grant that role.
   const editable = canManage && !isSelf && (full || member.role.key !== "superadmin");
   // A superadmin implicitly belongs to every department ("Tất cả"): nothing to edit.
@@ -388,7 +392,7 @@ const MemberRow = ({
 
       {/* Phones: the "…" menu sits on the identity row; role + status share the second row. */}
       <div className="col-start-3 row-start-1 flex justify-end md:col-start-auto md:row-start-auto">
-        {editable ? (
+        {editable || canRename ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -402,20 +406,37 @@ const MemberRow = ({
               <Ellipsis />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              {canRename ? (
+                <DropdownMenuItem onClick={() => setRenaming(true)}>
+                  <PenLine />
+                  Đổi tên
+                </DropdownMenuItem>
+              ) : null}
               {departmentsEditable ? (
                 <DropdownMenuItem onClick={onEditDepartments}>
                   <Building2 />
                   Đổi phòng ban
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem onClick={() => setConfirmReset(true)}>
-                <KeyRound />
-                Đặt lại mật khẩu
-              </DropdownMenuItem>
+              {editable ? (
+                <DropdownMenuItem onClick={() => setConfirmReset(true)}>
+                  <KeyRound />
+                  Đặt lại mật khẩu
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
       </div>
+
+      {canRename ? (
+        <RenameMemberDialog
+          key={renaming ? "open" : "closed"}
+          member={member}
+          open={renaming}
+          onClose={() => setRenaming(false)}
+        />
+      ) : null}
 
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
         <AlertDialogContent>
@@ -448,6 +469,80 @@ const MemberRow = ({
         </AlertDialogContent>
       </AlertDialog>
     </li>
+  );
+};
+
+/** PD-062: the superadmin renames an account (same rule as the name at creation: 1–160 characters). */
+const RenameMemberDialog = ({
+  member,
+  open,
+  onClose
+}: {
+  member: AdminMember;
+  open: boolean;
+  onClose: () => void;
+}) => {
+  const mutations = useMemberMutations();
+  const inputId = useId();
+  const [name, setName] = useState(member.user.displayName);
+  const [error, setError] = useState<string | null>(null);
+  const trimmed = name.trim();
+  const unchanged = trimmed === member.user.displayName;
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!trimmed) return setError("Nhập họ tên.");
+    if (trimmed.length > 160) return setError("Tối đa 160 ký tự.");
+    if (unchanged) return onClose();
+    mutations.rename.mutate(
+      { membershipId: member.id, displayName: trimmed },
+      { onSuccess: onClose, onError: (cause) => setError(adminErrorMessage(cause)) }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Đổi tên tài khoản</DialogTitle>
+            <DialogDescription>
+              Tên mới hiện ở mọi nơi: danh sách thành viên, chat, job, bảng điểm, lịch nghỉ. Email
+              đăng nhập giữ nguyên ({member.user.email ?? "—"}).
+            </DialogDescription>
+          </DialogHeader>
+          <Field data-invalid={error ? true : undefined}>
+            <FieldLabel htmlFor={inputId}>Họ tên</FieldLabel>
+            <Input
+              id={inputId}
+              value={name}
+              autoFocus
+              maxLength={200}
+              aria-invalid={error ? true : undefined}
+              onChange={(event) => {
+                setName(event.target.value);
+                setError(null);
+              }}
+            />
+            {error ? <FieldError>{error}</FieldError> : null}
+          </Field>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+              disabled={mutations.rename.isPending}
+            >
+              Hủy
+            </Button>
+            <Button type="submit" disabled={mutations.rename.isPending || !trimmed || unchanged}>
+              {mutations.rename.isPending ? <Spinner /> : <PenLine />}
+              Lưu tên
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 

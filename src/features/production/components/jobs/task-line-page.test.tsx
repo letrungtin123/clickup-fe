@@ -496,7 +496,7 @@ describe("TaskSubtasks", () => {
 
     await click(screen.getByRole("button", { name: "Thêm subtask" }));
     const form = screen.getByRole("form", { name: "Tạo subtask cho task #3" });
-    const qty = within(form).getByLabelText("Số tấm");
+    const qty = within(form).getByLabelText("Số lượng (tùy chọn)");
     fireEvent.change(qty, { target: { value: "2" } });
     expect(within(form).getByText("Task gốc còn 5 tấm · Tổng Leader giao vẫn là 10")).toBeTruthy();
     fireEvent.change(qty, { target: { value: "7" } });
@@ -545,7 +545,7 @@ describe("TaskSubtasks", () => {
       fireEvent.click(option!);
       await Promise.resolve();
     });
-    fireEvent.change(within(form).getByLabelText("Số tấm"), { target: { value: "2" } });
+    fireEvent.change(within(form).getByLabelText("Số lượng (tùy chọn)"), { target: { value: "2" } });
     fireEvent.change(within(form).getByLabelText("Lý do (tùy chọn)"), { target: { value: "   " } });
     await click(within(form).getByRole("button", { name: "Tạo subtask" }));
     expect(create).toHaveBeenCalledTimes(1);
@@ -739,5 +739,141 @@ describe("TaskSubtasks", () => {
     renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />);
     expect(textOf("Số lượng 7")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Tổng d/);
+  });
+});
+
+describe("PD-058 — a task without a quantity", () => {
+  const empty = { qtyAssigned: null, allocatedQty: 0 };
+
+  it("the worker fills Số lượng giao in directly — no request flow", async () => {
+    const task = line({ ...empty, capabilities: caps({ canEdit: true, canRequestQty: true }) });
+    const update = vi.spyOn(jobsApi, "updateTask").mockResolvedValue({ ...task, qtyAssigned: 12 });
+    const ask = vi.spyOn(jobsApi, "requestQty").mockResolvedValue(task);
+    facts(task, WORKER);
+    expect(screen.queryByRole("button", { name: "Đề nghị sửa Số lượng giao" })).toBeNull();
+    const field = screen.getByRole("button", { name: "Điền Số lượng giao" });
+    expect(valueOf(field)).toContain("Chưa có SL");
+    await click(field);
+    const input = screen.getByLabelText<HTMLInputElement>("Số lượng giao");
+    expect(input.value).toBe("");
+    expect(screen.queryByLabelText("Lý do")).toBeNull();
+    await click(screen.getByRole("button", { name: "Lưu" }));
+    expect(screen.getByRole("alert").textContent).toBe("Nhập số tấm nguyên ≥ 1.");
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "12" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(update).toHaveBeenCalledWith(task.id, { qtyAssigned: 12 });
+    expect(ask).not.toHaveBeenCalled();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Đã điền số lượng"));
+  });
+
+  it("the Leader fills it in the same way; a split task's own part, its subtasks' images beside it", async () => {
+    const task = line({
+      ...empty,
+      allocatedQty: 3,
+      subtasks: [subtask],
+      capabilities: caps({ canEdit: true, canEditQtyAssigned: true })
+    });
+    const update = vi.spyOn(jobsApi, "updateTask").mockResolvedValue({ ...task, qtyAssigned: 5 });
+    facts(task, LEADER);
+    expect(screen.queryByRole("button", { name: "Sửa Số lượng giao" })).toBeNull();
+    const field = screen.getByRole("button", { name: "Điền Số lượng giao" });
+    expect(valueOf(field)).toContain("+ 3 tấm subtask");
+    await click(field);
+    const input = screen.getByLabelText<HTMLInputElement>(
+      "Số lượng của task #3, không gồm subtask"
+    );
+    fireEvent.change(input, { target: { value: "5" } });
+    await click(screen.getByRole("button", { name: "Lưu" }));
+    expect(update).toHaveBeenCalledWith(task.id, { qtyAssigned: 5 });
+  });
+
+  it("someone who may not change it only sees the chip", () => {
+    facts(line({ ...empty }), LEADER);
+    expect(screen.queryByRole("button", { name: /Số lượng giao/ })).toBeNull();
+    expect(screen.getByTitle("Chưa có số lượng — người làm điền khi chuyển Done")).toBeTruthy();
+  });
+
+  it("the tree shows “Chưa có SL” in the quantity column; an empty subtask is filled in directly", async () => {
+    const task = line({
+      ...empty,
+      allocatedQty: 0,
+      subtasks: [{ ...subtask, qtyAssigned: null }],
+      capabilities: caps({ canEdit: true, canCreateSubtask: true })
+    });
+    const update = vi.spyOn(jobsApi, "updateTask").mockResolvedValue(task);
+    renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />);
+    // Root and leaf: the chip instead of "Số lượng N"; no total until every part has a number.
+    expect(screen.getAllByText("Chưa có SL")).toHaveLength(2);
+    expect(textOf("Tổng —")).toBeTruthy();
+    await click(screen.getByRole("button", { name: "Điền số lượng của subtask #3a" }));
+    const qty = screen.getByLabelText<HTMLInputElement>("Số lượng của subtask");
+    expect(qty.value).toBe("");
+    // Nothing is carved from a task without a quantity: no "Task gốc còn".
+    expect(screen.queryByText(/Task gốc còn/)).toBeNull();
+    fireEvent.change(qty, { target: { value: "4" } });
+    await act(async () => {
+      fireEvent.keyDown(qty, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(update).toHaveBeenCalledWith(subtask.id, { qtyAssigned: 4 });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Đã điền số lượng"));
+  });
+
+  it("an empty subtask filled in under a task that has a number is taken from it (the task keeps at least 1)", async () => {
+    const task = line({
+      qtyAssigned: 7,
+      allocatedQty: 7,
+      subtasks: [{ ...subtask, qtyAssigned: null }],
+      capabilities: caps({ canEdit: true, canCreateSubtask: true })
+    });
+    const update = vi.spyOn(jobsApi, "updateTask").mockResolvedValue(task);
+    renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />);
+    await click(screen.getByRole("button", { name: "Điền số lượng của subtask #3a" }));
+    const qty = screen.getByLabelText<HTMLInputElement>("Số lượng của subtask");
+    fireEvent.change(qty, { target: { value: "7" } });
+    await click(screen.getByRole("button", { name: "Lưu" }));
+    expect(screen.getByRole("alert").textContent).toBe("Tối đa 6 tấm (task gốc giữ ít nhất 1 tấm).");
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.change(qty, { target: { value: "4" } });
+    expect(screen.getByText("Task gốc còn 3 tấm")).toBeTruthy();
+    await click(screen.getByRole("button", { name: "Lưu" }));
+    expect(update).toHaveBeenCalledWith(subtask.id, { qtyAssigned: 4 });
+  });
+
+  it("“Tạo subtask” without a quantity sends none; under a task without one nothing is carved", async () => {
+    const task = line({
+      ...empty,
+      capabilities: caps({ canEdit: true, canCreateSubtask: true })
+    });
+    const create = vi.spyOn(jobsApi, "createSubtask").mockResolvedValue(task);
+    renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />);
+    await click(screen.getByRole("button", { name: "Thêm subtask" }));
+    const form = screen.getByRole("form", { name: "Tạo subtask cho task #3" });
+    const qty = within(form).getByLabelText("Số lượng (tùy chọn)");
+    expect(
+      within(form).getByText("Để trống nếu chưa biết — người làm điền khi chuyển Done.")
+    ).toBeTruthy();
+    fireEvent.change(qty, { target: { value: "50" } });
+    expect(within(form).getByText("Task gốc chưa có số lượng nên không bị trừ.")).toBeTruthy();
+    fireEvent.change(qty, { target: { value: "" } });
+    await click(within(form).getByRole("combobox", { name: "Công đoạn" }));
+    const [option] = await screen.findAllByRole("option");
+    await act(async () => {
+      fireEvent.pointerDown(option!);
+      fireEvent.click(option!);
+      await Promise.resolve();
+    });
+    await click(within(form).getByRole("button", { name: "Tạo subtask" }));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0]?.[1]).toEqual({ processId: CUTOUT.id });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Đã tạo subtask Cắt nền cho #3 — chưa có số lượng"
+      )
+    );
   });
 });

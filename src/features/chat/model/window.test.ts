@@ -6,6 +6,7 @@ import { makeMessage, me, userA, userB } from "./test-fixtures";
 import {
   appendLive,
   applyDeletion,
+  applyEdit,
   applyReactionEvent,
   fromHistory,
   mergeOlder,
@@ -174,5 +175,27 @@ describe("reactions", () => {
       reactedByMe: false,
       users: [userA]
     });
+  });
+});
+
+describe("@all edits (PD-061)", () => {
+  it("merges mentionsAll from the edit event and clears it on deletion", () => {
+    const message = makeMessage({ seq: 3 });
+    const body = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "mention", attrs: { id: "all", label: "all" } }] }]
+    };
+    const edited = applyEdit(message, {
+      channelId: message.channelId,
+      messageId: message.id,
+      threadRootId: null,
+      body,
+      text: "@all",
+      mentions: [],
+      mentionsAll: true,
+      editedAt: "2026-10-16T08:00:00.000Z"
+    });
+    expect(edited).toMatchObject({ mentionsAll: true, text: "@all", isEdited: true });
+    expect(applyDeletion(edited, "2026-10-16T08:01:00.000Z").mentionsAll).toBe(false);
   });
 });

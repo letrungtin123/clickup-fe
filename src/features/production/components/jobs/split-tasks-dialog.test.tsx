@@ -9,6 +9,7 @@ import { SessionValueContext } from "@/features/auth/session-context";
 import type { SessionContext } from "@/lib/api/schemas";
 
 import { todayIn } from "../../format";
+import { jobsApi } from "../../jobs-api";
 import { productionKeys } from "../../keys";
 import { SplitTasksDialog } from "./split-tasks-dialog";
 
@@ -167,8 +168,12 @@ describe("SplitTasksDialog — line cards", () => {
     expect(toggle.textContent).toContain("Hình lỗi, giờ OT, link chia việc, ghi chú");
     expect(toggle.textContent).not.toContain("QC");
     expect(scope.queryByPlaceholderText("Dán link hoặc đường dẫn thư mục")).toBeNull();
-    // No "(tùy chọn)" label suffix anywhere.
-    expect(document.body.textContent).not.toContain("(tùy chọn)");
+    // PD-058: only Số lượng says "(tùy chọn)" (the other optional fields sit behind "Chi tiết thêm").
+    expect(document.body.textContent?.split("(tùy chọn)")).toHaveLength(2);
+    const qty = scope.getByLabelText<HTMLInputElement>("Số lượng (tùy chọn)");
+    expect(document.getElementById(qty.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+      "Để trống nếu chưa biết — người làm điền khi chuyển Done."
+    );
     expect(scope.getByRole("button", { name: "Xóa task 1" })).toHaveProperty("disabled", true);
   });
 
@@ -246,7 +251,8 @@ describe("SplitTasksDialog — line cards", () => {
     const scope = within(cards()[0]!);
     expect(scope.getByText("Chọn nhân viên thực hiện.")).toBeTruthy();
     expect(scope.getByText("Chọn quy trình.")).toBeTruthy();
-    expect(scope.getByText("Số lượng nguyên ≥ 1.")).toBeTruthy();
+    // PD-058: an empty quantity is fine.
+    expect(scope.queryByText("Số lượng nguyên ≥ 1.")).toBeNull();
     expect(scope.getByText("Chọn QC.")).toBeTruthy();
     expect(document.activeElement?.getAttribute("aria-invalid")).toBe("true");
     expect(document.activeElement?.id).toMatch(/-assignee$/);
@@ -297,5 +303,83 @@ describe("SplitTasksDialog — line cards", () => {
       "true"
     );
     expect(scope.getByText("Từ 0,1 đến 24 giờ.")).toBeTruthy();
+  });
+});
+
+/** Picks `option` in the card's `label` select (a real click starts on the item: Base UI ignores a bare click). */
+const pick = async (card: HTMLElement, label: string, option: RegExp) => {
+  await act(async () => {
+    fireEvent.click(within(card).getByRole("combobox", { name: label }));
+    await Promise.resolve();
+  });
+  await act(async () => {
+    const item = await screen.findByRole("option", { name: option });
+    fireEvent.pointerDown(item);
+    fireEvent.click(item);
+    await Promise.resolve();
+  });
+};
+
+const fillRequired = async (card: HTMLElement) => {
+  await pick(card, "Nhân viên thực hiện", /Worker One/);
+  await pick(card, "Quy trình", /Retouch/);
+  await pick(card, "Ca", /Day/);
+  await pick(card, "QC", /Checker Two/);
+};
+
+describe("SplitTasksDialog — optional quantity (PD-058)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("an empty Số lượng is left out of the request; the footer counts it as a task without a quantity", async () => {
+    const createTasks = vi
+      .spyOn(jobsApi, "createTasks")
+      .mockResolvedValue({ tasks: [], warnings: [] });
+    renderDialog();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const card = cards()[0]!;
+    await fillRequired(card);
+    expect(within(card).getByLabelText<HTMLInputElement>("Số lượng (tùy chọn)").value).toBe("");
+    expect(screen.getByText(/1 task chưa có số lượng/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 task" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(createTasks).toHaveBeenCalledTimes(1));
+    const [jobId, lines] = createTasks.mock.calls[0]!;
+    expect(jobId).toBe(job.id);
+    expect(lines[0]).toMatchObject({
+      assigneeId: WORKER.id,
+      processId: RETOUCH,
+      shiftId: DAY_SHIFT,
+      qcId: CHECKER.id
+    });
+    expect(lines[0]).not.toHaveProperty("qtyAssigned");
+  });
+
+  it("a typed quantity is still a whole number ≥ 1, and is sent", async () => {
+    const createTasks = vi
+      .spyOn(jobsApi, "createTasks")
+      .mockResolvedValue({ tasks: [], warnings: [] });
+    renderDialog();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const card = cards()[0]!;
+    const scope = within(card);
+    await fillRequired(card);
+    const qty = scope.getByLabelText("Số lượng (tùy chọn)");
+    fireEvent.change(qty, { target: { value: "0" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 task" }));
+      await Promise.resolve();
+    });
+    expect(scope.getByText("Số lượng nguyên ≥ 1.")).toBeTruthy();
+    expect(createTasks).not.toHaveBeenCalled();
+    fireEvent.change(qty, { target: { value: "12" } });
+    expect(screen.queryByText(/task chưa có số lượng/)).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Thêm 1 task" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(createTasks).toHaveBeenCalledTimes(1));
+    expect(createTasks.mock.calls[0]![1][0]).toMatchObject({ qtyAssigned: 12 });
   });
 });

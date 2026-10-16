@@ -52,6 +52,9 @@ import {
   toggleJobStatusId,
   mentionAt,
   maxDeclaredDoneQty,
+  missingQtyLabel,
+  qtyText,
+  qtyTotalText,
   mentionedIds,
   myCreditSummary,
   needsInput,
@@ -163,6 +166,22 @@ describe("progress and allocation", () => {
         { kind: "FB_WRONG", qtyAssigned: 2 }
       ])
     ).toBe(5);
+    // PD-058: a task without a quantity counts for nothing.
+    expect(
+      assignedNormalQty([
+        { kind: "NORMAL", qtyAssigned: 5 },
+        { kind: "NORMAL", qtyAssigned: null }
+      ])
+    ).toBe(5);
+  });
+
+  it("words totals that leave out tasks without a quantity (PD-058)", () => {
+    expect(qtyTotalText(120, 2)).toBe("120 tấm · 2 task chưa có số lượng");
+    expect(qtyTotalText(1200, 0)).toBe("1.200 tấm");
+    expect(missingQtyLabel(0)).toBeNull();
+    expect(missingQtyLabel(3)).toBe("3 task chưa có số lượng");
+    expect(qtyText(null)).toBe("chưa có số lượng");
+    expect(qtyText(12)).toBe("12 tấm");
   });
 
   it("estimates credit, and money only for Khoán shifts with a price", () => {
@@ -211,6 +230,10 @@ describe("task lines", () => {
     expect(taskLineProblems({ ...line, assigneeId: id(9) }, context)).toEqual({});
     expect(taskLineProblems({ ...line, qty: "0" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
     expect(taskLineProblems({ ...line, qty: "2.5" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
+    expect(taskLineProblems({ ...line, qty: "1000001" }, context).qty).toBe("Số lượng nguyên ≥ 1.");
+    // PD-058: the quantity is optional ("chưa có số lượng" until the worker fills it in).
+    expect(taskLineProblems({ ...line, qty: "" }, context)).toEqual({});
+    expect(taskLineProblems({ ...line, qty: "  " }, context)).toEqual({});
     expect(
       Object.keys(
         taskLineProblems(
@@ -218,7 +241,7 @@ describe("task lines", () => {
           context
         )
       )
-    ).toEqual(["assignee", "qc", "process", "shift", "qty"]);
+    ).toEqual(["assignee", "qc", "process", "shift"]);
   });
 
   it("a Checking line (PD-037) is done by a QC person (or Leader) and has no QC of its own", () => {
@@ -824,6 +847,28 @@ describe("timeline sentences", () => {
     ).toContain("ngoài luồng");
   });
 
+  it("PD-058: a quantity filled in reads “— → N” (directly: a FIELD row; at Done: on the STATUS row)", () => {
+    expect(
+      text(
+        describeTaskLog(
+          log(
+            "STATUS",
+            { name: "Đang làm", qtyAssigned: null },
+            { name: "Done", qtyAssigned: 120, qtyDone: 120 }
+          ),
+          names
+        )
+      )
+    ).toBe("chuyển #7 từ Đang làm sang Done · số lượng — → 120 tấm");
+    expect(
+      text(describeTaskLog(log("FIELD", { qtyAssigned: null }, { qtyAssigned: 120 }), names))
+    ).toBe("sửa #7: số lượng — → 120 tấm");
+    // Created without a quantity: no "· N tấm".
+    expect(
+      text(describeTaskLog(log("CREATE", null, { assigneeId: null, qtyAssigned: null }), names))
+    ).toBe("đã tạo task #7 cho không ai");
+  });
+
   it("reads a status row's from → to and its details for the job log (PD-044)", () => {
     const row = log(
       "STATUS",
@@ -877,6 +922,19 @@ describe("timeline sentences", () => {
         )
       )
     ).toBe("đã sửa subtask #1301 của task #7: công đoạn Mannequin → Ghép nền; 3 tấm → 5 tấm");
+    // PD-058: a subtask filled in from "no quantity".
+    expect(
+      text(
+        describeTaskLog(
+          log(
+            "SUBTASK",
+            { processName: "Mannequin", qtyAssigned: null },
+            { ...base, op: "updated", processName: "Mannequin", qtyAssigned: 4 }
+          ),
+          names
+        )
+      )
+    ).toBe("đã sửa subtask #1301 của task #7: — → 4 tấm");
     expect(
       text(
         describeTaskLog(

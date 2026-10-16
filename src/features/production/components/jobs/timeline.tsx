@@ -496,14 +496,17 @@ const CommentComposer = ({
   const matches = useMemo(() => {
     if (!mention) return [];
     const q = foldText(mention.query);
+    // Who is already @mentioned in this comment is not offered again (owner, 2026-10-16).
+    const already = new Set(mentionedIds(text, picked));
     return people
       .filter(
         (person) =>
           person.id !== session.user.id &&
+          !already.has(person.id) &&
           (!q || foldText(`${person.displayName} ${person.email ?? ""}`).includes(q))
       )
       .slice(0, MENTION_MAX);
-  }, [mention, people, session.user.id]);
+  }, [mention, people, session.user.id, text, picked]);
 
   // Keyboard navigation keeps the highlighted person visible inside the scrolling list (not the page).
   const listRef = useRef<HTMLUListElement | null>(null);

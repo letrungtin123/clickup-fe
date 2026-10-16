@@ -93,7 +93,8 @@ export const ProductionOverviewRoute = () => {
           </h1>
         </header>
 
-        <ProductionAgenda roles={roles} timeZone={settings.timezone} />
+        {/* "Việc của tôi" has its own sidebar page: not repeated here (owner, 2026-10-16). */}
+        <ProductionAgenda roles={roles} timeZone={settings.timezone} withMyTasks={false} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <section

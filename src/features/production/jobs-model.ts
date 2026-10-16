@@ -244,9 +244,29 @@ export const allocation = (
   return { adding, total, remaining: totalImages - total, over: total > totalImages };
 };
 
-/** Images already given out in normal (non-feedback) tasks — what over-allocation is measured against. */
+/**
+ * Images already given out in normal (non-feedback) tasks — what over-allocation is measured against. PD-058: tasks
+ * without a quantity yet count for nothing (known numbers only, like the API's totals).
+ */
 export const assignedNormalQty = (tasks: readonly Pick<ProductionTask, "kind" | "qtyAssigned">[]) =>
-  tasks.reduce((sum, task) => sum + (task.kind === "NORMAL" ? task.qtyAssigned : 0), 0);
+  tasks.reduce((sum, task) => sum + (task.kind === "NORMAL" ? (task.qtyAssigned ?? 0) : 0), 0);
+
+// PD-058: the quantity is optional until Done ------------------------------------------------------------------
+
+/** The hint under an optional "Số lượng" ("Chia task", "Nhập Task", "Tạo subtask"). */
+export const qtyOptionalHint = "Để trống nếu chưa biết — người làm điền khi chuyển Done.";
+
+/** "2 task chưa có số lượng" (null when every task has one). */
+export const missingQtyLabel = (count: number) =>
+  count > 0 ? `${formatInteger(count)} task chưa có số lượng` : null;
+
+/** A total with the tasks it leaves out: "120 tấm · 2 task chưa có số lượng" (PD-058, `tasksWithoutQty`). */
+export const qtyTotalText = (qty: number, tasksWithoutQty: number) =>
+  [`${formatInteger(qty)} tấm`, missingQtyLabel(tasksWithoutQty)].filter(Boolean).join(" · ");
+
+/** A task's quantity as text: "12 tấm", or "chưa có số lượng" (PD-058: null until the worker fills it). */
+export const qtyText = (qty: number | null) =>
+  qty === null ? "chưa có số lượng" : `${formatInteger(qty)} tấm`;
 
 // Lines and subtasks (PD-044) --------------------------------------------------------------------------------
 
@@ -413,8 +433,10 @@ export const taskLineProblems = (line: TaskLineDraft, context: LineContext) => {
   }
   if (!line.processId) problems.process = "Chọn quy trình.";
   if (!line.shiftId) problems.shift = "Chọn ca.";
-  const qty = Number(line.qty);
-  if (!/^\d+$/.test(line.qty.trim()) || qty < 1 || qty > 1_000_000)
+  // PD-058: optional ("chưa có số lượng" until the worker fills it in by Done); a typed one is a whole number ≥ 1.
+  const qtyText = line.qty.trim();
+  const qty = Number(qtyText);
+  if (qtyText !== "" && (!/^\d+$/.test(qtyText) || qty < 1 || qty > 1_000_000))
     problems.qty = "Số lượng nguyên ≥ 1.";
   if (line.receivedDay === null) problems.received = "Chọn ngày nhận.";
   if (line.dueDay === null) problems.due = "Chọn ngày giao.";
@@ -1132,6 +1154,7 @@ const fieldValue = (key: string, value: unknown, names: Names) => {
     return str(value) ? (names.process(str(value)!) ?? "quy trình khác") : "—";
   if (key === "shiftId") return str(value) ? (names.shift(str(value)!) ?? "ca khác") : "—";
   if (key === "deadline" || key === "assignedAt") return formatWorkDay(str(value), names.timeZone);
+  // PD-058: null = no quantity yet (filled in later by the worker): "số lượng — → 120 tấm".
   if (key === "qtyAssigned") return num(value) !== null ? `${num(value)} tấm` : "—";
   if (key === "errorQty") return num(value) !== null ? formatNumber(num(value)) : "—";
   if (key === "otHours") return num(value) !== null ? `${formatNumber(num(value))} giờ` : "—";
@@ -1140,14 +1163,25 @@ const fieldValue = (key: string, value: unknown, names: Names) => {
 
 /**
  * What a STATUS row adds after "from → to": the Done quantity and OT hours given at the first Done, the QC asking for
- * rework (PD-044, `qcFail`; `withQcFail: false` when the sentence already says it) and an ADMIN override.
+ * rework (PD-044, `qcFail`; `withQcFail: false` when the sentence already says it) and an ADMIN override. PD-058: a
+ * quantity filled in at Done (`from.qtyAssigned` null → a number) reads "số lượng — → 120 tấm" (the Done quantity is
+ * then the same number, not repeated).
  */
 export const statusLogDetails = (
   to: Record<string, unknown>,
-  { withQcFail = true }: { withQcFail?: boolean } = {}
+  {
+    withQcFail = true,
+    from = null
+  }: { withQcFail?: boolean; from?: Record<string, unknown> | null } = {}
 ): Segment[] => {
   const segments: Segment[] = [];
-  if (num(to.qtyDone) !== null) segments.push({ text: ` · ${formatNumber(num(to.qtyDone))} tấm` });
+  const filled =
+    from !== null && "qtyAssigned" in from && num(from.qtyAssigned) === null
+      ? num(to.qtyAssigned)
+      : null;
+  if (filled !== null) segments.push({ text: ` · số lượng — → ${formatNumber(filled)} tấm` });
+  if (num(to.qtyDone) !== null && num(to.qtyDone) !== filled)
+    segments.push({ text: ` · ${formatNumber(num(to.qtyDone))} tấm` });
   if (num(to.otHours) !== null)
     segments.push({ text: ` · ${formatNumber(num(to.otHours))} giờ OT` });
   if (to.qcFail === true && withQcFail)
@@ -1238,8 +1272,9 @@ const describeSubtaskLog = (
       const before = processOf(from);
       const after = processOf(to);
       if (before && after && before !== after) changes.push(`công đoạn ${before} → ${after}`);
-      if (num(from.qtyAssigned) !== null && num(to.qtyAssigned) !== num(from.qtyAssigned))
-        changes.push(`${qtyLabel(from.qtyAssigned)} → ${qtyLabel(to.qtyAssigned) ?? "—"}`);
+      // PD-058: a subtask without a quantity (null) reads "—"; older rows may not carry the field at all.
+      if ("qtyAssigned" in from && "qtyAssigned" in to && num(to.qtyAssigned) !== num(from.qtyAssigned))
+        changes.push(`${qtyLabel(from.qtyAssigned) ?? "—"} → ${qtyLabel(to.qtyAssigned) ?? "—"}`);
       return [
         { text: "đã sửa subtask " },
         subtask,
@@ -1332,7 +1367,7 @@ export const describeTaskLog = (
         { text: str(from.name) ?? "?", strong: true },
         { text: " sang " },
         { text: str(to.name) ?? "?", strong: true },
-        ...statusLogDetails(to)
+        ...statusLogDetails(to, { from })
       ];
     case "SUBTASK":
       return describeSubtaskLog(from, to, task, names);

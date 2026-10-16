@@ -1,6 +1,5 @@
 import {
   AlarmClock,
-  ChartNoAxesCombined,
   ChevronLeft,
   CircleCheckBig,
   Flame,
@@ -132,14 +131,7 @@ const LeaderDashboardPage = () => {
               <ScanSearch />
               <span className="max-sm:sr-only">Bất thường</span>
             </Button>
-            <Button
-              variant="outline"
-              render={<Link to="/production/reports" />}
-              nativeButton={false}
-            >
-              <ChartNoAxesCombined />
-              <span className="max-sm:sr-only">Báo cáo</span>
-            </Button>
+            {/* "Báo cáo" is hidden for now (owner, 2026-10-16), like its menu entry in features/production/nav.ts. */}
           </div>
         }
       >

@@ -5,6 +5,7 @@ import {
   Eye,
   FileWarning,
   LogIn,
+  Megaphone,
   Paperclip,
   RotateCcw,
   SendHorizontal,
@@ -14,7 +15,7 @@ import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 
-import { isEmptyDoc, prepareDoc } from "@/components/shared/rich-text/helpers";
+import { docMentionsAll, isEmptyDoc, prepareDoc } from "@/components/shared/rich-text/helpers";
 import type { RichTextEditorHandle } from "@/components/shared/rich-text/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -30,6 +31,7 @@ import { useArchiveChannel, useJoinChannel } from "../hooks/use-channels";
 import { useMentionSource } from "../hooks/use-mention-source";
 import { useSendMessage } from "../hooks/use-message-actions";
 import { channelLabel } from "../model/channels";
+import { allowsMentionAll } from "../model/mention-all";
 import { useDraftStore } from "../model/drafts";
 import { conversationKey } from "../model/pending";
 import { selectTypers, useTypingStore } from "../model/ui-state";
@@ -90,14 +92,18 @@ export const Composer = ({
   const draftKey = conversationKey(channel.id, threadRootId);
   const [initialDraft] = useState(() => useDraftStore.getState().drafts[draftKey] ?? null);
   const [empty, setEmpty] = useState(() => isEmptyDoc(initialDraft));
+  const allowMentionAll = allowsMentionAll(channel.kind);
+  // The draft @mentions everyone (PD-061): a quiet hint with how many people it reaches — never a confirmation.
+  const [hasMentionAll, setHasMentionAll] = useState(() => docMentionsAll(initialDraft));
   const [showToolbar, setShowToolbar] = useState(false);
   const lastTyping = useRef(0);
-  const mentionSource = useMentionSource(channel.id);
+  const mentionSource = useMentionSource(channel);
   const { send } = useSendMessage(channel.id);
 
   const onChange = (doc: RichTextDoc) => {
     const isEmpty = isEmptyDoc(doc);
     setEmpty(isEmpty);
+    setHasMentionAll(docMentionsAll(doc));
     useDraftStore.getState().setDraft(draftKey, isEmpty ? null : doc);
     if (!isEmpty && Date.now() - lastTyping.current > TYPING_EMIT_MS) {
       lastTyping.current = Date.now();
@@ -115,7 +121,7 @@ export const Composer = ({
       return;
     }
     const body = doc ?? handle.current?.getDoc() ?? null;
-    const prepared = prepareDoc(body, "message", { allowEmpty: true });
+    const prepared = prepareDoc(body, "message", { allowEmpty: true, allowMentionAll });
     if (!prepared.ok) {
       toast.error(prepared.message);
       return;
@@ -132,6 +138,7 @@ export const Composer = ({
     handle.current?.clear();
     useDraftStore.getState().setDraft(draftKey, null);
     setEmpty(true);
+    setHasMentionAll(false);
     lastTyping.current = 0;
     handle.current?.focus();
   };
@@ -142,6 +149,7 @@ export const Composer = ({
   }
 
   const canSend = (!empty || uploads.readyCount > 0) && !uploads.uploading;
+  const mentionAllReach = allowMentionAll && hasMentionAll ? Math.max(0, channel.memberCount - 1) : 0;
   const label = threadRootId ? "Trả lời…" : `Nhắn ${channelLabel(channel)}`;
 
   return (
@@ -179,6 +187,7 @@ export const Composer = ({
             placeholder={placeholder ?? label}
             aria-label={label}
             mentionSource={mentionSource}
+            allowMentionAll={allowMentionAll}
             onChange={onChange}
             onSubmit={(doc) => submit(doc)}
             onPasteFiles={uploads.addFiles}
@@ -208,10 +217,20 @@ export const Composer = ({
               if (files.length > 0) uploads.addFiles(files);
             }}
           />
-          <span className="ml-auto hidden pr-2 text-[11px] text-foreground-subtle lg:inline">
-            <kbd className="font-sans">Enter</kbd> để gửi ·{" "}
-            <kbd className="font-sans">Shift + Enter</kbd> xuống dòng
-          </span>
+          {mentionAllReach > 0 ? (
+            <span
+              className="ml-auto flex min-w-0 items-center gap-1 pr-2 text-[11px] font-medium text-[color-mix(in_oklch,var(--warning)_70%,var(--foreground))]"
+              title="Mọi thành viên sẽ nhận thông báo, kể cả người đã tắt thông báo."
+            >
+              <Megaphone className="size-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">@all: thông báo đến {mentionAllReach} thành viên</span>
+            </span>
+          ) : (
+            <span className="ml-auto hidden pr-2 text-[11px] text-foreground-subtle lg:inline">
+              <kbd className="font-sans">Enter</kbd> để gửi ·{" "}
+              <kbd className="font-sans">Shift + Enter</kbd> xuống dòng
+            </span>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -220,7 +239,7 @@ export const Composer = ({
                   aria-label="Gửi tin nhắn"
                   disabled={!canSend}
                   onClick={() => submit()}
-                  className={cn("ml-auto lg:ml-0", !canSend && "opacity-40")}
+                  className={cn(mentionAllReach > 0 ? "shrink-0" : "ml-auto lg:ml-0", !canSend && "opacity-40")}
                 />
               }
             >

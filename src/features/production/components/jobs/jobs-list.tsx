@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "@/components/shared/router-link";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -19,7 +20,7 @@ import type { Tag } from "../../types";
 import { CustomFieldValue } from "../custom-field-input";
 import { CustomFieldChips } from "../list-filters";
 import { TagChips } from "../tag-picker";
-import { JobStatusChip, LateBadge, MiniBar, ProcessTotalChips } from "./job-bits";
+import { JobStatusChip, LateBadge, MiniBar, MissingQtyNote, ProcessTotalChips } from "./job-bits";
 import { JobPeopleStack } from "./job-people";
 
 const ROW_HEIGHT = 60;
@@ -42,6 +43,8 @@ export type ListPerson = { id: string; displayName: string };
 const tableColumns = (perPerson: boolean): [string, number][] => [
   ["minmax(13.5rem,2fr)", 13.5],
   perPerson ? ["minmax(10rem,1.5fr)", 10] : ["7.5rem", 7.5],
+  // "Người tạo" (owner, 2026-10-16): who created the job.
+  ["minmax(9rem,1fr)", 9],
   ["8rem", 8],
   // Trạng thái: fixed, so rows never shift; the default names ("Đang giao client") fit, longer ones end in "…".
   ["9rem", 9],
@@ -123,15 +126,19 @@ const ratio = (value: number, total: number) => (total > 0 ? (value / total) * 1
 const Qty = ({
   value,
   total,
-  tone
+  tone,
+  withoutQty = 0
 }: {
   value: number;
   total: number;
   tone: "brand" | "success" | "muted" | "warning";
+  /** PD-058 ("Đã giao"): tasks the number leaves out, "2 chưa có SL" under the bar. */
+  withoutQty?: number;
 }) => (
-  <span className="flex flex-col gap-1">
+  <span className="flex min-w-0 flex-col gap-1">
     <span className="text-[13px] tabular-nums">{formatInteger(value)}</span>
     <MiniBar value={ratio(value, total)} tone={tone} />
+    <MissingQtyNote count={withoutQty} short className="-mt-0.5 leading-tight" />
   </span>
 );
 
@@ -231,6 +238,9 @@ const JobTable = ({
               </span>
             )}
             <span role="columnheader" className="px-3 whitespace-nowrap">
+              Người tạo
+            </span>
+            <span role="columnheader" className="px-3 whitespace-nowrap">
               Ngày giao
             </span>
             <span role="columnheader" className="px-3">
@@ -329,6 +339,9 @@ const JobTable = ({
                       <JobPeopleStack people={job.people} />
                     </span>
                   )}
+                  <span role="cell" className="min-w-0 px-3">
+                    <JobCreator creator={job.createdBy} />
+                  </span>
                   <span role="cell" className="flex flex-col gap-0.5 px-3">
                     <span className={cn("tabular-nums", late && "font-medium text-danger")}>
                       {formatWorkDay(job.deadline, timeZone)}
@@ -371,6 +384,7 @@ const JobTable = ({
                           value={job.qtyAssigned}
                           total={job.totalImages}
                           tone={jobProgress(job).overAllocated ? "warning" : "muted"}
+                          withoutQty={job.tasksWithoutQty}
                         />
                       </span>
                       <span role="cell" className="px-3">
@@ -414,6 +428,17 @@ const JobTable = ({
     </div>
   );
 };
+
+/** "Người tạo": the job's creator (avatar + name), "—" when unknown (e.g. imported jobs). */
+const JobCreator = ({ creator }: { creator: JobSummary["createdBy"] }) =>
+  creator ? (
+    <span className="flex min-w-0 items-center gap-1.5" title={creator.displayName}>
+      <UserAvatar user={creator} size="xs" />
+      <span className="truncate">{creator.displayName}</span>
+    </span>
+  ) : (
+    <span className="text-foreground-subtle">—</span>
+  );
 
 /** One "label number / bar" cell of a phone card. */
 const CardQty = ({
@@ -487,6 +512,9 @@ const JobCards = ({
                   Giao {formatWorkDay(job.deadline, timeZone)}
                 </span>
                 {late ? <LateBadge label={`${job.lateTaskCount} trễ`} /> : null}
+                {job.createdBy ? (
+                  <span className="min-w-0 truncate">Tạo bởi {job.createdBy.displayName}</span>
+                ) : null}
               </span>
               {person ? (
                 <span className="flex flex-col gap-2 rounded-lg bg-brand-soft px-2.5 py-2 text-xs">
@@ -541,6 +569,8 @@ const JobCards = ({
                       tone="success"
                     />
                   </span>
+                  {/* PD-058: "Giao" counts known numbers only. */}
+                  <MissingQtyNote count={job.tasksWithoutQty} className="-mt-1 text-xs" />
                   {/* PD-048 "Tổng tấm" per process; the job page lists them all. */}
                   <ProcessTotalChips totals={job.processTotals} max={4} />
                 </>
@@ -591,7 +621,7 @@ export const JobsEmpty = ({
     <EmptyState
       icon={Briefcase}
       title="Chưa có job"
-      description="Mỗi job là một gói công việc của dự án. Tạo job, hoặc “Nhập công việc” để thêm task — gói mới tự thành job."
+      description="Mỗi job là một gói công việc của dự án. Tạo job, hoặc “Nhập Task” để thêm task — gói mới tự thành job."
       action={
         onCreate ? (
           <Button size="sm" onClick={onCreate}>

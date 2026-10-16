@@ -2,6 +2,7 @@ import { useChatDialogStore } from "../model/ui-state";
 import { BrowseChannelsDialog } from "./browse-channels-dialog";
 import { CreateChannelDialog } from "./create-channel-dialog";
 import { NewMessageDialog } from "./new-message-dialog";
+import { SidebarChannelSettings } from "./sidebar-channel-settings";
 
 /** Hosts the app-wide chat dialogs (opened through useChatDialogStore). */
 export const ChatDialogs = () => {
@@ -15,6 +16,7 @@ export const ChatDialogs = () => {
       <CreateChannelDialog open={dialog === "create-channel"} onOpenChange={onOpenChange} />
       <BrowseChannelsDialog open={dialog === "browse-channels"} onOpenChange={onOpenChange} />
       <NewMessageDialog open={dialog === "new-message"} onOpenChange={onOpenChange} />
+      <SidebarChannelSettings />
     </>
   );
 };

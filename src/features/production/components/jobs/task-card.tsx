@@ -7,9 +7,16 @@ import type { ProductionTask, TaskTransitionOption } from "@/contracts/productio
 import { toneClass } from "@/lib/colors";
 
 import { formatCredit, formatInteger } from "../../format";
-import { formatDateTime, formatWorkDay, myCreditSummary, relativeDeadline } from "../../jobs-model";
+import {
+  formatDateTime,
+  formatWorkDay,
+  myCreditSummary,
+  qtyText,
+  relativeDeadline
+} from "../../jobs-model";
+import { allQtyKnown } from "../../task-edit-model";
 import { CustomFieldChips } from "../list-filters";
-import { KindBadge, LateBadge, Person, StatusChip } from "./job-bits";
+import { KindBadge, LateBadge, NoQtyChip, Person, StatusChip } from "./job-bits";
 import { StatusSelect } from "./transition-controls";
 
 /**
@@ -114,14 +121,19 @@ export const TaskCard = memo(function TaskCard({
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground-muted">
-        <span className="tabular-nums">
-          {task.qtyDone !== null ? `${task.qtyDone}/` : ""}
-          {task.qtyAssigned} tấm
-        </span>
+        {task.qtyAssigned === null ? (
+          // PD-058: no quantity yet — the worker fills it in (at the latest when moving to Done).
+          <NoQtyChip />
+        ) : (
+          <span className="tabular-nums">
+            {task.qtyDone !== null ? `${task.qtyDone}/` : ""}
+            {task.qtyAssigned} tấm
+          </span>
+        )}
         {task.subtasks.length > 0 ? (
           <span
             className="inline-flex items-center gap-1 tabular-nums"
-            title={`${task.subtasks.map((subtask) => `#${subtask.code} ${subtask.process.name} · ${subtask.qtyAssigned} tấm`).join("\n")}\nTổng Leader giao: ${task.allocatedQty} tấm`}
+            title={`${task.subtasks.map((subtask) => `#${subtask.code} ${subtask.process.name} · ${qtyText(subtask.qtyAssigned)}`).join("\n")}\nTổng Leader giao: ${allQtyKnown(task) ? qtyText(task.allocatedQty) : "chưa đủ số lượng"}`}
           >
             <ListTree className="size-3" aria-hidden="true" />+{task.subtasks.length} subtask
           </span>

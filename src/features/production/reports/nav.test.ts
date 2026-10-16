@@ -6,8 +6,8 @@ describe("Phase 5 navigation", () => {
   const paths = (roles: Parameters<typeof visibleNavEntries>[0]) =>
     visibleNavEntries(roles).map((entry) => entry.to);
 
-  it("shows the dashboard, reports and anomalies to Leaders, not to staff / QC / account", () => {
-    const leader = ["/production/dashboard", "/production/reports", "/production/anomalies"];
+  it("shows the dashboard and anomalies to Leaders, not to staff / QC / account", () => {
+    const leader = ["/production/dashboard", "/production/anomalies"];
     expect(paths(["LEADER"])).toEqual(expect.arrayContaining(leader));
     expect(paths(["LEADER"])).not.toContain("/production/admin");
     for (const role of ["STAFF", "QC", "ACCOUNT"] as const) {
@@ -18,12 +18,13 @@ describe("Phase 5 navigation", () => {
 
   it("shows every Phase 5 page to Admins", () => {
     expect(paths(["ADMIN"])).toEqual(
-      expect.arrayContaining([
-        "/production/dashboard",
-        "/production/admin",
-        "/production/reports",
-        "/production/anomalies"
-      ])
+      expect.arrayContaining(["/production/dashboard", "/production/admin", "/production/anomalies"])
     );
+  });
+
+  it("hides Báo cáo from the menu for everyone (owner, 2026-10-16)", () => {
+    for (const role of ["ADMIN", "LEADER", "STAFF", "QC", "ACCOUNT"] as const) {
+      expect(paths([role])).not.toContain("/production/reports");
+    }
   });
 });

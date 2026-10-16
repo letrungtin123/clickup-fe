@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { LeaveRequest } from "@/contracts/production-leave";
+import {
+  CreateLeaveRequestSchema,
+  leaveLimits,
+  leaveNoteRequiredMessage,
+  type LeaveRequest
+} from "@/contracts/production-leave";
 
 import {
+  ADMIN_ONLY_DECISION,
   bucketLeaveByDay,
   daysBetween,
   draftDays,
@@ -10,11 +16,14 @@ import {
   formatLeaveDays,
   formatLeaveSpan,
   leaveLoad,
+  leaveNoteError,
   leaveWorkdays,
   monthBounds,
   monthGrid,
   shiftDay,
   shiftMonth,
+  showsAdminOnlyNote,
+  validateLeaveDates,
   validateLeaveDraft,
   weekdayIndex
 } from "./calendar";
@@ -154,7 +163,12 @@ describe("request form", () => {
   });
 
   it("mirrors the server limits", () => {
-    const ok = { fromDate: "2026-10-12", toDate: "2026-10-12", part: "MORNING" as const, note: "" };
+    const ok = {
+      fromDate: "2026-10-12",
+      toDate: "2026-10-12",
+      part: "MORNING" as const,
+      note: "Việc gia đình"
+    };
     expect(validateLeaveDraft(ok, today)).toBeNull();
     expect(validateLeaveDraft({ ...ok, toDate: "2026-10-13" }, today)).toMatch(/nửa ngày/);
     expect(validateLeaveDraft({ ...ok, toDate: "2026-10-11" }, today)).toMatch(/Ngày kết thúc/);
@@ -175,6 +189,52 @@ describe("request form", () => {
     expect(
       validateLeaveDraft({ ...ok, fromDate: "2027-10-11", toDate: "2027-10-11" }, today)
     ).toMatch(/trước tối đa/);
+  });
+
+  it("requires a reason of at least 3 characters once trimmed (PD-057)", () => {
+    const draft = { fromDate: today, toDate: today, part: "FULL_DAY" as const, note: "" };
+    expect(validateLeaveDraft(draft, today)).toBe(leaveNoteRequiredMessage);
+    expect(leaveNoteRequiredMessage).toBe("Nhập lý do nghỉ (ít nhất 3 ký tự).");
+    expect(leaveNoteError("")).toBe(leaveNoteRequiredMessage);
+    expect(leaveNoteError("ab")).toBe(leaveNoteRequiredMessage);
+    expect(leaveNoteError("   ab   ")).toBe(leaveNoteRequiredMessage);
+    expect(leaveNoteError(" Ốm ")).toBe(leaveNoteRequiredMessage);
+    expect(leaveNoteError("Ốm!")).toBeNull();
+    expect(leaveNoteError("Khám bệnh")).toBeNull();
+    expect(leaveNoteError("x".repeat(leaveLimits.noteMaxLength))).toBeNull();
+    expect(leaveNoteError("x".repeat(leaveLimits.noteMaxLength + 1))).toBe(
+      "Lý do nghỉ tối đa 1000 ký tự."
+    );
+    expect(validateLeaveDraft({ ...draft, note: "Việc gia đình" }, today)).toBeNull();
+    // Date problems come first; the reason is checked on its own by the dialog.
+    expect(validateLeaveDraft({ ...draft, toDate: shiftDay(today, -1) }, today)).toMatch(
+      /Ngày kết thúc/
+    );
+    expect(validateLeaveDates(draft, today)).toBeNull();
+  });
+
+  it("matches the contract's required reason", () => {
+    const base = { fromDate: today, toDate: today, part: "FULL_DAY" as const };
+    expect(CreateLeaveRequestSchema.safeParse({ ...base, note: "  ab " }).success).toBe(false);
+    expect(CreateLeaveRequestSchema.safeParse(base).success).toBe(false);
+    const parsed = CreateLeaveRequestSchema.safeParse({ ...base, note: "  Khám bệnh  " });
+    expect(parsed.success && parsed.data.note).toBe("Khám bệnh");
+    // The dialog and the contract say the same thing.
+    const short = CreateLeaveRequestSchema.safeParse({ ...base, note: "ab" });
+    expect(short.error?.issues[0]?.message).toBe(leaveNoteError("ab"));
+    const long = CreateLeaveRequestSchema.safeParse({ ...base, note: "x".repeat(1001) });
+    expect(long.error?.issues[0]?.message).toBe(leaveNoteError("x".repeat(1001)));
+  });
+});
+
+describe("approval (PD-057)", () => {
+  it("shows “Chỉ Quản trị duyệt đơn nghỉ.” only on queued pending requests the viewer cannot decide", () => {
+    const pending = request({ status: "PENDING", canDecide: false });
+    expect(ADMIN_ONLY_DECISION).toBe("Chỉ Quản trị duyệt đơn nghỉ.");
+    expect(showsAdminOnlyNote(pending, true)).toBe(true);
+    expect(showsAdminOnlyNote(pending, false)).toBe(false);
+    expect(showsAdminOnlyNote({ ...pending, canDecide: true }, true)).toBe(false);
+    expect(showsAdminOnlyNote({ ...pending, status: "APPROVED" }, true)).toBe(false);
   });
 });
 

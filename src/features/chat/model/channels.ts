@@ -194,3 +194,7 @@ export const channelEventChangesCapabilities = (
     (cached.department ?? null) !== (event.channel.department ?? null)
   );
 };
+
+/** Delete confirmation: the word "xóa", with or without diacritics, any case ("xoa", "XÓA", " Xoá "). */
+export const isDeleteConfirmation = (text: string) =>
+  text.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d") === "xoa";

@@ -122,7 +122,9 @@ export const receiveMessage = (
       return bumpUnread(channel, {
         seq,
         createdAt: message.createdAt,
-        mentionsMe: message.mentions.includes(myId)
+        // @all (PD-061) counts as a mention of every member (the server writes a mention row for each).
+        mentionsMe:
+          message.mentions.includes(myId) || (message.mentionsAll && message.author?.id !== myId)
       });
     })
   );

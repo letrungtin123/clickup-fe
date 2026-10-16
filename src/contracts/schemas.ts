@@ -304,6 +304,13 @@ export const ChangePasswordRequestSchema = z
     path: ["newPassword"]
   });
 
+/**
+ * PATCH /organization/members/:membershipId/display-name (PD-062): the organization superadmin renames an account —
+ * anyone's, their own included. Same rule as the name given at creation.
+ */
+export const RenameOrganizationMemberRequestSchema = z.object({ displayName: SafeLineSchema(160) }).strict();
+export type RenameOrganizationMemberRequest = z.infer<typeof RenameOrganizationMemberRequestSchema>;
+
 export const CreateOrganizationMemberRequestSchema = z
   .object({
     email: AccountEmailSchema,

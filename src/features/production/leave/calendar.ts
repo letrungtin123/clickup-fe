@@ -1,5 +1,6 @@
 import {
   leaveLimits,
+  leaveNoteRequiredMessage,
   type LeavePart,
   type LeaveRequest,
   type LeaveStatus
@@ -137,6 +138,17 @@ export const leaveStatusLabels: Record<LeaveStatus, string> = {
   CANCELLED: "Đã hủy"
 };
 
+export const ADMIN_ONLY_DECISION = "Chỉ Quản trị duyệt đơn nghỉ.";
+
+/**
+ * A pending request the viewer sees in the approval queue but may not decide (PD-057: only Quản trị
+ * decides — Leaders only read the queue): "Chỉ Quản trị duyệt đơn nghỉ." replaces Duyệt / Từ chối.
+ */
+export const showsAdminOnlyNote = (
+  request: Pick<LeaveRequest, "status" | "canDecide">,
+  viewerSeesQueue: boolean
+) => viewerSeesQueue && request.status === "PENDING" && !request.canDecide;
+
 const dayMonth = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
 const fullDay = (day: string) => `${dayMonth(day)}/${day.slice(0, 4)}`;
 
@@ -193,10 +205,23 @@ export const draftDays = (draft: Pick<LeaveDraft, "fromDate" | "toDate" | "part"
 };
 
 /**
- * Client-side checks mirroring the server rules (leaveLimits). Returns the first problem as
- * Vietnamese copy, or null. The server validates again.
+ * The reason field's own problem (PD-057: required, leaveLimits.noteMinLength…noteMaxLength
+ * characters once trimmed — the contract's wording), or null.
  */
-export const validateLeaveDraft = (draft: LeaveDraft, today: string): string | null => {
+export const leaveNoteError = (note: string): string | null => {
+  const length = note.trim().length;
+  if (length < leaveLimits.noteMinLength) return leaveNoteRequiredMessage;
+  if (length > leaveLimits.noteMaxLength) {
+    return `Lý do nghỉ tối đa ${leaveLimits.noteMaxLength} ký tự.`;
+  }
+  return null;
+};
+
+/** Date / part checks of a draft (everything but the reason), first problem or null. */
+export const validateLeaveDates = (
+  draft: Pick<LeaveDraft, "fromDate" | "toDate" | "part">,
+  today: string
+): string | null => {
   if (!draft.fromDate || !draft.toDate) return "Chọn ngày bắt đầu và ngày kết thúc.";
   if (draft.toDate < draft.fromDate) return "Ngày kết thúc phải sau hoặc trùng ngày bắt đầu.";
   if (draft.part !== "FULL_DAY" && draft.fromDate !== draft.toDate) {
@@ -212,8 +237,12 @@ export const validateLeaveDraft = (draft: LeaveDraft, today: string): string | n
   if (draft.fromDate > shiftDay(today, leaveLimits.maxFutureDays)) {
     return `Chỉ có thể xin nghỉ trước tối đa ${leaveLimits.maxFutureDays} ngày.`;
   }
-  if (draft.note.trim().length > leaveLimits.noteMaxLength) {
-    return `Ghi chú tối đa ${leaveLimits.noteMaxLength} ký tự.`;
-  }
   return null;
 };
+
+/**
+ * Client-side checks mirroring the server rules (leaveLimits, required reason). Returns the first
+ * problem as Vietnamese copy (dates first, then the reason), or null. The server validates again.
+ */
+export const validateLeaveDraft = (draft: LeaveDraft, today: string): string | null =>
+  validateLeaveDates(draft, today) ?? leaveNoteError(draft.note);

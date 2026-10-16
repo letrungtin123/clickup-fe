@@ -7,14 +7,16 @@ import { leaveApi, type CreateLeaveInput, type DecideLeaveInput } from "./api";
 
 /**
  * Calendar window (≤ leaveLimits.maxCalendarDays days), optionally one team (the requester’s
- * report team); the previous month stays on screen while the next loads.
+ * report team); the previous month stays on screen while the next loads. Also feeds the
+ * "Khoảng ngày" list (PD-057), disabled while that range is invalid.
  */
-export const useLeaveCalendar = (from: string, to: string, teamId: string | null) =>
+export const useLeaveCalendar = (from: string, to: string, teamId: string | null, enabled = true) =>
   useQuery({
     queryKey: leaveKeys.calendar(from, to, teamId),
     queryFn: ({ signal }) => leaveApi.calendar(from, to, teamId, signal),
     placeholderData: keepPreviousData,
-    retry: retryUnlessClientError
+    retry: retryUnlessClientError,
+    enabled
   });
 
 /** "Đơn của tôi": GET /production/leave/mine — own requests in any status, newest first. */
@@ -26,7 +28,7 @@ export const useMyLeaveRequests = (enabled = true) =>
     enabled
   });
 
-/** GET /production/leave/pending — LEADER/ADMIN only. */
+/** GET /production/leave/pending — LEADER/ADMIN may read it; only ADMIN decides (PD-057). */
 export const usePendingLeave = (enabled: boolean) =>
   useQuery({
     queryKey: leaveKeys.pending(),

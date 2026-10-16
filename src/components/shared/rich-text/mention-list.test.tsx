@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { UserRef } from "@/contracts/work";
 
+import type { MentionAllCandidate } from "./mention-candidates";
+
 import { MentionList, type MentionListHandle } from "./mention-list";
 
 // Obviously fake people (the repository is public).
@@ -66,5 +68,32 @@ describe("MentionList (PD-053)", () => {
 
     press(ref, "Enter");
     expect(command).toHaveBeenCalledWith({ id: people[0]?.id, label: "Người 1" });
+  });
+});
+
+describe("MentionList — @all (PD-061)", () => {
+  const all: MentionAllCandidate = { kind: "all", id: "all", description: "Nhắc tất cả 12 thành viên trong kênh" };
+
+  it("shows @all first with its description and inserts { id: \"all\", label: \"all\" }", () => {
+    fakeLayout();
+    const ref = createRef<MentionListHandle>();
+    const command = vi.fn();
+    render(<MentionList ref={ref} items={[all, ...people.slice(0, 3)]} loading={false} query="" command={command} />);
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(4);
+    expect(options[0]?.textContent).toContain("@all");
+    expect(options[0]?.textContent).toContain("Nhắc tất cả 12 thành viên trong kênh");
+    expect(options[0]?.dataset.mentionAll).toBe("true");
+    expect(options[0]?.getAttribute("aria-selected")).toBe("true");
+    expect(options[1]?.dataset.mentionAll).toBeUndefined();
+
+    press(ref, "Enter");
+    expect(command).toHaveBeenCalledWith({ id: "all", label: "all" });
+
+    // The people below still insert themselves.
+    press(ref, "ArrowDown");
+    press(ref, "Enter");
+    expect(command).toHaveBeenLastCalledWith({ id: people[0]?.id, label: "Người 1" });
   });
 });

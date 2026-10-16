@@ -15,11 +15,13 @@ import { toneClass } from "@/lib/colors";
 import { formatInteger } from "../../format";
 import { useProcesses } from "../../hooks";
 import { useSubtaskMutations, useTaskMutations } from "../../jobs-hooks";
-import { formatDateTime } from "../../jobs-model";
+import { formatDateTime, qtyOptionalHint } from "../../jobs-model";
 import {
+  allQtyKnown,
   lineProcessHint,
   lineProcessOptions,
   lineQtyLeft,
+  requiredQtyProblem,
   subtaskDraftProblems,
   subtaskProcessOptions,
   subtaskQtyMax,
@@ -34,6 +36,7 @@ import { ConfirmDialog, FormAlert } from "../settings-kit";
 import { NumberEditor } from "./inline-editors";
 import { useInlineEditActive } from "./inline-edit-context";
 import { InlineField } from "./inline-field";
+import { NoQtyChip } from "./job-bits";
 import { OptionSelect } from "./pickers";
 
 const sectionTitle = "text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase";
@@ -89,7 +92,9 @@ export const TaskSubtasks = ({
       {
         onSuccess: () => {
           toast.success(
-            `Đã xoá subtask #${removing.code} — ${formatInteger(removing.qtyAssigned)} tấm trả về task #${task.code}`
+            removing.qtyAssigned === null || task.qtyAssigned === null
+              ? `Đã xoá subtask #${removing.code}`
+              : `Đã xoá subtask #${removing.code} — ${formatInteger(removing.qtyAssigned)} tấm trả về task #${task.code}`
           );
           setRemoving(null);
         },
@@ -204,23 +209,34 @@ export const TaskSubtasks = ({
               {/* PD-048: its own part, then the total with its subtasks ("Số lượng 11 · Tổng 20"), in the shared columns. */}
               <div className={rowColumns}>
                 <span className="flex items-center justify-end whitespace-nowrap text-foreground-muted">
-                  {/* One inline run: a flex container would drop the space before the number. */}
-                  <span>
-                    Số lượng{" "}
-                    <span className="font-medium text-foreground">
-                      {formatInteger(task.qtyAssigned)}
+                  {task.qtyAssigned === null ? (
+                    // PD-058: no quantity yet — the chip alone keeps the column's width.
+                    <NoQtyChip />
+                  ) : (
+                    // One inline run: a flex container would drop the space before the number.
+                    <span>
+                      Số lượng{" "}
+                      <span className="font-medium text-foreground">
+                        {formatInteger(task.qtyAssigned)}
+                      </span>
                     </span>
-                  </span>
+                  )}
                   {canManage && count > 0 ? <PencilRoom /> : null}
                 </span>
                 <span className="text-right whitespace-nowrap text-foreground-muted">
                   {count > 0 ? (
-                    <>
-                      Tổng{" "}
-                      <span className="font-medium text-foreground">
-                        {formatInteger(task.allocatedQty)}
+                    allQtyKnown(task) ? (
+                      <>
+                        Tổng{" "}
+                        <span className="font-medium text-foreground">
+                          {formatInteger(task.allocatedQty)}
+                        </span>
+                      </>
+                    ) : (
+                      <span title="Có phần chưa có số lượng — tổng tính khi đủ số">
+                        Tổng <span className="text-foreground-subtle">—</span>
                       </span>
-                    </>
+                    )
                   ) : null}
                 </span>
                 <StatusDot status={task.status} title={`Trạng thái: ${task.status.name}`} />
@@ -270,7 +286,11 @@ export const TaskSubtasks = ({
         open={removing !== null}
         onOpenChange={(next) => !next && !mutations.remove.isPending && setRemoving(null)}
         title={`Xoá subtask #${removing?.code ?? ""}?`}
-        description={`${formatInteger(removing?.qtyAssigned ?? 0)} tấm của subtask trả về task #${task.code}. Việc xoá được ghi vào lịch sử của task.`}
+        description={
+          removing?.qtyAssigned === null || task.qtyAssigned === null
+            ? "Việc xoá được ghi vào lịch sử của task."
+            : `${formatInteger(removing?.qtyAssigned ?? 0)} tấm của subtask trả về task #${task.code}. Việc xoá được ghi vào lịch sử của task.`
+        }
         confirmLabel="Xoá subtask"
         destructive
         pending={mutations.remove.isPending}
@@ -421,38 +441,72 @@ const SubtaskRow = ({
         </InlineField>
         <div className={editingQty ? "w-full basis-full pl-6 text-[13px]" : rowColumns}>
           <div className={editingQty ? undefined : "flex justify-end"}>
-            <InlineField
-              variant="inline"
-              editKey={qtyKey}
-              label={`Số lượng của subtask #${subtask.code}`}
-              editorLabel="Số lượng của subtask"
-              canEdit={canManage}
-              initial={() => String(subtask.qtyAssigned)}
-              renderEditor={(props) => <NumberEditor {...props} />}
-              validate={(value) => subtaskQtyProblem(value, max)}
-              isUnchanged={(value) => wholeNumber(value) === subtask.qtyAssigned}
-              hint={(value) => {
-                const left = lineQtyLeft(line.qtyAssigned, subtask.qtyAssigned, value);
-                return `Task gốc còn ${left === null ? "…" : formatInteger(left)} tấm · Tổng Leader giao vẫn là ${formatInteger(line.allocatedQty)}`;
-              }}
-              onSave={(value) =>
-                mutations.update.mutateAsync({
-                  subtaskId: subtask.id,
-                  input: { qtyAssigned: wholeNumber(value) ?? subtask.qtyAssigned }
-                })
-              }
-              successMessage={(value) =>
-                `Đã sửa số tấm của subtask #${subtask.code}: ${formatInteger(subtask.qtyAssigned)} → ${value.trim()}`
-              }
-            >
-              {/* PD-048: only its quantity (its Done quantity counts in the task's "Số tấm đã xong"). */}
-              <span className="text-foreground-muted">
-                Số lượng{" "}
-                <span className="font-medium text-foreground tabular-nums">
-                  {formatInteger(subtask.qtyAssigned)}
+            {subtask.qtyAssigned === null ? (
+              // PD-058: no quantity yet — filled in directly (no request); under a task that has one, it is taken from
+              // the task (which keeps at least 1), like a new subtask.
+              <InlineField
+                variant="inline"
+                editKey={qtyKey}
+                label={`Số lượng của subtask #${subtask.code}`}
+                editLabel={`Điền số lượng của subtask #${subtask.code}`}
+                editorLabel="Số lượng của subtask"
+                canEdit={canManage}
+                initial={() => ""}
+                renderEditor={(props) => <NumberEditor {...props} placeholder="Số tấm" />}
+                validate={(value) => requiredQtyProblem(value) ?? subtaskQtyProblem(value, max)}
+                hint={(value) => {
+                  if (line.qtyAssigned === null) return "Số tấm thực tế của subtask này.";
+                  const left = lineQtyLeft(line.qtyAssigned, 0, value);
+                  return left === null
+                    ? `Lấy từ task gốc (đang có ${formatInteger(line.qtyAssigned)} tấm, giữ ít nhất 1).`
+                    : `Task gốc còn ${formatInteger(left)} tấm`;
+                }}
+                onSave={(value) =>
+                  mutations.update.mutateAsync({
+                    subtaskId: subtask.id,
+                    input: { qtyAssigned: wholeNumber(value) ?? 1 }
+                  })
+                }
+                successMessage="Đã điền số lượng"
+              >
+                <NoQtyChip />
+              </InlineField>
+            ) : (
+              <InlineField
+                variant="inline"
+                editKey={qtyKey}
+                label={`Số lượng của subtask #${subtask.code}`}
+                editorLabel="Số lượng của subtask"
+                canEdit={canManage}
+                initial={() => String(subtask.qtyAssigned)}
+                renderEditor={(props) => <NumberEditor {...props} />}
+                validate={(value) => subtaskQtyProblem(value, max)}
+                isUnchanged={(value) => wholeNumber(value) === subtask.qtyAssigned}
+                hint={(value) => {
+                  // PD-058: a task without a quantity gives nothing and takes nothing back.
+                  if (line.qtyAssigned === null) return "Task gốc chưa có số lượng nên không bị trừ.";
+                  const left = lineQtyLeft(line.qtyAssigned, subtask.qtyAssigned, value);
+                  return `Task gốc còn ${left === null ? "…" : formatInteger(left)} tấm${allQtyKnown(line) ? ` · Tổng Leader giao vẫn là ${formatInteger(line.allocatedQty)}` : ""}`;
+                }}
+                onSave={(value) =>
+                  mutations.update.mutateAsync({
+                    subtaskId: subtask.id,
+                    input: { qtyAssigned: wholeNumber(value) ?? subtask.qtyAssigned ?? 1 }
+                  })
+                }
+                successMessage={(value) =>
+                  `Đã sửa số tấm của subtask #${subtask.code}: ${formatInteger(subtask.qtyAssigned ?? 0)} → ${value.trim()}`
+                }
+              >
+                {/* PD-048: only its quantity (its Done quantity counts in the task's "Số tấm đã xong"). */}
+                <span className="text-foreground-muted">
+                  Số lượng{" "}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatInteger(subtask.qtyAssigned)}
+                  </span>
                 </span>
-              </span>
-            </InlineField>
+              </InlineField>
+            )}
           </div>
           {editingQty ? null : (
             <>
@@ -492,9 +546,10 @@ const SubtaskRow = ({
 };
 
 /**
- * "Tạo subtask": Công đoạn (active, not QC, not the task's), Số tấm (the task keeps at least 1) and Lý do (optional,
- * PD-045: an empty reason is not sent).
- * Live hint: what the task keeps; the total the Leader gave does not change.
+ * "Tạo subtask": Công đoạn (active, not QC, not the task's), Số lượng (optional, PD-058: empty = "chưa có số lượng",
+ * filled in by Done at the latest; typed, the task keeps at least 1) and Lý do (optional, PD-045: an empty reason is
+ * not sent).
+ * Live hint: what the task keeps (only when both have a number); the total the Leader gave does not change.
  */
 const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: () => void }) => {
   const ids = useId();
@@ -517,20 +572,25 @@ const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: (
   const submit = () => {
     setShowErrors(true);
     if (Object.keys(problems).length > 0 || !draft.processId) return;
-    const qty = wholeNumber(draft.qty) ?? 0;
+    // PD-058: optional — left out while empty ("chưa có số lượng", filled in by Done at the latest).
+    const qty = wholeNumber(draft.qty);
     const processName = options.find((option) => option.id === draft.processId)?.label ?? "";
     mutations.create.mutate(
       {
         taskId: task.id,
         input: {
           processId: draft.processId,
-          qtyAssigned: qty,
+          ...(qty !== null ? { qtyAssigned: qty } : {}),
           reason: subtaskReasonValue(draft.reason)
         }
       },
       {
         onSuccess: () => {
-          toast.success(`Đã tách ${formatInteger(qty)} tấm của #${task.code} sang ${processName}`);
+          toast.success(
+            qty !== null
+              ? `Đã tách ${formatInteger(qty)} tấm của #${task.code} sang ${processName}`
+              : `Đã tạo subtask ${processName} cho #${task.code} — chưa có số lượng`
+          );
           onClose();
         },
         onError: (failure) => setError(taskEditErrorMessage(failure))
@@ -546,10 +606,15 @@ const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: (
     onClose();
   };
 
+  // PD-058: empty = "chưa có số lượng"; a number is carved from the task only when the task has one too.
   const qtyHint =
-    left !== null && !shown.qty
-      ? `Task gốc còn ${formatInteger(Math.max(left, 0))} tấm · Tổng Leader giao vẫn là ${formatInteger(task.allocatedQty)}`
-      : null;
+    draft.qty.trim() === ""
+      ? qtyOptionalHint
+      : task.qtyAssigned === null
+        ? "Task gốc chưa có số lượng nên không bị trừ."
+        : left !== null
+          ? `Task gốc còn ${formatInteger(Math.max(left, 0))} tấm${allQtyKnown(task) ? ` · Tổng Leader giao vẫn là ${formatInteger(task.allocatedQty)}` : ""}`
+          : `Task gốc có ${formatInteger(task.qtyAssigned)} tấm`;
 
   return (
     <form
@@ -577,14 +642,18 @@ const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: (
           {shown.process ? <FieldError className="text-xs">{shown.process}</FieldError> : null}
         </Field>
         <Field data-invalid={Boolean(shown.qty)}>
-          <FieldLabel htmlFor={`${ids}-qty`}>Số tấm</FieldLabel>
+          <FieldLabel htmlFor={`${ids}-qty`}>
+            Số lượng <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+          </FieldLabel>
           <Input
             id={`${ids}-qty`}
             inputMode="numeric"
             autoComplete="off"
             value={draft.qty}
             disabled={busy}
-            placeholder={max >= 1 ? `1–${formatInteger(max)}` : undefined}
+            placeholder={
+              task.qtyAssigned !== null && max >= 1 ? `1–${formatInteger(max)}` : "Số tấm"
+            }
             aria-invalid={Boolean(shown.qty)}
             aria-describedby={`${ids}-qty-hint`}
             onChange={(event) => set({ qty: event.target.value })}
@@ -596,8 +665,7 @@ const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: (
             </FieldError>
           ) : (
             <FieldDescription id={`${ids}-qty-hint`} className="text-xs">
-              {qtyHint ??
-                `Task gốc có ${formatInteger(task.qtyAssigned)} tấm · Tổng Leader giao vẫn là ${formatInteger(task.allocatedQty)}`}
+              {qtyHint}
             </FieldDescription>
           )}
         </Field>

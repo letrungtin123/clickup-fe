@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import { docMentionsAll } from "@/components/shared/rich-text/helpers";
 import type {
   ChatAttachment,
   ChatChannelCollection,
@@ -155,6 +156,7 @@ export const useEditMessage = () => {
         ...current,
         body,
         text,
+        mentionsAll: docMentionsAll(body),
         isEdited: true,
         editedAt: new Date().toISOString()
       }));
@@ -174,6 +176,7 @@ export const useEditMessage = () => {
           ...current,
           body: previous.body,
           text: previous.text,
+          mentionsAll: previous.mentionsAll,
           isEdited: previous.isEdited,
           editedAt: previous.editedAt
         }));

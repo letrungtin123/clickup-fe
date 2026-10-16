@@ -3,6 +3,7 @@ import { useCallback } from "react";
 
 import type { MentionSource } from "@/components/shared/rich-text";
 import type { KnowledgeSpace } from "@/contracts/knowledge";
+import type { UserRef } from "@/contracts/work";
 import { useSessionContext } from "@/features/auth/hooks";
 import { foldText } from "@/features/search/model";
 import { useMentionSource } from "@/features/tasks/hooks";
@@ -15,7 +16,9 @@ import { knowledgeApi } from "./api";
  * `knowledge.view` reads it). Private space: its members only — a mention of someone who cannot see the
  * space would only become plain text (PD-031 §05), so they are not offered.
  */
-export const useKnowledgeMentionSource = (space: Pick<KnowledgeSpace, "id" | "visibility">): MentionSource => {
+export const useKnowledgeMentionSource = (
+  space: Pick<KnowledgeSpace, "id" | "visibility">
+): MentionSource<UserRef> => {
   const client = useQueryClient();
   const session = useSessionContext();
   const directory = useMentionSource(undefined);

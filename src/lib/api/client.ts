@@ -88,10 +88,19 @@ const readJson = async (response: Response): Promise<unknown> => {
   }
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** The envelope's optional machine-readable `error.details` (e.g. the task ids of TASK_QTY_REQUIRED). */
+const errorDetails = (payload: unknown) => {
+  const error = isRecord(payload) ? payload.error : undefined;
+  return isRecord(error) && isRecord(error.details) ? error.details : null;
+};
+
 const toApiError = (status: number, payload: unknown) => {
   const parsed = ApiErrorSchema.safeParse(payload);
   if (parsed.success) {
-    return new ApiError({ status, ...parsed.data.error });
+    return new ApiError({ status, ...parsed.data.error, details: errorDetails(payload) });
   }
   return new ApiError({
     status,

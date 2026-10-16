@@ -120,6 +120,32 @@ describe("optimistic send reconciliation", () => {
     expect(sidebar?.items[0]).toMatchObject({ unreadCount: 1, mentionCount: 1, lastMessageSeq: 6 });
   });
 
+  it("counts an @all message as a mention of the viewer (PD-061)", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(chatKeys.channels(), {
+      items: [makeChannel({ lastMessageSeq: 5, lastReadSeq: 5, notifyLevel: "none" })]
+    });
+    const incoming = makeMessage({ seq: 6, mentionsAll: true });
+    receiveMessage(queryClient, { channelId: CHANNEL_ID, message: incoming, threadRoot: null }, me.id, {
+      fromRealtime: true
+    });
+    const sidebar = queryClient.getQueryData<{ items: ReturnType<typeof makeChannel>[] }>(
+      chatKeys.channels()
+    );
+    expect(sidebar?.items[0]).toMatchObject({ unreadCount: 1, mentionCount: 1 });
+  });
+
+  it("flags a pending message that @mentions everyone (PD-061)", () => {
+    const body = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "mention", attrs: { id: "all", label: "all" } }] }]
+    };
+    const [shown] = mergeWithPending([], [pending({ body, text: "@all" })]);
+    expect(shown).toMatchObject({ mentionsAll: true, mentions: [] });
+    const [plain] = mergeWithPending([], [pending()]);
+    expect(plain?.mentionsAll).toBe(false);
+  });
+
   it("marks failures in place and removes discarded messages", () => {
     const store = usePendingStore.getState();
     store.add(pending());

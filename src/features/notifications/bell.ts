@@ -56,3 +56,34 @@ export const allowsPopup = (eventPopup: boolean | undefined, sessionNotifyWeb: b
 /** True for a PATCH /me/notification-preferences result (the only response of that shape). */
 export const isNotificationPreferencesResult = (data: unknown) =>
   NotificationPreferencesSchema.safeParse(data).success;
+
+/** The thread a "chat.thread_replied" notification is about (payload.threadRootId), else null. */
+export const threadRootOfNotification = (notification: Pick<Notification, "type" | "payload">) => {
+  if (notification.type !== "chat.thread_replied") return null;
+  const root = (notification.payload as Record<string, unknown> | null)?.threadRootId;
+  return typeof root === "string" && root ? root : null;
+};
+
+/**
+ * Is the person already looking at what this chat notification is about (then it is marked read, no toast)? A
+ * mention: its conversation is on screen at the live end. A thread reply: only with that very thread open — the
+ * channel alone does not show replies, so the root's author must still be told (owner, 2026-10-16).
+ */
+export const isReadingChatTarget = ({
+  notification,
+  activeChannelId,
+  live,
+  visible,
+  openThreadId
+}: {
+  notification: Pick<Notification, "type" | "payload" | "target">;
+  activeChannelId: string | null;
+  live: boolean;
+  visible: boolean;
+  openThreadId: string | null;
+}) => {
+  const channelId = notification.target.channelId;
+  if (!channelId || !visible || activeChannelId !== channelId) return false;
+  const root = threadRootOfNotification(notification);
+  return root ? openThreadId === root : live;
+};

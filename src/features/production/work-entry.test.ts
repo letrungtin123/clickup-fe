@@ -132,7 +132,6 @@ describe("workEntryProblems", () => {
         "process",
         "project",
         "qc",
-        "qty",
         "receivedDay",
         "shift"
       ].sort()
@@ -174,6 +173,9 @@ describe("workEntryProblems", () => {
     expect(problems({ qty: "0" }).qty).toBeDefined();
     expect(problems({ qty: "2.5" }).qty).toBeDefined();
     expect(problems({ qty: "1000001" }).qty).toBeDefined();
+    // PD-058: optional — empty is "chưa có số lượng".
+    expect(problems({ qty: "" }).qty).toBeUndefined();
+    expect(problems({ qty: "  " }).qty).toBeUndefined();
     expect(problems({ errorQty: "0" }).errorQty).toBeUndefined();
     expect(problems({ errorQty: "-1" }).errorQty).toBeDefined();
     expect(problems({ otHours: "1,5" }).otHours).toBeUndefined();
@@ -217,6 +219,13 @@ describe("workEntryPayload", () => {
     });
     // PD-038: the package is never sent as text.
     expect(payload).not.toHaveProperty("jobCode");
+  });
+
+  it("leaves an empty quantity out — the task has none until the worker fills it in (PD-058)", () => {
+    const payload = workEntryPayload(valid({ qty: "" }), { timeZone: VN, sendAssignee: false });
+    expect(payload).not.toBeNull();
+    expect(payload).not.toHaveProperty("qtyAssigned");
+    expect(workEntryPayload(valid({ qty: "abc" }), { timeZone: VN, sendAssignee: false })).toBeNull();
   });
 
   it("sends the person only when picked, and the optional numbers, note and fields when given", () => {

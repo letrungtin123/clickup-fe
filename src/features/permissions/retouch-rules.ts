@@ -103,13 +103,8 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
       description: "Bảng số liệu tổng của Quản trị và các báo cáo được ghim.",
       cells: only()
     },
-    {
-      id: "reports",
-      label: "Báo cáo",
-      description:
-        "Tạo và lưu báo cáo trên mọi job. Tiền Khoán, trường tùy chỉnh nhân viên và ghim lên bảng số liệu chỉ Quản trị.",
-      cells: only("LEADER")
-    },
+    // "Báo cáo" (id "reports", Leader + Quản trị) is hidden from the app for now (owner, 2026-10-16), so it is not
+    // listed here either; see features/production/nav.ts.
     {
       id: "anomalies",
       label: "Bất thường",
@@ -121,8 +116,8 @@ export const retouchFixedRules = (settings: RetouchPublicSettings = {}): Retouch
       id: "leave-approval",
       label: "Duyệt lịch nghỉ",
       description:
-        "Duyệt / từ chối đơn nghỉ của mọi người (Leader không tự duyệt đơn của mình). Ai cũng xem lịch nghỉ và gửi đơn.",
-      cells: only("LEADER")
+        "Duyệt / từ chối đơn nghỉ và xuất bảng chấm công nghỉ phép: chỉ Quản trị (PD-057). Ai cũng xem lịch nghỉ và gửi đơn.",
+      cells: only()
     },
     {
       id: "clients",

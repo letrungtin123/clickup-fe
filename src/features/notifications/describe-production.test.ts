@@ -118,6 +118,42 @@ describe("production notifications", () => {
     });
   });
 
+  it("words a quantity filled in (PD-058) and copes with tasks that have none", () => {
+    const filled = describeNotification(
+      make({
+        type: "production.qty_filled",
+        payload: {
+          jobCode: "VD JOB-1",
+          taskCode: "1286",
+          taskNumber: 1286,
+          processName: "Retouch",
+          qty: 120,
+          filledQty: 120,
+          atDone: true
+        }
+      })
+    );
+    expect(sentenceText(filled)).toBe("Leader Mẫu đã điền số lượng 120 cho task VD JOB-1 #1286");
+    expect(filled.subject).toBe("Retouch · 120 tấm");
+    expect(filled.excerpt).toBe("Điền khi chuyển Done");
+    expect(notificationTarget(make({ type: "production.qty_filled" }))).toEqual({
+      kind: "path",
+      path: `/production/tasks/${id(10)}`
+    });
+    // A task without a quantity: no "· N tấm".
+    const assigned = describeNotification(
+      make({ payload: { jobCode: "VD JOB-1", taskNumber: 3, processName: "Retouch", qty: null } })
+    );
+    expect(assigned.subject).toBe("Retouch");
+    expect(
+      sentenceText(
+        describeNotification(
+          make({ type: "production.qty_filled", payload: { jobCode: "VD JOB-1", taskNumber: 3 } })
+        )
+      )
+    ).toBe("Leader Mẫu đã điền số lượng cho task VD JOB-1 #3");
+  });
+
   it("words quantity changes, feedback and comments", () => {
     expect(
       sentenceText(

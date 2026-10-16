@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Notification } from "@/contracts/notifications";
 
-import {
+import { isReadingChatTarget, threadRootOfNotification,
   allowsPopup,
   BELL_LIMIT,
   bellItems,
@@ -134,5 +134,23 @@ describe("session follows the notification preferences", () => {
     expect(isNotificationPreferencesResult({ notifyWeb: false })).toBe(false);
     expect(isNotificationPreferencesResult({ unreadCount: 3 })).toBe(false);
     expect(isNotificationPreferencesResult(undefined)).toBe(false);
+  });
+});
+
+describe("reading a chat notification", () => {
+  const mention = { type: "chat.mentioned", payload: {}, target: { channelId: "c1" } } as never;
+  const reply = { type: "chat.thread_replied", payload: { threadRootId: "r1" }, target: { channelId: "c1" } } as never;
+  const at = (overrides: Record<string, unknown>) => ({ activeChannelId: "c1", live: true, visible: true, openThreadId: null, ...overrides });
+
+  it("reads a thread reply only with that thread open, a mention with the conversation on screen", () => {
+    expect(threadRootOfNotification(reply)).toBe("r1");
+    expect(threadRootOfNotification(mention)).toBeNull();
+    expect(isReadingChatTarget({ notification: mention, ...at({}) })).toBe(true);
+    // In the channel but the thread is closed: the root's author is still told.
+    expect(isReadingChatTarget({ notification: reply, ...at({}) })).toBe(false);
+    expect(isReadingChatTarget({ notification: reply, ...at({ openThreadId: "r1" }) })).toBe(true);
+    expect(isReadingChatTarget({ notification: reply, ...at({ openThreadId: "r2" }) })).toBe(false);
+    expect(isReadingChatTarget({ notification: mention, ...at({ visible: false }) })).toBe(false);
+    expect(isReadingChatTarget({ notification: mention, ...at({ activeChannelId: "c2" }) })).toBe(false);
   });
 });

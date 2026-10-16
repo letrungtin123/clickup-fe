@@ -1,53 +1,87 @@
-import { CalendarPlus, ChevronLeft, ChevronRight, Inbox, ListChecks } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarPlus,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
+  ListChecks
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { Link } from "@/components/shared/router-link";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { SegmentedControl } from "@/components/shared/radio-controls";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { LeaveRequest } from "@/contracts/production-leave";
+import { DateField } from "@/features/production/components/date-field";
 import { todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
 import {
   bucketLeaveByDay,
+  formatLeaveDates,
   monthBounds,
   monthGrid,
   monthOfDay,
   shiftDay,
-  shiftMonth
+  shiftMonth,
+  showsAdminOnlyNote
 } from "@/features/production/leave/calendar";
-import { LeaveAvatar } from "@/features/production/leave/components/leave-bits";
+import {
+  AdminOnlyDecisionNote,
+  LeaveAvatar
+} from "@/features/production/leave/components/leave-bits";
 import {
   LeaveAgenda,
   LeaveDayDetail,
   LeaveMonthGrid
 } from "@/features/production/leave/components/leave-calendar";
+import { LeaveExportButton } from "@/features/production/leave/components/leave-export-button";
+import { LeaveRangeList } from "@/features/production/leave/components/leave-range-list";
 import { LeaveRequestDialog } from "@/features/production/leave/components/leave-request-dialog";
 import { LeaveRequestRow } from "@/features/production/leave/components/leave-requests";
 import { useLeaveActions } from "@/features/production/leave/components/use-leave-actions";
+import { LEAVE_EXPORT_HINT } from "@/features/production/leave/export";
 import {
   useLeaveCalendar,
   useMyLeaveRequests,
   usePendingLeave
 } from "@/features/production/leave/hooks";
+import {
+  leaveFilterWindow,
+  leaveModePatch,
+  leaveRangeRows,
+  leaveRangeSummaryText,
+  parseLeaveTimeFilter,
+  validateLeaveRange,
+  type LeaveTimeFilter,
+  type LeaveTimeMode
+} from "@/features/production/leave/range";
 import { PageBody, Panel, TeamSelect } from "@/features/production/scores/components/kit";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 type Tab = "calendar" | "mine" | "pending";
 
-const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const monthLabel = (month: string) => `Tháng ${month.slice(5, 7)}/${month.slice(0, 4)}`;
+
+const timeModes = [
+  { value: "month", label: "Theo tháng", icon: CalendarDays },
+  { value: "range", label: "Khoảng ngày", icon: CalendarRange }
+] as const;
 
 /**
  * /production/leave — shared leave calendar (SPEC §6.3, PLAN §10): month grid with avatars of people
  * on leave (half days marked), team filter, "Xin nghỉ", own requests with cancel, and the pending
- * queue for LEADER/ADMIN. Phones get an agenda list. Live via `production:leave` (ProductionRuntime).
- * ?month=YYYY-MM&tab=mine|pending&team=<id>.
+ * queue (LEADER/ADMIN read it; only ADMIN decides, PD-057). Phones get an agenda list. PD-057 adds a
+ * time filter — "Theo tháng" or "Khoảng ngày" (a list of the requests overlapping the range) — and,
+ * for Quản trị, "Xuất Excel" of the current filter (payroll attendance). Live via `production:leave`
+ * (ProductionRuntime). ?month=YYYY-MM | ?from=YYYY-MM-DD&to=YYYY-MM-DD, &tab=mine|pending, &team=<id>.
  */
 export const ProductionLeaveRoute = () => {
   const me = useProductionMe();
@@ -56,13 +90,13 @@ export const ProductionLeaveRoute = () => {
   const [params, setParams] = useSearchParams();
   const settings = me.data?.settings;
   const today = todayIn(settings?.timezone ?? "Asia/Ho_Chi_Minh");
-  const canDecide = access.can("LEADER");
+  // LEADER/ADMIN read the approval queue; only Quản trị decides (`canDecide` per request, PD-057).
+  const seesQueue = access.can("LEADER");
 
-  const monthParam = params.get("month");
-  const month = monthParam && monthPattern.test(monthParam) ? monthParam : monthOfDay(today);
+  const filter = parseLeaveTimeFilter(params, today);
   const tabParam = params.get("tab");
   const tab: Tab =
-    tabParam === "mine" ? "mine" : tabParam === "pending" && canDecide ? "pending" : "calendar";
+    tabParam === "mine" ? "mine" : tabParam === "pending" && seesQueue ? "pending" : "calendar";
   const teamParam = params.get("team");
   const teamId = teamParam && uuidPattern.test(teamParam) ? teamParam : null;
 
@@ -73,7 +107,7 @@ export const ProductionLeaveRoute = () => {
     key: 0
   });
   const actions = useLeaveActions();
-  const pending = usePendingLeave(canDecide);
+  const pending = usePendingLeave(seesQueue);
   const pendingCount = pending.data?.items.length ?? 0;
 
   const update = (patch: Record<string, string | null>) =>
@@ -92,9 +126,11 @@ export const ProductionLeaveRoute = () => {
   const openRequest = (day: string | null) =>
     setDialog((current) => ({ open: true, day, key: current.key + 1 }));
 
-  const renderActions = (request: LeaveRequest) =>
-    request.canDecide || request.canCancel ? (
-      <div className="flex flex-wrap justify-end gap-2">
+  const renderActions = (request: LeaveRequest) => {
+    const adminOnly = showsAdminOnlyNote(request, seesQueue);
+    return request.canDecide || request.canCancel || adminOnly ? (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {adminOnly ? <AdminOnlyDecisionNote /> : null}
         {request.canDecide ? (
           <>
             <Button size="sm" variant="outline" onClick={() => actions.decide(request, "REJECTED")}>
@@ -117,6 +153,7 @@ export const ProductionLeaveRoute = () => {
         ) : null}
       </div>
     ) : null;
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -134,7 +171,7 @@ export const ProductionLeaveRoute = () => {
         description={
           breakpoint === "mobile"
             ? undefined
-            : "Ai nghỉ ngày nào để sắp việc. Mọi người chỉ thấy tên và ngày; ghi chú chỉ người xin và Leader/Quản trị thấy."
+            : "Ai nghỉ ngày nào để sắp việc. Mọi người chỉ thấy tên và ngày; lý do chỉ người xin và Leader/Quản trị thấy. Quản trị duyệt đơn."
         }
         actions={
           <Button onClick={() => openRequest(null)}>
@@ -154,7 +191,7 @@ export const ProductionLeaveRoute = () => {
             <TabsTrigger value="mine" className="max-sm:min-h-10">
               Đơn của tôi
             </TabsTrigger>
-            {canDecide ? (
+            {seesQueue ? (
               <TabsTrigger value="pending" className="max-sm:min-h-10">
                 Chờ duyệt
                 {pendingCount > 0 ? (
@@ -171,18 +208,18 @@ export const ProductionLeaveRoute = () => {
       <PageBody>
         {tab === "calendar" ? (
           <CalendarTab
-            month={month}
+            filter={filter}
             today={today}
             teamId={teamId}
+            canExport={access.isAdmin}
             selected={selected}
             mobile={breakpoint === "mobile"}
             maxAvatars={breakpoint === "desktop" ? 3 : 4}
             withNames={breakpoint === "desktop"}
-            onMonth={(next) => {
-              setSelected(null);
-              update({ month: next === monthOfDay(today) ? null : next });
+            onPatch={(patch) => {
+              if ("month" in patch || "from" in patch || "to" in patch) setSelected(null);
+              update(patch);
             }}
-            onTeam={(next) => update({ team: next })}
             onSelect={setSelected}
             onRequest={openRequest}
             renderActions={renderActions}
@@ -197,7 +234,11 @@ export const ProductionLeaveRoute = () => {
         ) : (
           <Panel
             title="Đơn chờ duyệt"
-            description="Duyệt hoặc từ chối; người xin nghỉ nhận thông báo ngay."
+            description={
+              access.isAdmin
+                ? "Duyệt hoặc từ chối; người xin nghỉ nhận thông báo ngay."
+                : "Chỉ Quản trị duyệt đơn nghỉ; bạn xem để sắp việc cho team."
+            }
           >
             {pending.isPending ? (
               <ListSkeleton />
@@ -212,6 +253,7 @@ export const ProductionLeaveRoute = () => {
                     key={request.id}
                     request={request}
                     showUser
+                    inQueue
                     onDecide={actions.decide}
                     onCancel={actions.cancel}
                   />
@@ -235,34 +277,252 @@ export const ProductionLeaveRoute = () => {
 };
 
 const CalendarTab = ({
-  month,
+  filter,
   today,
   teamId,
+  canExport,
   selected,
   mobile,
   maxAvatars,
   withNames,
-  onMonth,
-  onTeam,
+  onPatch,
+  onSelect,
+  onRequest,
+  renderActions
+}: {
+  filter: LeaveTimeFilter;
+  today: string;
+  teamId: string | null;
+  /** Quản trị: "Xuất Excel" of the current filter (PD-057). */
+  canExport: boolean;
+  selected: string | null;
+  mobile: boolean;
+  maxAvatars: number;
+  withNames: boolean;
+  onPatch: (patch: Record<string, string | null>) => void;
+  onSelect: (day: string) => void;
+  onRequest: (day: string | null) => void;
+  renderActions: (request: LeaveRequest) => React.ReactNode;
+}) => {
+  // Month mode always has a month; the range mode keeps the grid helpers on today's month (unused).
+  const month = filter.mode === "month" ? filter.month : monthOfDay(today);
+  const grid = useMemo(() => monthGrid(month), [month]);
+  const span = leaveFilterWindow(filter);
+  const rangeProblem = filter.mode === "range" ? validateLeaveRange(filter.from, filter.to) : null;
+  // One query: the visible weeks of the month grid, or the chosen range (none while it is invalid).
+  const query = filter.mode === "month" ? { from: grid.from, to: grid.to } : span;
+  const calendar = useLeaveCalendar(
+    query?.from ?? today,
+    query?.to ?? today,
+    teamId,
+    query !== null
+  );
+
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedControl<LeaveTimeMode>
+            aria-label="Lọc theo thời gian"
+            value={filter.mode}
+            onChange={(next) => onPatch(leaveModePatch(filter, next, today))}
+            options={timeModes}
+            className="w-full sm:w-auto"
+          />
+          {filter.mode === "month" ? (
+            <MonthNav
+              month={month}
+              today={today}
+              onMonth={(next) => onPatch({ month: next === monthOfDay(today) ? null : next })}
+            />
+          ) : (
+            <RangeFields
+              from={filter.from}
+              to={filter.to}
+              today={today}
+              invalid={rangeProblem !== null}
+              onChange={(patch) => onPatch(patch)}
+            />
+          )}
+          {calendar.isFetching && !calendar.isPending ? (
+            <Spinner className="ml-1 size-4 text-foreground-muted" />
+          ) : null}
+          <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+            <TeamSelect
+              value={teamId}
+              onChange={(next) => onPatch({ team: next })}
+              className="min-w-0 flex-1 sm:flex-none"
+            />
+            {canExport ? (
+              <LeaveExportButton span={span} teamId={teamId} className="shrink-0" />
+            ) : null}
+          </div>
+        </div>
+        {rangeProblem ? (
+          <p role="alert" className="text-xs text-danger">
+            {rangeProblem}
+          </p>
+        ) : null}
+        {canExport && mobile ? (
+          <p className="text-[11px] text-foreground-muted">Xuất Excel: {LEAVE_EXPORT_HINT}</p>
+        ) : null}
+      </div>
+
+      {filter.mode === "month" ? (
+        <MonthView
+          month={month}
+          grid={grid}
+          today={today}
+          calendar={calendar}
+          selected={selected}
+          mobile={mobile}
+          maxAvatars={maxAvatars}
+          withNames={withNames}
+          onSelect={onSelect}
+          onRequest={onRequest}
+          renderActions={renderActions}
+        />
+      ) : !span ? (
+        <Panel>
+          <EmptyState
+            size="sm"
+            icon={CalendarRange}
+            title="Chọn khoảng ngày để xem"
+            description="Chọn Từ ngày và Đến ngày (tối đa một năm) để xem ai nghỉ trong khoảng đó."
+          />
+        </Panel>
+      ) : calendar.isPending ? (
+        <ListSkeleton />
+      ) : calendar.isError ? (
+        <Panel>
+          <ErrorState
+            error={calendar.error}
+            onRetry={() => void calendar.refetch()}
+            retrying={calendar.isFetching}
+          />
+        </Panel>
+      ) : (
+        <RangePanel
+          span={span}
+          items={calendar.data.items}
+          mobile={mobile}
+          renderActions={renderActions}
+        />
+      )}
+    </>
+  );
+};
+
+const MonthNav = ({
+  month,
+  today,
+  onMonth
+}: {
+  month: string;
+  today: string;
+  onMonth: (month: string) => void;
+}) => (
+  <div className="flex items-center gap-1">
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label="Tháng trước"
+      onClick={() => onMonth(shiftMonth(month, -1))}
+    >
+      <ChevronLeft />
+    </Button>
+    <span className="min-w-28 text-center text-sm font-semibold tabular-nums" aria-live="polite">
+      {monthLabel(month)}
+    </span>
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label="Tháng sau"
+      onClick={() => onMonth(shiftMonth(month, 1))}
+    >
+      <ChevronRight />
+    </Button>
+    {month !== monthOfDay(today) ? (
+      <Button variant="ghost" size="sm" onClick={() => onMonth(monthOfDay(today))}>
+        Hôm nay
+      </Button>
+    ) : null}
+  </div>
+);
+
+/** "Khoảng ngày": Từ ngày → Đến ngày, kept in the URL; problems are shown under the toolbar. */
+const RangeFields = ({
+  from,
+  to,
+  today,
+  invalid,
+  onChange
+}: {
+  from: string | null;
+  to: string | null;
+  today: string;
+  invalid: boolean;
+  onChange: (patch: { from?: string; to?: string }) => void;
+}) => (
+  <div
+    role="group"
+    aria-label="Khoảng ngày"
+    className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 sm:flex sm:w-auto"
+  >
+    <DateField
+      aria-label="Từ ngày"
+      placeholder="Từ ngày"
+      value={from}
+      today={today}
+      aria-invalid={invalid && (!from || (to !== null && to < from)) ? true : undefined}
+      onChange={(day) => {
+        if (day) onChange({ from: day });
+      }}
+      className="sm:w-40"
+    />
+    <span aria-hidden="true" className="text-xs text-foreground-muted">
+      đến
+    </span>
+    <DateField
+      aria-label="Đến ngày"
+      placeholder="Đến ngày"
+      value={to}
+      today={today}
+      minDay={from ?? undefined}
+      aria-invalid={invalid ? true : undefined}
+      onChange={(day) => {
+        if (day) onChange({ to: day });
+      }}
+      className="sm:w-40"
+    />
+  </div>
+);
+
+const MonthView = ({
+  month,
+  grid,
+  today,
+  calendar,
+  selected,
+  mobile,
+  maxAvatars,
+  withNames,
   onSelect,
   onRequest,
   renderActions
 }: {
   month: string;
+  grid: ReturnType<typeof monthGrid>;
   today: string;
-  teamId: string | null;
+  calendar: ReturnType<typeof useLeaveCalendar>;
   selected: string | null;
   mobile: boolean;
   maxAvatars: number;
   withNames: boolean;
-  onMonth: (month: string) => void;
-  onTeam: (teamId: string | null) => void;
   onSelect: (day: string) => void;
   onRequest: (day: string | null) => void;
   renderActions: (request: LeaveRequest) => React.ReactNode;
 }) => {
-  const grid = useMemo(() => monthGrid(month), [month]);
-  const calendar = useLeaveCalendar(grid.from, grid.to, teamId);
   const items = calendar.data?.items;
   const byDay = useMemo(
     () => bucketLeaveByDay(items ?? [], grid.from, grid.to),
@@ -284,44 +544,6 @@ const CalendarTab = ({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Tháng trước"
-            onClick={() => onMonth(shiftMonth(month, -1))}
-          >
-            <ChevronLeft />
-          </Button>
-          <span
-            className="min-w-28 text-center text-sm font-semibold tabular-nums"
-            aria-live="polite"
-          >
-            {monthLabel(month)}
-          </span>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Tháng sau"
-            onClick={() => onMonth(shiftMonth(month, 1))}
-          >
-            <ChevronRight />
-          </Button>
-          {month !== monthOfDay(today) ? (
-            <Button variant="ghost" size="sm" onClick={() => onMonth(monthOfDay(today))}>
-              Hôm nay
-            </Button>
-          ) : null}
-          {calendar.isFetching && !calendar.isPending ? (
-            <Spinner className="ml-1 size-4 text-foreground-muted" />
-          ) : null}
-        </div>
-        <div className="w-full sm:ml-auto sm:w-auto">
-          <TeamSelect value={teamId} onChange={onTeam} />
-        </div>
-      </div>
-
       {month === monthOfDay(today) && calendar.data ? (
         <section
           aria-label="Hôm nay"
@@ -390,6 +612,31 @@ const CalendarTab = ({
         </div>
       )}
     </>
+  );
+};
+
+/** "Khoảng ngày": the requests overlapping the range, with a one-line summary. */
+const RangePanel = ({
+  span,
+  items,
+  mobile,
+  renderActions
+}: {
+  span: { from: string; to: string };
+  items: readonly LeaveRequest[];
+  mobile: boolean;
+  renderActions: (request: LeaveRequest) => React.ReactNode;
+}) => {
+  const { from, to } = span;
+  const rows = useMemo(() => leaveRangeRows(items, { from, to }), [items, from, to]);
+  return (
+    <Panel
+      title={`Đơn nghỉ ${formatLeaveDates(span.from, span.to)}`}
+      description={rows.length > 0 ? leaveRangeSummaryText(rows, span) : undefined}
+      bodyClassName="overflow-hidden rounded-b-xl"
+    >
+      <LeaveRangeList rows={rows} mobile={mobile} renderActions={renderActions} />
+    </Panel>
   );
 };
 

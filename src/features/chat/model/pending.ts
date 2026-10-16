@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { docMentionsAll } from "@/components/shared/rich-text/helpers";
 import type { ChatAttachment, ChatMessage } from "@/contracts/chat";
 import type { RichTextDoc } from "@/contracts/rich-text";
 import type { UserRef } from "@/contracts/work";
@@ -91,6 +92,8 @@ export const pendingToDisplay = (pending: PendingMessage): DisplayMessage => ({
   systemEvent: null,
   clientMessageId: pending.clientMessageId,
   mentions: [],
+  // The body is already sanitized for this conversation: an @all node means @all (PD-061).
+  mentionsAll: docMentionsAll(pending.body),
   attachments: pending.attachments,
   reactions: [],
   replyCount: 0,

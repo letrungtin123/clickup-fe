@@ -141,7 +141,7 @@ const ChannelView = ({ channel }: { channel: ChatChannelDetail }) => {
     [pending, win.window?.items]
   );
   const nameOf = useUserLookup(channel, win.window?.items ?? []);
-  const mentionSource = useMentionSource(channel.id);
+  const mentionSource = useMentionSource(channel);
   const uploads = useUploads(channel.id);
 
   const openThread = useCallback(
@@ -257,11 +257,7 @@ const ChannelView = ({ channel }: { channel: ChatChannelDetail }) => {
           if (files.length > 0) uploads.addFiles(files);
         }}
       >
-        <ChannelHeader
-          channel={channel}
-          mobile={mobile}
-          onOpenSettings={(tab) => setSettings({ open: true, tab })}
-        />
+        <ChannelHeader channel={channel} mobile={mobile} />
         {channel.archivedAt ? (
           <p className="border-b bg-warning-soft px-4 py-1.5 text-center text-xs text-foreground-muted">
             Kênh đã được lưu trữ — chỉ có thể xem lịch sử tin nhắn.

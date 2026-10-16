@@ -1,9 +1,10 @@
-import type { CustomField, Process } from "@/contracts/production-catalog";
-import type {
-  ProductionSubtask,
-  ProductionTask,
-  TaskQtyRequest,
-  TaskTransitionOption
+import type { CustomField, Process, ProductionStatus } from "@/contracts/production-catalog";
+import {
+  TaskQtyRequiredDetailsSchema,
+  type ProductionSubtask,
+  type ProductionTask,
+  type TaskQtyRequest,
+  type TaskTransitionOption
 } from "@/contracts/production-jobs";
 import { isApiError } from "@/lib/api/errors";
 
@@ -45,9 +46,10 @@ export type TaskEditKey =
 
 /**
  * Per field: may the viewer edit it in place. `requestQty`: no direct right on "Số lượng giao", but the viewer may ask
- * the Leader to change it (the field opens the inline request form instead, PD-047).
+ * the Leader to change it (the field opens the inline request form instead, PD-047). `fillQty` (PD-058): the task has
+ * no quantity yet and the viewer may fill it in directly (its worker too — never through a request).
  */
-export type TaskEditRights = Record<TaskEditKey, boolean> & { requestQty: boolean };
+export type TaskEditRights = Record<TaskEditKey, boolean> & { requestQty: boolean; fillQty: boolean };
 
 const noRights: TaskEditRights = {
   process: false,
@@ -64,12 +66,13 @@ const noRights: TaskEditRights = {
   note: false,
   tags: false,
   custom: false,
-  requestQty: false
+  requestQty: false,
+  fillQty: false
 };
 
 type RightsTask = Pick<
   ProductionTask,
-  "capabilities" | "doneAt" | "checkedAt" | "process" | "isSubtask" | "pendingQtyRequest"
+  "capabilities" | "doneAt" | "checkedAt" | "process" | "isSubtask" | "pendingQtyRequest" | "qtyAssigned"
 >;
 
 /**
@@ -77,6 +80,8 @@ type RightsTask = Pick<
  * Ca, the person and "Số lượng giao"; the QC can change until "Đã check" (not on a Checking line, which has none). A
  * subtask follows its line for the person, QC, Ca, dates, Giờ OT, link, tags and custom fields: only its Công đoạn,
  * quantities, Hình lỗi and Ghi chú are its own. An archived job is read-only.
+ * PD-058: a task without a quantity (null) is filled in directly — by whoever may change it, and by its worker (who
+ * may otherwise only ask: canRequestQty) — never through a request; changing a number keeps PD-044's rules.
  */
 export const taskEditRights = (
   task: RightsTask,
@@ -86,14 +91,21 @@ export const taskEditRights = (
   const caps = task.capabilities;
   const done = task.doneAt !== null;
   const lineOnly = !task.isSubtask;
+  const noQty = task.qtyAssigned === null;
   return {
     process: caps.canEdit && !done,
     assignee: caps.canChangeAssignee && !done && lineOnly,
     qc: caps.canAssign && task.checkedAt === null && !task.process.isQc && lineOnly,
     shift: caps.canEdit && !done && lineOnly,
-    qtyAssigned: caps.canEditQtyAssigned && !done,
+    qtyAssigned: caps.canEditQtyAssigned && !done && !noQty,
     requestQty:
-      !caps.canEditQtyAssigned && caps.canRequestQty && !done && task.pendingQtyRequest === null,
+      !noQty &&
+      !caps.canEditQtyAssigned &&
+      caps.canRequestQty &&
+      !done &&
+      task.pendingQtyRequest === null,
+    fillQty:
+      noQty && !done && (caps.canEditQtyAssigned || caps.canRequestQty || caps.canEdit),
     qtyDone: caps.canEditQty && done,
     errorQty: caps.canEdit,
     otHours: caps.canEdit && lineOnly,
@@ -114,9 +126,24 @@ export const wholeNumber = (text: string) => {
   return /^\d+$/.test(value) ? Number(value) : null;
 };
 
-/** Images split off into subtasks (the line's own part is `qtyAssigned`). */
+/** Images split off into subtasks (the line's own part is `qtyAssigned`); PD-058: known numbers only. */
 export const subtasksQty = (subtasks: readonly Pick<ProductionSubtask, "qtyAssigned">[]) =>
-  subtasks.reduce((sum, subtask) => sum + subtask.qtyAssigned, 0);
+  subtasks.reduce((sum, subtask) => sum + (subtask.qtyAssigned ?? 0), 0);
+
+/** PD-058: subtasks without a quantity yet. */
+export const subtasksWithoutQty = (subtasks: readonly Pick<ProductionSubtask, "qtyAssigned">[]) =>
+  subtasks.filter((subtask) => subtask.qtyAssigned === null).length;
+
+/** PD-058: the line and every subtask have a number, so "Tổng Leader giao" (allocatedQty) is the whole total. */
+export const allQtyKnown = (
+  task: Pick<ProductionTask, "qtyAssigned"> & { subtasks: readonly Pick<ProductionSubtask, "qtyAssigned">[] }
+) => task.qtyAssigned !== null && task.subtasks.every((subtask) => subtask.qtyAssigned !== null);
+
+/** A whole number from 1 to 1,000,000 ("Số lượng"): the problem, or null when fine. */
+export const requiredQtyProblem = (text: string) => {
+  const value = wholeNumber(text);
+  return value === null || value < 1 || value > 1_000_000 ? "Nhập số tấm nguyên ≥ 1." : null;
+};
 
 /**
  * "Số lượng giao" edited as the total the Leader gave (PD-048): the task with its subtasks. The subtasks keep their
@@ -174,7 +201,7 @@ export const lineDraftOf = (
   qcId: null,
   processId: task.process.id,
   shiftId: task.shift.id,
-  qty: String(task.qtyAssigned),
+  qty: task.qtyAssigned === null ? "" : String(task.qtyAssigned),
   receivedDay: isoToDay(task.assignedAt, timeZone),
   dueDay: isoToDay(task.deadline, timeZone),
   errorQty: task.errorQty === null ? "" : String(task.errorQty),
@@ -274,38 +301,59 @@ export const subtaskProcessOptions = (
     )
     .map((process) => ({ id: process.id, label: process.name }));
 
+/** Largest "Số lượng" the API takes. */
+const MAX_QTY = 1_000_000;
+
 /**
  * Most images a subtask can hold: taken from the line, which keeps at least 1. `current` is the subtask's own quantity
- * when editing it (it goes back to the line first).
+ * when editing it (it goes back to the line first). PD-058: nothing is carved from a line without a quantity (only the
+ * API's ceiling applies); a subtask without one (null) filled in under a line that has one is carved like a new one.
  */
-export const subtaskQtyMax = (lineQtyAssigned: number, current = 0) =>
-  Math.max(0, lineQtyAssigned + current - 1);
+export const subtaskQtyMax = (lineQtyAssigned: number | null, current: number | null = 0) =>
+  lineQtyAssigned === null ? MAX_QTY : Math.max(0, lineQtyAssigned + (current ?? 0) - 1);
 
-export const subtaskQtyProblem = (text: string, max: number) => {
+/** `optional` (PD-058, "Tạo subtask"): an empty quantity is fine ("chưa có số lượng"). */
+export const subtaskQtyProblem = (
+  text: string,
+  max: number,
+  { optional = false }: { optional?: boolean } = {}
+) => {
+  if (optional && text.trim() === "") return null;
   if (max < 1) return "Task gốc chỉ còn 1 tấm — không tách thêm được.";
   const value = wholeNumber(text);
   if (value === null || value < 1) return "Số tấm nguyên ≥ 1.";
-  if (value > max) return `Tối đa ${formatInteger(max)} tấm (task gốc giữ ít nhất 1 tấm).`;
+  if (value > max)
+    return max >= MAX_QTY
+      ? `Tối đa ${formatInteger(MAX_QTY)} tấm.`
+      : `Tối đa ${formatInteger(max)} tấm (task gốc giữ ít nhất 1 tấm).`;
   return null;
 };
 
 /**
- * What the line keeps once the subtask holds `text` images ("Task gốc còn N tấm"); null while the number is not valid.
+ * What the line keeps once the subtask holds `text` images ("Task gốc còn N tấm"); null while the number is not valid
+ * — and (PD-058) while the line has no quantity: nothing is carved then (a subtask without one counts as 0).
  */
-export const lineQtyLeft = (lineQtyAssigned: number, current: number, text: string) => {
+export const lineQtyLeft = (
+  lineQtyAssigned: number | null,
+  current: number | null,
+  text: string
+) => {
   const value = wholeNumber(text);
-  if (value === null) return null;
-  return lineQtyAssigned + current - value;
+  if (value === null || lineQtyAssigned === null) return null;
+  return lineQtyAssigned + (current ?? 0) - value;
 };
 
 export type SubtaskDraft = { processId: string | null; qty: string; reason: string };
 export type SubtaskProblemKey = "process" | "qty" | "reason";
 
-/** "Tạo subtask": a process and a quantity; the reason is optional (PD-045), at most 2,000 characters. */
+/**
+ * "Tạo subtask": a process; the quantity is optional (PD-058: empty = "chưa có số lượng", filled in by Done); the reason
+ * is optional (PD-045), at most 2,000 characters.
+ */
 export const subtaskDraftProblems = (draft: SubtaskDraft, max: number) => {
   const problems: Partial<Record<SubtaskProblemKey, string>> = {};
   if (!draft.processId) problems.process = "Chọn công đoạn.";
-  const qty = subtaskQtyProblem(draft.qty, max);
+  const qty = subtaskQtyProblem(draft.qty, max, { optional: true });
   if (qty) problems.qty = qty;
   if (draft.reason.trim().length > 2000) problems.reason = "Lý do tối đa 2.000 ký tự.";
   return problems;
@@ -378,6 +426,101 @@ export const isQcSendBack = (
   ((fromCode !== null && fromCode !== undefined && qcQueueCodes.has(fromCode)) ||
     targetCode === "REWORK");
 
+// Done without a quantity (PD-058) -------------------------------------------------------------------------------
+
+/** One task the Done dialog asks a quantity for: the line itself or one of its live subtasks. */
+export type DoneQtyTarget = { taskId: string; code: string; processName: string; subtask: boolean };
+
+type DoneTask = Pick<ProductionTask, "id" | "code" | "process" | "qtyAssigned" | "status"> & {
+  subtasks: readonly Pick<ProductionSubtask, "id" | "code" | "process" | "qtyAssigned">[];
+};
+
+/** The line and its live subtasks without a quantity yet (line first, then the subtasks in order). */
+export const missingQtyTargets = (task: Omit<DoneTask, "status">): DoneQtyTarget[] => [
+  ...(task.qtyAssigned === null
+    ? [{ taskId: task.id, code: task.code, processName: task.process.name, subtask: false }]
+    : []),
+  ...task.subtasks
+    .filter((subtask) => subtask.qtyAssigned === null)
+    .map((subtask) => ({
+      taskId: subtask.id,
+      code: subtask.code,
+      processName: subtask.process.name,
+      subtask: true
+    }))
+];
+
+/**
+ * A move into a Done status: the API's `asksQty` (it marks entering Done), or — workflow known — a status that counts
+ * as done reached from one that does not.
+ */
+export const entersDone = (
+  task: Pick<ProductionTask, "status">,
+  option: Pick<TaskTransitionOption, "toStatusId" | "asksQty">,
+  statuses: readonly Pick<ProductionStatus, "id" | "countsDone">[]
+) => {
+  if (option.asksQty) return true;
+  const byId = new Map(statuses.map((status) => [status.id, status]));
+  return (
+    byId.get(option.toStatusId)?.countsDone === true && byId.get(task.status.id)?.countsDone !== true
+  );
+};
+
+/**
+ * What the Done dialog must ask before this move (empty = move straight away, PD-046): entering Done while the line or
+ * a live subtask has no quantity. Lines whose numbers are all known never open it.
+ */
+export const doneQtyTargets = (
+  task: DoneTask,
+  option: Pick<TaskTransitionOption, "toStatusId" | "asksQty">,
+  statuses: readonly Pick<ProductionStatus, "id" | "countsDone">[]
+) => (entersDone(task, option, statuses) ? missingQtyTargets(task) : []);
+
+/**
+ * The tasks a TASK_QTY_REQUIRED answer names (`details.taskIds`, stale data): labelled from the (refetched) line —
+ * itself or one of its subtasks; an id it does not know still gets a row. Without ids, whatever the line lacks.
+ */
+export const doneQtyTargetsFor = (
+  task: Omit<DoneTask, "status">,
+  taskIds: readonly string[] | null
+): DoneQtyTarget[] => {
+  if (!taskIds || taskIds.length === 0) return missingQtyTargets(task);
+  return taskIds.map((taskId) => {
+    if (taskId === task.id)
+      return { taskId, code: task.code, processName: task.process.name, subtask: false };
+    const subtask = task.subtasks.find((item) => item.id === taskId);
+    return subtask
+      ? { taskId, code: subtask.code, processName: subtask.process.name, subtask: true }
+      : { taskId, code: `${task.code}…`, processName: "Subtask", subtask: true };
+  });
+};
+
+/** The ids of a 400 TASK_QTY_REQUIRED (`details.taskIds`); null for any other error, [] when it names none. */
+export const qtyRequiredTaskIds = (error: unknown): string[] | null => {
+  if (!isApiError(error) || error.code !== "TASK_QTY_REQUIRED") return null;
+  const details = TaskQtyRequiredDetailsSchema.safeParse(error.details);
+  if (details.success) return details.data.taskIds;
+  // Malformed: keep the ids that are strings (the dialog labels unknown ones).
+  const ids = error.details?.taskIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+};
+
+/** The Done dialog's quantities for the transition: the line's as `qtyDone`, each subtask's in `subtaskQtyDone`. */
+export const doneQtyExtras = (
+  lineId: string,
+  targets: readonly DoneQtyTarget[],
+  values: Readonly<Record<string, string>>
+) => {
+  const extras: { qtyDone?: number; subtaskQtyDone?: { taskId: string; qtyDone: number }[] } = {};
+  for (const target of targets) {
+    const value = wholeNumber(values[target.taskId] ?? "");
+    if (value === null) continue;
+    if (target.taskId === lineId) extras.qtyDone = value;
+    else (extras.subtaskQtyDone ??= []).push({ taskId: target.taskId, qtyDone: value });
+  }
+  return extras;
+};
+
 // Errors ------------------------------------------------------------------------------------------------------
 
 /** Fallback copy for the PD-044 codes when the API sends no Vietnamese message. */
@@ -387,6 +530,9 @@ const pd044Messages: Record<string, string> = {
   QTY_REQUEST_REQUIRED:
     "Bạn không sửa trực tiếp được số tấm giao — hãy gửi đề nghị để Leader duyệt.",
   QTY_REQUEST_OPEN: "Task này đã có một đề nghị sửa số tấm đang chờ duyệt.",
+  // PD-058.
+  TASK_QTY_REQUIRED: "Nhập số lượng trước khi chuyển Done.",
+  TASK_QTY_EMPTY: "Task chưa có số lượng — điền trực tiếp vào ô số lượng.",
   TASK_ALREADY_DONE: "Task đã Done nên không đổi được nữa.",
   JOB_NOT_READY: "Job chưa Complete được: còn task chưa check."
 };

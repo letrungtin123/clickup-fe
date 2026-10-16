@@ -26,6 +26,7 @@ import { channelTitle, formatCount, hasUnread, isMuted, sortChannels } from "../
 import { timeAgo } from "../model/time";
 import { useChatDialogStore } from "../model/ui-state";
 import { ChannelGlyph } from "./channel-glyph";
+import { ConversationMenu } from "./conversation-menu";
 
 const fold = (value: string) =>
   value
@@ -189,36 +190,39 @@ const ConversationLink = ({
   const unread = hasUnread(channel);
   const badge = channel.mentionCount > 0 ? channel.mentionCount : unread ? channel.unreadCount : 0;
   return (
-    <Link
-      to={`/c/${channel.id}`}
-      className="flex items-center gap-3 rounded-lg px-3 py-2.5 outline-none transition-colors duration-150 hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-surface">
-        <ChannelGlyph channel={channel} online={online} size="md" />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span
-          className={cn(
-            "truncate text-sm",
-            unread ? "font-semibold text-foreground" : "font-medium",
-            isMuted(channel) && "text-foreground-muted"
-          )}
-        >
-          {channelTitle(channel)}
+    <div className="group/item relative">
+      <Link
+        to={`/c/${channel.id}`}
+        className="flex items-center gap-3 rounded-lg py-2.5 pr-12 pl-3 outline-none transition-colors duration-150 hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-surface">
+          <ChannelGlyph channel={channel} online={online} size="md" />
         </span>
-        <span className="truncate text-xs text-foreground-muted">
-          {channel.lastMessageAt
-            ? `Hoạt động ${timeAgo(channel.lastMessageAt)}`
-            : "Chưa có tin nhắn"}
-          {channel.archivedAt ? " · Đã lưu trữ" : ""}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span
+            className={cn(
+              "truncate text-sm",
+              unread ? "font-semibold text-foreground" : "font-medium",
+              isMuted(channel) && "text-foreground-muted"
+            )}
+          >
+            {channelTitle(channel)}
+          </span>
+          <span className="truncate text-xs text-foreground-muted">
+            {channel.lastMessageAt
+              ? `Hoạt động ${timeAgo(channel.lastMessageAt)}`
+              : "Chưa có tin nhắn"}
+            {channel.archivedAt ? " · Đã lưu trữ" : ""}
+          </span>
         </span>
-      </span>
-      {badge > 0 ? (
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold text-brand-foreground tabular-nums">
-          {formatCount(badge)}
-        </span>
-      ) : null}
-    </Link>
+        {badge > 0 ? (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold text-brand-foreground tabular-nums">
+            {formatCount(badge)}
+          </span>
+        ) : null}
+      </Link>
+      <ConversationMenu channel={channel} className="absolute top-1/2 right-2 -translate-y-1/2" />
+    </div>
   );
 };
 

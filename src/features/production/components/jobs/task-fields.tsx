@@ -36,8 +36,10 @@ import {
   ownQtyOfTotal,
   qtyRequestMessage,
   qtyRequestProblems,
+  requiredQtyProblem,
   subtaskProcessOptions,
   subtasksQty,
+  subtasksWithoutQty,
   totalQtyProblem,
   wholeNumber,
   type DoneQtyDraft,
@@ -47,7 +49,7 @@ import {
 import { CustomFieldInput, CustomFieldValue } from "../custom-field-input";
 import { DateField } from "../date-field";
 import { TagChips, TagPicker } from "../tag-picker";
-import { Fact, Person } from "./job-bits";
+import { Fact, NoQtyChip, Person } from "./job-bits";
 import { DoneQtyEditor, NumberEditor, QtyRequestEditor } from "./inline-editors";
 import { InlineField } from "./inline-field";
 import { OptionSelect, PersonSelect } from "./pickers";
@@ -153,10 +155,32 @@ export const TaskFacts = ({
     .filter((shift) => shift.active || shift.id === task.shift.id)
     .map((shift) => ({ id: shift.id, label: shift.name }));
   const noteRequired = doneQtyNoteRequired(task, myId);
-  // PD-048: "Số lượng giao" is the total the Leader gave (the task with its subtasks); "Số tấm đã xong" likewise.
-  const qtyAssignedValue = <span className="tabular-nums">{formatInteger(task.allocatedQty)}</span>;
-  const doneTotal = doneQtyWithSubtasks(task);
   const hasSubtasks = task.subtasks.length > 0;
+  const subtasksMissing = subtasksWithoutQty(task.subtasks);
+  // PD-048: "Số lượng giao" is the total the Leader gave (the task with its subtasks); "Số tấm đã xong" likewise.
+  // PD-058: without a quantity the task shows "Chưa có SL" (its subtasks' known images beside it); a total that leaves
+  // subtasks out says how many.
+  const qtyAssignedValue =
+    task.qtyAssigned === null ? (
+      <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        <NoQtyChip />
+        {split > 0 ? (
+          <span className="text-xs text-foreground-muted tabular-nums">
+            + {formatInteger(split)} tấm subtask
+          </span>
+        ) : null}
+      </span>
+    ) : (
+      <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+        <span className="tabular-nums">{formatInteger(task.allocatedQty)}</span>
+        {subtasksMissing > 0 ? (
+          <span className="text-xs text-foreground-muted">
+            · {formatInteger(subtasksMissing)} subtask chưa có SL
+          </span>
+        ) : null}
+      </span>
+    );
+  const doneTotal = doneQtyWithSubtasks(task);
 
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border bg-surface p-3 sm:grid-cols-3">
@@ -257,7 +281,30 @@ export const TaskFacts = ({
         {task.shift.name}
       </InlineField>
 
-      {rights.requestQty ? (
+      {rights.fillQty ? (
+        // PD-058: no quantity yet — filled in directly (the worker too, no request); the subtasks keep theirs.
+        <InlineField
+          editKey="qtyAssigned"
+          label="Số lượng giao"
+          canEdit
+          editLabel="Điền Số lượng giao"
+          editorLabel={
+            hasSubtasks ? `Số lượng của task #${task.code}, không gồm subtask` : undefined
+          }
+          initial={() => ""}
+          renderEditor={(props) => <NumberEditor {...props} placeholder="Số tấm" />}
+          validate={requiredQtyProblem}
+          hint={
+            hasSubtasks
+              ? "Số tấm thực tế của task này, không gồm subtask (subtask điền riêng)."
+              : "Số tấm thực tế của task này."
+          }
+          onSave={(value) => update({ qtyAssigned: wholeNumber(value) ?? 1 })}
+          successMessage="Đã điền số lượng"
+        >
+          {qtyAssignedValue}
+        </InlineField>
+      ) : rights.requestQty ? (
         // PD-044 / PD-047: the worker without a direct right asks the Leader — the same field opens the request form.
         <InlineField
           editKey="qtyAssigned"
@@ -302,7 +349,7 @@ export const TaskFacts = ({
           isUnchanged={(value) => wholeNumber(value) === task.allocatedQty}
           hint={split > 0 ? `Tính cả ${formatInteger(split)} tấm của subtask.` : undefined}
           onSave={(value) =>
-            update({ qtyAssigned: ownQtyOfTotal(value, split) ?? task.qtyAssigned })
+            update({ qtyAssigned: ownQtyOfTotal(value, split) ?? task.qtyAssigned ?? undefined })
           }
           successMessage={(value) =>
             `Đã sửa số lượng giao của #${task.code}: ${formatInteger(task.allocatedQty)} → ${value.trim()}`
@@ -323,7 +370,7 @@ export const TaskFacts = ({
           }
           canEdit={rights.qtyDone}
           initial={(): DoneQtyDraft => ({
-            qty: String(task.qtyDone ?? task.qtyAssigned),
+            qty: String(task.qtyDone ?? task.qtyAssigned ?? ""),
             note: ""
           })}
           renderEditor={(props) => <DoneQtyEditor {...props} noteRequired={noteRequired} />}

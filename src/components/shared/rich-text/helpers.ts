@@ -1,6 +1,7 @@
 import {
   commentLimits,
   descriptionLimits,
+  MENTION_ALL_ID,
   messageLimits,
   RichTextError,
   richTextFromPlainText,
@@ -94,13 +95,14 @@ export const plainTextToDoc = (text: string): RichTextDoc => {
   return { type: "doc", content: doc.content ?? [] };
 };
 
-/** Mentioned user ids (deduplicated, document order). */
+/** Mentioned user ids (deduplicated, document order; @all is not a user, see docMentionsAll). */
 export const docMentions = (input: RichTextDocLike | null | undefined): string[] => {
   const doc = asRichTextDoc(input);
   const ids: string[] = [];
   const visit = (node: RichTextNode) => {
-    if (node.type === "mention" && typeof node.attrs?.id === "string" && !ids.includes(node.attrs.id)) {
-      ids.push(node.attrs.id);
+    const id = node.type === "mention" ? node.attrs?.id : undefined;
+    if (typeof id === "string" && id !== MENTION_ALL_ID && !ids.includes(id)) {
+      ids.push(id);
     }
     node.content?.forEach(visit);
   };
@@ -108,21 +110,33 @@ export const docMentions = (input: RichTextDocLike | null | undefined): string[]
   return ids;
 };
 
+/** Is this mention node the @all mention (PD-061)? */
+export const isMentionAllNode = (node: Pick<RichTextNode, "type" | "attrs">) =>
+  node.type === "mention" && node.attrs?.id === MENTION_ALL_ID;
+
+/** Does the document @mention everyone (an @all node, PD-061)? */
+export const docMentionsAll = (input: RichTextDocLike | null | undefined): boolean => {
+  const doc = asRichTextDoc(input);
+  const visit = (node: RichTextNode): boolean => isMentionAllNode(node) || (node.content?.some(visit) ?? false);
+  return doc?.content?.some(visit) ?? false;
+};
+
 export type PreparedDoc =
-  | { ok: true; doc: RichTextDoc; text: string; mentions: string[] }
+  | { ok: true; doc: RichTextDoc; text: string; mentions: string[]; mentionsAll: boolean }
   | { ok: false; reason: "empty" | "too-large"; message: string };
 
 /**
  * Runs the shared server sanitizer locally so what we send is exactly what will be stored, and
- * reports limit violations before a round trip.
+ * reports limit violations before a round trip. `allowMentionAll`: keep @all mentions (chat channels and
+ * group DMs, PD-061); otherwise they become the text "@all", as on the server.
  */
 export const prepareDoc = (
   doc: RichTextDocLike | null | undefined,
   variant: RichTextVariant,
-  { allowEmpty = false }: { allowEmpty?: boolean } = {}
+  { allowEmpty = false, allowMentionAll = false }: { allowEmpty?: boolean; allowMentionAll?: boolean } = {}
 ): PreparedDoc => {
   try {
-    const result = sanitizeRichText(doc ?? emptyDoc(), richTextLimits[variant]);
+    const result = sanitizeRichText(doc ?? emptyDoc(), richTextLimits[variant], { allowMentionAll });
     if (!allowEmpty && result.text.trim().length === 0) {
       return { ok: false, reason: "empty", message: "Nội dung đang trống." };
     }

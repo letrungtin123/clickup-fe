@@ -271,9 +271,11 @@ const JobLogRow = ({
         </span>
         <span className="sr-only"> sang </span>
         <LogStatusChip status={status.to} statuses={statuses} />
-        {statusLogDetails(log.toValue ?? {}, { withQcFail: false }).map((segment, index) => (
-          <SegmentText key={index} segment={segment} />
-        ))}
+        {statusLogDetails(log.toValue ?? {}, { withQcFail: false, from: log.fromValue }).map(
+          (segment, index) => (
+            <SegmentText key={index} segment={segment} />
+          )
+        )}
       </>
     );
   } else if (jobEdit && jobEdit.changes.length > 1) {

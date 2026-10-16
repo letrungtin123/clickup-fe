@@ -44,6 +44,7 @@ import {
 import { badgeCount } from "../model/departments";
 import { useChatDialogStore, useChatPrefs } from "../model/ui-state";
 import { ChannelGlyph } from "./channel-glyph";
+import { ConversationMenu } from "./conversation-menu";
 
 /**
  * Sidebar chat sections (PD-001). Data: GET /channels (qk.chat.channels) kept live by ChatRuntime —
@@ -164,6 +165,10 @@ const ConversationRow = memo(function ConversationRow({
   const unread = hasUnread(channel);
   const title = channelTitle(channel);
   const badge = badgeCount(channel);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // On a mouse the "…" appears on hover / focus in place of the badge; on touch it is always there.
+  const behindMenu =
+    "pointer-fine:group-hover/item:invisible pointer-fine:group-focus-within/item:invisible";
   const label = [
     title,
     channel.kind === "private" ? "kênh riêng tư" : null,
@@ -176,36 +181,64 @@ const ConversationRow = memo(function ConversationRow({
     .join(", ");
 
   return (
-    <NavLink
-      to={`/c/${channel.id}`}
-      aria-label={label}
-      className={({ isActive }) =>
-        cn(
-          "group/row flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-foreground/80 outline-none transition-colors duration-150 pointer-coarse:h-10",
-          "hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-          unread && "font-semibold text-foreground",
-          (muted || channel.archivedAt) && !isActive && "text-foreground-subtle",
-          isActive &&
-            "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
-        )
-      }
-    >
-      <span className="flex w-5 shrink-0 justify-center">
-        <ChannelGlyph channel={channel} online={online} />
-      </span>
-      <span className="min-w-0 flex-1 truncate">{title}</span>
-      {muted ? <BellOff className="size-3 shrink-0 opacity-60" aria-hidden="true" /> : null}
-      {badge > 0 ? (
-        <span
-          aria-hidden="true"
-          className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-brand-foreground tabular-nums"
-        >
-          {formatCount(badge)}
+    <div className="group/item relative">
+      <NavLink
+        to={`/c/${channel.id}`}
+        aria-label={label}
+        className={({ isActive }) =>
+          cn(
+            "group/row flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-foreground/80 outline-none transition-colors duration-150 pointer-coarse:h-10 pointer-coarse:pr-11",
+            "hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            unread && "font-semibold text-foreground",
+            (muted || channel.archivedAt) && !isActive && "text-foreground-subtle",
+            isActive &&
+              "bg-brand-soft font-medium text-brand-text hover:bg-brand-soft hover:text-brand-text"
+          )
+        }
+      >
+        <span className="flex w-5 shrink-0 justify-center">
+          <ChannelGlyph channel={channel} online={online} />
         </span>
-      ) : unread ? (
-        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-foreground/70" />
-      ) : null}
-    </NavLink>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {muted ? (
+          <BellOff
+            className={cn(
+              "size-3 shrink-0 opacity-60",
+              behindMenu,
+              menuOpen && "pointer-fine:invisible"
+            )}
+            aria-hidden="true"
+          />
+        ) : null}
+        {badge > 0 ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-brand-foreground tabular-nums",
+              behindMenu,
+              menuOpen && "pointer-fine:invisible"
+            )}
+          >
+            {formatCount(badge)}
+          </span>
+        ) : unread ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-1.5 shrink-0 rounded-full bg-foreground/70",
+              behindMenu,
+              menuOpen && "pointer-fine:invisible"
+            )}
+          />
+        ) : null}
+      </NavLink>
+      <ConversationMenu
+        channel={channel}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        className="absolute top-1/2 right-1 -translate-y-1/2 pointer-fine:opacity-0 pointer-fine:group-hover/item:opacity-100 pointer-fine:group-focus-within/item:opacity-100 pointer-fine:aria-expanded:opacity-100"
+      />
+    </div>
   );
 });
 

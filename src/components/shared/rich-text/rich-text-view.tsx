@@ -1,7 +1,7 @@
 import { cn } from "cn";
 import { Fragment, memo, type ReactNode } from "react";
 
-import type { RichTextNode } from "@/contracts/rich-text";
+import { MENTION_ALL_ID, type RichTextNode } from "@/contracts/rich-text";
 
 import { asRichTextDoc, headingAnchorId, isSafeHref, type RichTextDocLike } from "./helpers";
 import "./rich-text.css";
@@ -15,6 +15,11 @@ type RichTextViewProps = {
   empty?: ReactNode;
   /** Mentions of this user id are highlighted ("you were mentioned"). */
   selfId?: string | null | undefined;
+  /**
+   * The @all mention (PD-061) reaches the viewer — everyone but the author: highlighted like a mention of them.
+   * @all is never a button, whatever `onMentionClick`.
+   */
+  mentionAllSelf?: boolean | undefined;
   /** Makes mention chips buttons (e.g. open a profile / DM). */
   onMentionClick?: ((userId: string) => void) | undefined;
   /**
@@ -31,7 +36,10 @@ type RichTextViewProps = {
 
 export type CustomNodeRenderer = (node: RichTextNode, key: string, children: () => ReactNode) => ReactNode | undefined;
 
-type RenderContext = Pick<RichTextViewProps, "selfId" | "onMentionClick" | "headingIdPrefix" | "renderCustom">;
+type RenderContext = Pick<
+  RichTextViewProps,
+  "selfId" | "mentionAllSelf" | "onMentionClick" | "headingIdPrefix" | "renderCustom"
+>;
 
 const headingTags = { 1: "h1", 2: "h2", 3: "h3" } as const;
 
@@ -89,6 +97,21 @@ const renderNode = (node: RichTextNode, context: RenderContext, key: string): Re
     case "mention": {
       const id = typeof node.attrs?.id === "string" ? node.attrs.id : "";
       const label = typeof node.attrs?.label === "string" ? node.attrs.label : "";
+      if (id === MENTION_ALL_ID) {
+        // @all: everyone in the conversation, not a profile (amber + bold, rich-text.css).
+        return (
+          <span
+            key={key}
+            className="rt-mention"
+            data-id={id}
+            data-all="true"
+            data-self={context.mentionAllSelf || undefined}
+            title="Nhắc tất cả thành viên"
+          >
+            @{label || MENTION_ALL_ID}
+          </span>
+        );
+      }
       const self = Boolean(context.selfId && id === context.selfId);
       if (context.onMentionClick && id) {
         const onClick = context.onMentionClick;
@@ -178,6 +201,7 @@ export const RichTextView = memo(function RichTextView({
   compact = false,
   empty = null,
   selfId,
+  mentionAllSelf,
   onMentionClick,
   headingIdPrefix,
   renderCustom
@@ -188,7 +212,7 @@ export const RichTextView = memo(function RichTextView({
   }
   return (
     <div className={cn("rt-content", compact && "rt-compact", className)}>
-      {renderNodes(doc.content, { selfId, onMentionClick, headingIdPrefix, renderCustom }, "n")}
+      {renderNodes(doc.content, { selfId, mentionAllSelf, onMentionClick, headingIdPrefix, renderCustom }, "n")}
     </div>
   );
 });

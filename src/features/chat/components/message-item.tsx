@@ -186,6 +186,8 @@ export const MessageItem = memo(function MessageItem({
               <RichTextView
                 doc={message.body}
                 selfId={actions.myId}
+                // @all (PD-061) is a mention of everyone but its author.
+                mentionAllSelf={!mine}
                 className="[&_p]:leading-relaxed"
               />
               {message.isEdited ? (

@@ -21,14 +21,13 @@ const navRoles = (to: string) => {
 describe("Photo Retouch fixed rules (PD-042)", () => {
   const rules = retouchFixedRules({ moneyPublic: false });
 
-  it("lists the ten fixed features in order, ADMIN always allowed except editing Cấu hình (PD-050)", () => {
+  it("lists the nine fixed features in order, ADMIN always allowed except editing Cấu hình (PD-050)", () => {
     expect(rules.map((item) => item.label)).toEqual([
       "Hàng chờ QC",
       "Xem điểm người khác",
       "Xem tiền Khoán người khác",
       "Bảng điều khiển",
       "Quản trị số liệu",
-      "Báo cáo",
       "Bất thường",
       "Duyệt lịch nghỉ",
       "Khách hàng",
@@ -46,7 +45,6 @@ describe("Photo Retouch fixed rules (PD-042)", () => {
       ["qc-queue", "/production/qc"],
       ["dashboard", "/production/dashboard"],
       ["admin-dashboard", "/production/admin"],
-      ["reports", "/production/reports"],
       ["anomalies", "/production/anomalies"],
       ["clients", "/production/clients"]
     ];

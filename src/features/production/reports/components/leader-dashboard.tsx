@@ -26,6 +26,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { DashboardTask, LeaderDashboard } from "@/contracts/production-reports";
 import { toneClass } from "@/lib/colors";
 
+import { NoQtyChip } from "../../components/jobs/job-bits";
 import { formatInteger } from "../../format";
 import {
   formatDeadline,
@@ -80,7 +81,12 @@ const TaskRow = ({
         <UserAvatar user={task.assignee} size="xs" />
         <span className="truncate">{task.assignee.displayName}</span>
         <span aria-hidden="true">·</span>
-        <span className="shrink-0 tabular-nums">{formatInteger(task.qtyAssigned)} tấm</span>
+        {/* PD-058: no quantity yet — the chip instead of "N tấm". */}
+        {task.qtyAssigned === null ? (
+          <NoQtyChip />
+        ) : (
+          <span className="shrink-0 tabular-nums">{formatInteger(task.qtyAssigned)} tấm</span>
+        )}
       </span>
     </span>
     <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">

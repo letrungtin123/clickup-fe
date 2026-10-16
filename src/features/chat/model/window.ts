@@ -154,6 +154,7 @@ export const applyEdit = (message: ChatMessage, event: ChatMessageUpdatedEvent):
   body: event.body,
   text: event.text,
   mentions: event.mentions,
+  mentionsAll: event.mentionsAll,
   isEdited: true,
   editedAt: event.editedAt
 });
@@ -169,7 +170,8 @@ export const applyDeletion = (message: ChatMessage, deletedAt: string): ChatMess
         text: "",
         attachments: [],
         reactions: [],
-        mentions: []
+        mentions: [],
+        mentionsAll: false
       };
 
 export const applyThreadSummary = (

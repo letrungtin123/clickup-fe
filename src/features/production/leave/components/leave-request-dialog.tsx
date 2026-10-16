@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { CalendarPlus, Info } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { SegmentedControl } from "@/components/shared/radio-controls";
@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { leaveLimits, type LeavePart } from "@/contracts/production-leave";
@@ -27,16 +27,17 @@ import {
   formatLeaveDates,
   formatLeaveSpan,
   KPI_WORKDAY_HINT,
+  leaveNoteError,
   leavePartLabels,
   leaveWorkdays,
-  validateLeaveDraft
+  validateLeaveDates
 } from "../calendar";
 import { useCreateLeave } from "../hooks";
 
 /**
- * "Xin nghỉ" (SPEC §6.3): dates, part of day (half days only for a single day), note. Limits come
- * from the contract's leaveLimits; the server validates again. The request starts PENDING until a
- * Leader/Admin decides.
+ * "Xin nghỉ" (SPEC §6.3): dates, part of day (half days only for a single day) and the required
+ * reason (PD-057 — it goes on the payroll attendance export). Limits come from the contract's
+ * leaveLimits; the server validates again. The request starts PENDING until Quản trị decides.
  */
 export const LeaveRequestDialog = ({
   open,
@@ -58,11 +59,15 @@ export const LeaveRequestDialog = ({
   const [toDate, setToDate] = useState(start);
   const [part, setPart] = useState<LeavePart>("FULL_DAY");
   const [note, setNote] = useState("");
+  // The reason's inline message shows once the field was left or a submit was tried.
+  const [noteTouched, setNoteTouched] = useState(false);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   const singleDay = fromDate === toDate;
   const draft = { fromDate, toDate, part: singleDay ? part : "FULL_DAY", note } as const;
   const days = draftDays(draft);
+  const noteProblem = noteTouched ? leaveNoteError(note) : null;
 
   const close = (next: boolean) => {
     if (!next && create.isPending) return;
@@ -70,18 +75,20 @@ export const LeaveRequestDialog = ({
   };
 
   const submit = () => {
-    const problem = validateLeaveDraft(draft, today);
-    if (problem) {
-      setError(problem);
+    const problem = validateLeaveDates(draft, today);
+    setError(problem);
+    if (leaveNoteError(note)) {
+      setNoteTouched(true);
+      if (!problem) noteRef.current?.focus();
       return;
     }
-    setError(null);
+    if (problem) return;
     create.mutate(
       {
         fromDate: draft.fromDate,
         toDate: draft.toDate,
         part: draft.part,
-        note: note.trim() ? note.trim() : null
+        note: note.trim()
       },
       {
         onSuccess: (request) => {
@@ -101,8 +108,7 @@ export const LeaveRequestDialog = ({
         <DialogHeader>
           <DialogTitle>Xin nghỉ</DialogTitle>
           <DialogDescription>
-            Đơn được Leader hoặc Quản trị duyệt; mọi người chỉ thấy tên và ngày nghỉ, không thấy ghi
-            chú.
+            Quản trị duyệt đơn; mọi người chỉ thấy tên và ngày nghỉ, không thấy lý do.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -163,16 +169,30 @@ export const LeaveRequestDialog = ({
               </span>
             ) : null}
           </Field>
-          <Field>
-            <FieldLabel htmlFor={`${ids}-note`}>Ghi chú (không bắt buộc)</FieldLabel>
+          <Field data-invalid={noteProblem ? true : undefined}>
+            <FieldLabel htmlFor={`${ids}-note`}>Lý do nghỉ</FieldLabel>
             <Textarea
+              ref={noteRef}
               id={`${ids}-note`}
               rows={3}
+              required
               maxLength={leaveLimits.noteMaxLength}
               value={note}
-              placeholder="Lý do, người bàn giao việc…"
+              placeholder="Ví dụ: Việc gia đình, khám bệnh…"
+              aria-invalid={noteProblem ? true : undefined}
+              aria-describedby={`${ids}-note-help`}
+              onBlur={() => setNoteTouched(true)}
               onChange={(event) => setNote(event.target.value)}
             />
+            {noteProblem ? (
+              <FieldError id={`${ids}-note-help`} className="text-xs">
+                {noteProblem}
+              </FieldError>
+            ) : (
+              <span id={`${ids}-note-help`} className="text-xs text-foreground-muted">
+                Ghi vào bảng chấm công; chỉ bạn, Leader và Quản trị thấy.
+              </span>
+            )}
           </Field>
           <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-foreground-muted">
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

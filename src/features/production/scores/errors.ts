@@ -17,14 +17,14 @@ const messages: Record<string, string> = {
   MEMBER_NOT_FOUND: "Không tìm thấy thành viên.",
   LEAVE_NOT_FOUND: "Không tìm thấy đơn nghỉ. Có thể đơn đã bị xóa.",
   LEAVE_OVERLAP: "Bạn đã có đơn nghỉ (đang chờ duyệt hoặc đã duyệt) trùng thời gian này.",
-  LEAVE_SELF_DECISION: "Bạn không thể tự duyệt đơn nghỉ của chính mình.",
   LEAVE_NOT_PENDING: "Đơn nghỉ này đã được xử lý.",
-  LEAVE_ALREADY_STARTED: "Đơn nghỉ đã bắt đầu nên không thể tự hủy. Vui lòng liên hệ Quản trị.",
+  LEAVE_ALREADY_STARTED: "Đơn nghỉ đã diễn ra nên không thể hủy — chỉ hủy được đơn nghỉ từ ngày mai trở đi.",
   LEAVE_NOT_CANCELLABLE: "Đơn nghỉ này đã bị từ chối hoặc đã hủy.",
   LEAVE_DATE_INVALID: "Ngày nghỉ không hợp lệ.",
   LEAVE_RANGE_INVALID: "Ngày kết thúc phải sau hoặc trùng ngày bắt đầu.",
   LEAVE_HALF_DAY_RANGE: "Nghỉ nửa ngày chỉ áp dụng cho đơn nghỉ trong một ngày.",
-  LEAVE_WINDOW_TOO_LONG: "Khoảng ngày xem lịch quá dài.",
+  // Fallback; the server names the limit ("Chỉ xuất được tối đa 366 ngày mỗi lần.", PD-057).
+  LEAVE_WINDOW_TOO_LONG: "Khoảng ngày quá dài.",
   CUSTOM_FIELDS_FORBIDDEN: "Chỉ Quản trị lọc được theo trường tùy chỉnh hoặc tag của nhân viên.",
   CUSTOM_FIELD_FILTER_INVALID:
     "Bộ lọc nhân viên không còn hợp lệ (trường hoặc lựa chọn đã đổi). Hãy bỏ lọc rồi chọn lại."
@@ -35,6 +35,7 @@ const serverWorded = new Set([
   "LEAVE_TOO_LONG",
   "LEAVE_TOO_OLD",
   "LEAVE_TOO_FAR",
+  "LEAVE_WINDOW_TOO_LONG",
   "CUSTOM_FIELD_FILTER_INVALID"
 ]);
 
