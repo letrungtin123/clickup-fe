@@ -17,7 +17,8 @@ export const LEAVE_EXPORT_PATH = "/production/leave/export";
 export const LEAVE_EXPORT_HINT =
   "Bảng chấm công (chỉ đơn đã duyệt) + chi tiết từng đơn: buổi nghỉ, lý do, người duyệt.";
 
-export const LEAVE_EXPORT_FORBIDDEN = "Chỉ Quản trị mới xuất được bảng chấm công nghỉ phép.";
+export const LEAVE_EXPORT_FORBIDDEN =
+  "Bạn không có quyền Duyệt lịch nghỉ nên không xuất được bảng chấm công nghỉ phép.";
 
 /** What the button will export, e.g. "Xuất 01/10 – 31/10/2026". */
 export const leaveExportScope = (span: LeaveWindow | null) =>

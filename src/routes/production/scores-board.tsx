@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useSessionContext } from "@/features/auth/hooks";
+import { RequireProductionFeature } from "@/features/production/components/production-gate";
 import { formatCredit, formatInteger, formatMoney, todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
 import { BoardTable, Podium } from "@/features/production/scores/components/board";
@@ -37,13 +38,19 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * /production/scores/board — ranking by official points for a period and team (SPEC Phase 3 §5), open to
- * every Photo Retouch member (PD-052, whatever settings.scoresPublic says). Each person opens their "Điểm cá
- * nhân" (/production/scores/person/:userId, your own row → /production/scores) for the same period. Money
- * appears only where the API sent it. Excel via GET …/board/export (link). ADMIN also filters people by
- * members' custom fields (e.g. Năng lực) and tags: ?cf.<key>=…&tag=….
+ * /production/scores/board — ranking by official points for a period and team (SPEC Phase 3 §5), for whoever holds
+ * "Xem điểm người khác" (PD-065; every role by default). Each person opens their "Điểm cá nhân"
+ * (/production/scores/person/:userId, your own row → /production/scores) for the same period. Money appears only
+ * where the API sent it (own, "Xem tiền Khoán người khác" or settings.moneyPublic). Excel via GET …/board/export
+ * (link). ADMIN also filters people by members' custom fields (e.g. Năng lực) and tags: ?cf.<key>=…&tag=….
  */
-export const ProductionScoreBoardRoute = () => {
+export const ProductionScoreBoardRoute = () => (
+  <RequireProductionFeature feature="view_others_scores">
+    <ScoreBoardPage />
+  </RequireProductionFeature>
+);
+
+const ScoreBoardPage = () => {
   const me = useProductionMe();
   const access = useProductionAccess();
   const session = useSessionContext();
@@ -99,7 +106,7 @@ export const ProductionScoreBoardRoute = () => {
             ? undefined
             : showMoney
               ? "Xếp theo điểm chính thức của kỳ. Bấm vào một người để xem Điểm cá nhân; bạn đang xem cả tiền Khoán của mọi người."
-              : "Xếp theo điểm chính thức của kỳ. Bấm vào một người để xem Điểm cá nhân; tiền Khoán chỉ chính chủ và Quản trị thấy."
+              : "Xếp theo điểm chính thức của kỳ. Bấm vào một người để xem Điểm cá nhân; tiền Khoán của người khác chỉ người có quyền xem mới thấy."
         }
         actions={
           <>

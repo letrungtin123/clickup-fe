@@ -5,6 +5,8 @@ import { Link } from "@/components/shared/router-link";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSessionContext } from "@/features/auth/hooks";
+import { useProductionAccess } from "@/features/production/hooks";
+import { RANKING_VISIBLE } from "@/features/production/nav";
 import { closeDayLabel, closeDaySchedule } from "@/features/production/format";
 import { MySettlements } from "@/features/production/kpi/components/my-settlements";
 import { PageBody } from "@/features/production/scores/components/kit";
@@ -21,6 +23,7 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
  */
 export const ProductionScoresRoute = () => {
   const session = useSessionContext();
+  const access = useProductionAccess();
   const breakpoint = useBreakpoint();
   const state = useScoresPageState();
   const { change } = state;
@@ -44,14 +47,17 @@ export const ProductionScoresRoute = () => {
             : `Điểm, tiền Khoán tạm tính và tiến độ KPI. Kỳ KPI chốt ${closeDaySchedule(state.closeDay)}${change ? `; từ kỳ ${formatPeriod(change.fromPeriod)} chốt ${closeDayLabel(change.closeDay)}` : ""}.`
         }
         actions={
-          <Button
-            variant="outline"
-            render={<Link to="/production/scores/board" />}
-            nativeButton={false}
-          >
-            <Trophy />
-            <span className="max-sm:sr-only">Xếp hạng</span>
-          </Button>
+          // The ranking is hidden for now (owner, 2026-10-16; RANKING_VISIBLE); PD-065: it needs "Xem điểm người khác".
+          RANKING_VISIBLE && access.hasFeature("view_others_scores") ? (
+            <Button
+              variant="outline"
+              render={<Link to="/production/scores/board" />}
+              nativeButton={false}
+            >
+              <Trophy />
+              <span className="max-sm:sr-only">Xếp hạng</span>
+            </Button>
+          ) : null
         }
       >
         <ScoresTabs tab={state.tab} onChange={state.setTab} />

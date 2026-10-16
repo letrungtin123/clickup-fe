@@ -114,12 +114,14 @@ export const useAdminDashboard = (enabled = true) =>
 
 // Anomalies -----------------------------------------------------------------------------------------
 
-export const useAnomalies = (days: number, includeReviewed: boolean) =>
+/** `enabled` false for callers without the "Bất thường" feature (PD-065: the API answers 403). */
+export const useAnomalies = (days: number, includeReviewed: boolean, enabled = true) =>
   useQuery({
     queryKey: reportKeys.anomalyList(days, includeReviewed),
     queryFn: ({ signal }) => reportsApi.anomalies({ days, includeReviewed }, signal),
     placeholderData: keepPreviousData,
-    retry: retryUnlessClientError
+    retry: retryUnlessClientError,
+    enabled
   });
 
 const useAnomalyMutation = <TVariables, TData>(

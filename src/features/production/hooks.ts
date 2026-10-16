@@ -10,6 +10,7 @@ import { useMemo } from "react";
 
 import type {
   CustomField,
+  FeaturePermissionKey,
   JobScopes,
   Process,
   ProductionMember,
@@ -42,6 +43,7 @@ import {
 } from "./api";
 import { productionKeys } from "./keys";
 import { kpiKeys, scoreKeys } from "./scores/keys";
+import { fallbackFeatures } from "./feature-permissions";
 import { visibleNavEntries } from "./nav";
 import type { NotificationPreferences } from "./types";
 import { hasAnyRole } from "./roles";
@@ -76,6 +78,10 @@ export const useProductionAccess = () => {
   const data = me.data;
   return useMemo(() => {
     const roles: readonly ProductionRole[] = data?.roles ?? [];
+    // PD-065: the caller's features from /production/me (the default matrix only until they are known).
+    const features: ReadonlySet<FeaturePermissionKey> = new Set(
+      data?.features ?? fallbackFeatures(roles)
+    );
     return {
       roles,
       isMember: roles.length > 0,
@@ -86,20 +92,28 @@ export const useProductionAccess = () => {
        */
       jobScopes: data?.jobPermissions ?? noJobScopes,
       /** Holds any of `required` (ADMIN always). */
-      can: (...required: ProductionRole[]) => roles.length > 0 && hasAnyRole(roles, required)
+      can: (...required: ProductionRole[]) => roles.length > 0 && hasAnyRole(roles, required),
+      /** My features (PD-065): Hàng chờ QC, Bảng điều khiển, Quản trị số liệu, Bất thường, Khách hàng, scores, leave. */
+      features,
+      hasFeature: (feature: FeaturePermissionKey) => features.has(feature),
+      /**
+       * Sees every job in the Leader dashboard and "Bất thường" (Quản trị / Director; the superadmin holds both roles);
+       * anyone else sees the jobs they lead.
+       */
+      seesEveryJob: roles.includes("ADMIN") || roles.includes("DIRECTOR")
     };
   }, [data]);
 };
 
 /**
- * Sidebar entries for the signed-in user's roles; empty for non-members (module hidden). "Xếp hạng" is
- * there for every member (PD-052).
+ * Sidebar entries for the signed-in user's roles and features (PD-065); empty for non-members (module hidden).
  */
 export const useProductionNavEntries = () => {
   const me = useProductionMe();
   const { roles } = useProductionAccess();
   const jobView = me.data?.jobPermissions.view;
-  return useMemo(() => visibleNavEntries(roles, { jobView }), [roles, jobView]);
+  const features = me.data?.features;
+  return useMemo(() => visibleNavEntries(roles, { jobView, features }), [roles, jobView, features]);
 };
 
 // --- Reads ---------------------------------------------------------------------------------------

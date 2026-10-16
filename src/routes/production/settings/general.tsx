@@ -354,11 +354,11 @@ const SettingsForm = ({
         description="Ai được xem tiền của người khác. Điểm luôn công khai."
       >
         <div className="divide-y">
-          {/* PD-052: the board, Điểm cá nhân and task scores are always open — a fixed value, not a switch. */}
+          {/* PD-052 retired the switch; PD-065: others' scores follow "Xem điểm người khác" — a fixed text here. */}
           <ReadOnlyRow
             label="Công khai bảng điểm"
-            hint="Mọi thành viên Photo Retouch luôn xem được xếp hạng, Điểm cá nhân và điểm từng task của nhau (PD-052). Tiền Khoán theo cài đặt bên dưới."
-            value="Luôn bật"
+            hint="Ai xem được xếp hạng, Điểm cá nhân và điểm từng task của người khác theo quyền “Xem điểm người khác” ở Cài đặt → Vai trò & phân quyền (mặc định mọi vai trò). Điểm của mình luôn xem được."
+            value="Theo phân quyền"
             muted
           />
           <SwitchRow
@@ -366,7 +366,7 @@ const SettingsForm = ({
             control={control}
             name="moneyPublic"
             label="Công khai tiền công"
-            hint="Mặc định tiền chỉ chính chủ và Quản trị thấy. Bật để mọi người thấy đơn giá tiền và tiền khoán."
+            hint="Tắt: tiền của người khác chỉ vai trò có quyền “Xem tiền Khoán người khác” thấy (Cài đặt → Vai trò & phân quyền). Bật để mọi người thấy đơn giá tiền và tiền khoán."
           />
         </div>
       </SettingsSection>

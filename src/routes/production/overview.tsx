@@ -24,9 +24,13 @@ import { useSessionContext } from "@/features/auth/hooks";
 import { ProductionAgenda } from "@/features/production/components/agenda";
 import { RoleBadge } from "@/features/production/components/role-chips";
 import { closeDaySchedule, formatDay, kpiPeriod, todayIn } from "@/features/production/format";
-import { useProductionMe, useTeams } from "@/features/production/hooks";
+import { useProductionAccess, useProductionMe, useTeams } from "@/features/production/hooks";
 import { khoanPolicyMeta } from "@/features/production/kpi/khoan-policy";
-import { settingsPageBySlug, visibleSettingsPages } from "@/features/production/nav";
+import {
+  RANKING_VISIBLE,
+  settingsPageBySlug,
+  visibleSettingsPages
+} from "@/features/production/nav";
 import { productionRoleDescriptions, sortRoles } from "@/features/production/roles";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -59,6 +63,7 @@ const featuredSlugs = [
 export const ProductionOverviewRoute = () => {
   const session = useSessionContext();
   const me = useProductionMe();
+  const access = useProductionAccess();
   const teams = useTeams();
   const now = new Date();
   const weekday = format(now, "EEEE, d MMMM", { locale: vi });
@@ -74,7 +79,9 @@ export const ProductionOverviewRoute = () => {
   const links = visibleSettingsPages(roles)
     .filter((page) => featuredSlugs.includes(page.slug))
     .sort((a, b) => featuredSlugs.indexOf(a.slug) - featuredSlugs.indexOf(b.slug));
-  const clientsOnly = !roles.includes("ADMIN") && roles.includes("ACCOUNT");
+  // PD-065: the client page follows the "Khách hàng" feature.
+  const clientsOnly = !roles.includes("ADMIN") && access.hasFeature("clients");
+  const seesOthersScores = access.hasFeature("view_others_scores");
 
   return (
     <div className="h-full overflow-y-auto">
@@ -94,7 +101,12 @@ export const ProductionOverviewRoute = () => {
         </header>
 
         {/* "Việc của tôi" has its own sidebar page: not repeated here (owner, 2026-10-16). */}
-        <ProductionAgenda roles={roles} timeZone={settings.timezone} withMyTasks={false} />
+        <ProductionAgenda
+          roles={roles}
+          features={[...access.features]}
+          timeZone={settings.timezone}
+          withMyTasks={false}
+        />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <section
@@ -155,12 +167,16 @@ export const ProductionOverviewRoute = () => {
               <Rule icon={HandCoins} label="Tiền Khoán">
                 {khoanPolicyMeta[settings.khoanPayPolicy].label}
               </Rule>
-              {/* PD-052: the ranking and everyone's scores are always open to every member. */}
+              {/* PD-065: others' scores and money follow the caller's features ("Quyền theo tính năng"). */}
               <Rule icon={Eye} label="Bảng điểm">
-                Công khai cho mọi thành viên
+                {seesOthersScores ? "Bạn xem được điểm của mọi người" : "Bạn xem điểm của mình"}
               </Rule>
               <Rule icon={Coins} label="Tiền công">
-                {settings.moneyPublic ? "Công khai" : "Chỉ chính chủ và Quản trị thấy"}
+                {settings.moneyPublic
+                  ? "Công khai"
+                  : access.hasFeature("view_others_money")
+                    ? "Bạn xem được tiền Khoán của mọi người"
+                    : "Chỉ chính chủ và người có quyền xem mới thấy"}
               </Rule>
               <Rule icon={Paperclip} label="Tệp trong chat">
                 {settings.chatAttachmentsEnabled ? "Được phép" : "Đang tắt"}
@@ -183,14 +199,17 @@ export const ProductionOverviewRoute = () => {
                 description="Điểm hôm nay, tuần, kỳ; tiền Khoán tạm tính và dự báo KPI."
               />
             </li>
-            <li>
-              <QuickLink
-                to="/production/scores/board"
-                icon={Trophy}
-                title="Xếp hạng"
-                description="Xếp hạng điểm chính thức theo kỳ và team."
-              />
-            </li>
+            {/* "Xếp hạng" is hidden for now (owner, 2026-10-16; RANKING_VISIBLE). */}
+            {RANKING_VISIBLE && seesOthersScores ? (
+              <li>
+                <QuickLink
+                  to="/production/scores/board"
+                  icon={Trophy}
+                  title="Xếp hạng"
+                  description="Xếp hạng điểm chính thức theo kỳ và team."
+                />
+              </li>
+            ) : null}
             <li>
               <QuickLink
                 to="/production/leave"

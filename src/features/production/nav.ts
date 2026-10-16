@@ -28,8 +28,13 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import type { JobPermissionScope, ProductionRole } from "@/contracts/production-catalog";
+import type {
+  FeaturePermissionKey,
+  JobPermissionScope,
+  ProductionRole
+} from "@/contracts/production-catalog";
 
+import { fallbackFeatures } from "./feature-permissions";
 import { hasAnyRole } from "./roles";
 
 /**
@@ -41,7 +46,13 @@ export type ProductionNavEntry = {
   to: string;
   label: string;
   icon: LucideIcon;
+  /** Who sees it when neither `feature` nor `byJobView` decides; [] = every production member (ADMIN always). */
   roles: readonly ProductionRole[];
+  /**
+   * PD-065: shown to whoever holds this feature (`/production/me` features, "Quyền theo tính năng") instead of the
+   * roles; until the caller's features are known, the default matrix of their roles decides.
+   */
+  feature?: FeaturePermissionKey;
   /** Exact match only (overview vs. its children). */
   end?: boolean;
   /**
@@ -57,15 +68,29 @@ export type ProductionNavEntry = {
  */
 export const REPORTS_MODULE_VISIBLE = false;
 
+/**
+ * The ranking ("Xếp hạng", /production/scores/board) is hidden from the UI like "Báo cáo" (owner, 2026-10-16): no
+ * menu entry and no links or buttons leading to it (overview, Bảng điểm, Điểm cá nhân); the route still works by URL
+ * (for whoever holds "Xem điểm người khác"). Set to true to bring every entry point back.
+ */
+export const RANKING_VISIBLE = false;
+
 export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
   {
     to: "/production/dashboard",
     label: "Bảng điều khiển",
     icon: LayoutDashboard,
-    roles: ["LEADER"]
+    roles: [],
+    feature: "leader_dashboard"
   },
-  { to: "/production/admin", label: "Quản trị số liệu", icon: Gauge, roles: ["ADMIN"] },
+  {
+    to: "/production/admin",
+    label: "Quản trị số liệu",
+    icon: Gauge,
+    roles: [],
+    feature: "admin_dashboard"
+  },
   {
     to: "/production/jobs",
     label: "Job",
@@ -79,34 +104,64 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
     icon: ClipboardList,
     roles: ["STAFF", "QC", "LEADER"]
   },
-  { to: "/production/qc", label: "Hàng chờ QC", icon: ShieldCheck, roles: ["QC"] },
+  { to: "/production/qc", label: "Hàng chờ QC", icon: ShieldCheck, roles: [], feature: "qc_queue" },
   { to: "/production/scores", label: "Bảng điểm", icon: ChartColumnBig, roles: [], end: true },
-  { to: "/production/scores/board", label: "Xếp hạng", icon: Trophy, roles: [] },
+  // "Xếp hạng" is hidden for now (owner, 2026-10-16; see RANKING_VISIBLE): the route still works by URL.
+  ...(RANKING_VISIBLE
+    ? [
+        {
+          to: "/production/scores/board",
+          label: "Xếp hạng",
+          icon: Trophy,
+          roles: [],
+          feature: "view_others_scores"
+        } satisfies ProductionNavEntry
+      ]
+    : []),
   { to: "/production/leave", label: "Lịch nghỉ", icon: CalendarDays, roles: [] },
   // "Báo cáo" is hidden for now (owner, 2026-10-16: hard to use, not needed yet; see REPORTS_MODULE_VISIBLE). The route
   // /production/reports still works by URL; restore this entry to bring the menu item back:
   // { to: "/production/reports", label: "Báo cáo", icon: ChartNoAxesCombined, roles: ["LEADER"] },
-  { to: "/production/anomalies", label: "Bất thường", icon: ScanSearch, roles: ["LEADER"] },
-  { to: "/production/clients", label: "Khách hàng", icon: Building2, roles: ["ACCOUNT"] },
+  {
+    to: "/production/anomalies",
+    label: "Bất thường",
+    icon: ScanSearch,
+    roles: [],
+    feature: "anomalies"
+  },
+  {
+    to: "/production/clients",
+    label: "Khách hàng",
+    icon: Building2,
+    roles: [],
+    feature: "clients"
+  },
   // Every role reaches "Trạng thái & luồng chuyển" read-only (PD-049); other pages keep their roles.
   { to: "/production/settings", label: "Cấu hình", icon: Settings2, roles: [] }
 ];
 
 /**
- * Entries for the user's roles. "Xếp hạng" is shown to every production member (PD-052: the ranking and everyone's
- * "Điểm cá nhân" are always open; settings.scoresPublic no longer hides them).
+ * Entries for the user's roles and features. Feature entries (PD-065: Hàng chờ QC, Bảng điều khiển, Quản trị số liệu,
+ * Xếp hạng while RANKING_VISIBLE, Bất thường, Khách hàng) follow `features` — the caller's list from `/production/me`; while it is unknown,
+ * the default matrix of their roles. "Job" follows the job view scope once known (PD-036).
  */
 export const visibleNavEntries = (
   roles: readonly ProductionRole[],
-  options: { jobView?: JobPermissionScope | undefined } = {}
-) =>
-  roles.length === 0
-    ? []
-    : productionNavEntries.filter((entry) =>
-        entry.byJobView && options.jobView !== undefined
-          ? options.jobView !== "none"
-          : hasAnyRole(roles, entry.roles)
-      );
+  options: {
+    jobView?: JobPermissionScope | undefined;
+    features?: readonly FeaturePermissionKey[] | undefined;
+  } = {}
+) => {
+  if (roles.length === 0) return [];
+  const features = new Set(options.features ?? fallbackFeatures(roles));
+  return productionNavEntries.filter((entry) =>
+    entry.feature
+      ? features.has(entry.feature)
+      : entry.byJobView && options.jobView !== undefined
+        ? options.jobView !== "none"
+        : hasAnyRole(roles, entry.roles)
+  );
+};
 
 export type SettingsGroup = "people" | "catalog" | "workflow" | "system";
 

@@ -12,9 +12,9 @@ const messages: Record<string, string> = {
   REPORT_INVALID: "Cấu hình báo cáo không hợp lệ. Hãy kiểm tra lại chiều và chỉ số.",
   INVALID_RANGE: "Khoảng ngày không hợp lệ (tối đa 366 ngày).",
   REPORT_TIMEOUT: "Báo cáo chạy quá lâu. Hãy thu hẹp khoảng ngày hoặc thêm bộ lọc.",
-  MONEY_FORBIDDEN: "Chỉ Quản trị được xem tiền khoán.",
+  MONEY_FORBIDDEN: "Bạn không có quyền xem tiền Khoán của người khác.",
   SCORES_PRIVATE:
-    "Bảng điểm đang để riêng tư nên không xem được điểm theo từng người, từng job hay tag.",
+    "Bạn không có quyền xem điểm của người khác nên không xem được điểm theo từng người, từng job hay tag.",
   REPORT_NOT_FOUND: "Không tìm thấy báo cáo đã lưu. Có thể báo cáo đã bị xoá.",
   REPORT_CONFIG_OUTDATED: "Cấu hình báo cáo đã cũ, không còn chạy được. Hãy tạo lại.",
   ANOMALY_NOT_FOUND: "Không tìm thấy mục bất thường này. Hãy tải lại.",

@@ -232,3 +232,23 @@ describe("JobsList — Người tạo (owner, 2026-10-16)", () => {
     expect(within(screen.getByRole("link", { name: /JOB-1/ })).getByText("Tạo bởi Người Tạo Thử")).toBeTruthy();
   });
 });
+
+describe("JobsList — Dự án (owner, 2026-10-16)", () => {
+  it("the table has a “Dự án” column right after “Gói công việc” with the project's code", () => {
+    breakpoint.current = "desktop";
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    renderList([job()]);
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers.indexOf("Dự án")).toBe(headers.indexOf("Gói công việc") + 1);
+    const row = screen.getByRole("row", { name: /JOB-1/ });
+    const cell = within(row).getAllByRole("cell")[headers.indexOf("Dự án")]!;
+    expect(cell.textContent).toContain(job().project.code);
+  });
+});

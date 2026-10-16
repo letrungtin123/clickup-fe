@@ -8,7 +8,7 @@ import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ProductionTask } from "@/contracts/production-jobs";
-import { RequireProductionRole } from "@/features/production/components/production-gate";
+import { RequireProductionFeature } from "@/features/production/components/production-gate";
 import { Person } from "@/features/production/components/jobs/job-bits";
 import { TaskCard } from "@/features/production/components/jobs/task-card";
 import { useTaskMover } from "@/features/production/components/jobs/use-task-mover";
@@ -31,12 +31,13 @@ const ease = [0.22, 1, 0.36, 1] as const;
  * checking) and "Chờ QC" (Done lines waiting for me). Each card offers its quick moves — "Đang check" (start), "Đã
  * check" (pass) and "Cần sửa lại" (asks the reason, sends the line back to its worker) — and its status dropdown for
  * the rest; all come from the task's own capabilities. Without the workflow (request failed) the moves cannot be told
- * apart, so the cards stay readable, the moves are hidden and the page explains with a retry (BUG-PR-18).
+ * apart, so the cards stay readable, the moves are hidden and the page explains with a retry (BUG-PR-18). Opens for
+ * whoever holds the "Hàng chờ QC" feature (PD-065).
  */
 export const ProductionQcRoute = () => (
-  <RequireProductionRole roles={["QC"]}>
+  <RequireProductionFeature feature="qc_queue">
     <QcQueue />
-  </RequireProductionRole>
+  </RequireProductionFeature>
 );
 
 const QcQueue = () => {
@@ -246,7 +247,10 @@ const QueueGroup = ({
   children: ReactNode;
 }) => (
   <section aria-labelledby={id} className="flex flex-col gap-2.5">
-    <h2 id={id} className={cn(toneClass(color), "flex items-center gap-2 text-[13px] font-semibold")}>
+    <h2
+      id={id}
+      className={cn(toneClass(color), "flex items-center gap-2 text-[13px] font-semibold")}
+    >
       <span aria-hidden="true" className="size-2 rounded-full bg-(--tone)" />
       {title}
       <span className="text-xs font-normal text-foreground-muted tabular-nums">{count}</span>

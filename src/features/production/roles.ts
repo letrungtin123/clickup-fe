@@ -11,7 +11,8 @@ export const productionRoleLabels: Record<ProductionRole, string> = {
   ACCOUNT: "Account",
   LEADER: "Leader",
   QC: "QC",
-  STAFF: "Nhân viên"
+  STAFF: "Nhân viên",
+  DIRECTOR: "Director"
 };
 
 export const productionRoleDescriptions: Record<ProductionRole, string> = {
@@ -19,7 +20,8 @@ export const productionRoleDescriptions: Record<ProductionRole, string> = {
   ACCOUNT: "Tạo khách hàng và job, xác nhận giao hàng cho khách.",
   LEADER: "Chia task, gán QC và theo dõi tiến độ của team.",
   QC: "Kiểm tra task chờ QC (Đạt hoặc trả lại kèm ghi chú) và nhập task Checking của mình.",
-  STAFF: "Nhập task của mình, cập nhật tiến độ và xem điểm của mình."
+  STAFF: "Nhập task của mình, cập nhật tiến độ và xem điểm của mình.",
+  DIRECTOR: "Xem Bất thường và Quản trị số liệu; theo dõi toàn bộ số liệu."
 };
 
 export const productionRoleColors: Record<ProductionRole, ColorToken> = {
@@ -27,14 +29,18 @@ export const productionRoleColors: Record<ProductionRole, ColorToken> = {
   ACCOUNT: "sky",
   LEADER: "amber",
   QC: "teal",
-  STAFF: "slate"
+  STAFF: "slate",
+  DIRECTOR: "fuchsia"
 };
 
-/** Canonical order (ADMIN → STAFF), duplicates removed. */
+/** Canonical order (ADMIN → STAFF → DIRECTOR), duplicates removed. */
 export const sortRoles = (roles: readonly ProductionRole[]): ProductionRole[] =>
   productionRoleCodes.filter((role) => roles.includes(role));
 
-/** True when the user holds any of `required`. ADMIN passes every check (mirrors the API). */
+/**
+ * True when the user holds any of `required`. ADMIN passes every role check (mirrors the API); features (PD-065) are
+ * not role checks — use the caller's `features` (useProductionAccess().hasFeature).
+ */
 export const hasAnyRole = (
   roles: readonly ProductionRole[],
   required: readonly ProductionRole[]

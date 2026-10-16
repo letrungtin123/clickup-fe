@@ -264,22 +264,28 @@ export const SplitTasksDialog = ({
   };
 
   /**
-   * "Thêm task": the same process, shift, dates, QC, fields and tags as the last task; a new person — the new task's
-   * Nhân viên thực hiện (Quy trình when it is fixed to me) takes the focus.
+   * "Thêm task" (owner, 2026-10-16): everything typed in task 1 — process, shift, QC, quantity, dates, link, note,
+   * Hình lỗi, Giờ OT, custom fields and tags — except the person; the new task's Nhân viên thực hiện (Quy trình when
+   * it is fixed to me) takes the focus.
    */
   const addLine = () => {
-    const last = lines[lines.length - 1];
+    const first = lines[0];
     const line = blankLine(
-      last
+      first
         ? {
             ...(ownOnly ? { assigneeId: myId } : {}),
-            processId: last.processId,
-            shiftId: last.shiftId,
-            qcId: last.qcId,
-            receivedDay: last.receivedDay,
-            dueDay: last.dueDay,
-            values: last.values,
-            tagIds: last.tagIds
+            processId: first.processId,
+            shiftId: first.shiftId,
+            qcId: first.qcId,
+            qty: first.qty,
+            receivedDay: first.receivedDay,
+            dueDay: first.dueDay,
+            errorQty: first.errorQty,
+            otHours: first.otHours,
+            workLink: first.workLink,
+            note: first.note,
+            values: { ...first.values },
+            tagIds: [...first.tagIds]
           }
         : { ...defaultDates, ...(ownOnly ? { assigneeId: myId } : {}) }
     );

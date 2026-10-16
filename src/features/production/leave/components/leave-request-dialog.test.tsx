@@ -10,7 +10,7 @@ import { LeaveRequestDialog } from "./leave-request-dialog";
 
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
 
-// PD-057 — the reason is required (it goes on the payroll attendance export). Fake data only.
+// PD-065 — the reason is optional (when given it goes on the payroll attendance export). Fake data only.
 const today = "2026-10-16";
 
 const created: LeaveRequest = {
@@ -56,48 +56,52 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Xin nghỉ — required reason", () => {
-  it("labels the reason as required and says Quản trị approves", () => {
+describe("Xin nghỉ — optional reason (PD-065)", () => {
+  it("labels the reason as optional, keeps the placeholder and says who approves", () => {
     renderDialog();
-    const reason = screen.getByLabelText("Lý do nghỉ");
+    const reason = screen.getByLabelText("Lý do nghỉ (tùy chọn)");
     expect(reason.getAttribute("placeholder")).toBe("Ví dụ: Việc gia đình, khám bệnh…");
-    expect(reason.hasAttribute("required")).toBe(true);
-    expect(screen.queryByText(/tùy chọn|không bắt buộc/)).toBeNull();
-    expect(screen.getByText(/Quản trị duyệt đơn/)).toBeTruthy();
-    expect(screen.queryByText(/Leader hoặc Quản trị duyệt/)).toBeNull();
+    expect(reason.hasAttribute("required")).toBe(false);
+    expect(reason.getAttribute("maxlength")).toBe("1000");
+    expect(screen.getByText(/người có quyền Duyệt lịch nghỉ duyệt/)).toBeTruthy();
   });
 
-  it("refuses to send without at least 3 characters, inline under the field", async () => {
-    const create = vi.spyOn(leaveApi, "create").mockResolvedValue(created);
+  it("sends without a reason (no note in the request)", async () => {
+    const create = vi.spyOn(leaveApi, "create").mockResolvedValue({ ...created, note: null });
     renderDialog();
     fireEvent.click(screen.getByRole("button", { name: "Gửi đơn" }));
-    const reason = screen.getByLabelText("Lý do nghỉ");
-    expect(await screen.findByText("Nhập lý do nghỉ (ít nhất 3 ký tự).")).toBeTruthy();
-    expect(reason.getAttribute("aria-invalid")).toBe("true");
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({ fromDate: today, toDate: today, part: "FULL_DAY" })
+    );
+    expect(screen.queryByText(/Nhập lý do nghỉ/)).toBeNull();
+  });
 
-    fireEvent.change(reason, { target: { value: "  ab  " } });
+  it("a blank reason is left out, never flagged", async () => {
+    const create = vi.spyOn(leaveApi, "create").mockResolvedValue(created);
+    renderDialog();
+    const reason = screen.getByLabelText("Lý do nghỉ (tùy chọn)");
+    fireEvent.change(reason, { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "Gửi đơn" }));
-    expect(screen.getByText("Nhập lý do nghỉ (ít nhất 3 ký tự).")).toBeTruthy();
-    expect(create).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({ fromDate: today, toDate: today, part: "FULL_DAY" })
+    );
+    expect(reason.getAttribute("aria-invalid")).toBeNull();
+  });
 
-    fireEvent.change(reason, { target: { value: "  Khám bệnh  " } });
-    expect(screen.queryByText("Nhập lý do nghỉ (ít nhất 3 ký tự).")).toBeNull();
+  it("sends a given reason trimmed, even a short one", async () => {
+    const create = vi.spyOn(leaveApi, "create").mockResolvedValue(created);
+    renderDialog();
+    fireEvent.change(screen.getByLabelText("Lý do nghỉ (tùy chọn)"), {
+      target: { value: "  Ốm  " }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Gửi đơn" }));
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith({
         fromDate: today,
         toDate: today,
         part: "FULL_DAY",
-        note: "Khám bệnh"
+        note: "Ốm"
       })
     );
-  });
-
-  it("shows the message once the field is left empty", async () => {
-    renderDialog();
-    const reason = screen.getByLabelText("Lý do nghỉ");
-    expect(screen.queryByText("Nhập lý do nghỉ (ít nhất 3 ký tự).")).toBeNull();
-    fireEvent.blur(reason);
-    expect(await screen.findByText("Nhập lý do nghỉ (ít nhất 3 ký tự).")).toBeTruthy();
   });
 });

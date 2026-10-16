@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { defaultJobPermissions, type ProductionSettings } from "@/contracts/production-catalog";
+import {
+  defaultFeaturePermissions,
+  defaultJobPermissions,
+  type ProductionSettings
+} from "@/contracts/production-catalog";
 import { SessionValueContext } from "@/features/auth/session-context";
 import { productionApi } from "@/features/production/api";
 import type { SessionContext } from "@/lib/api/schemas";
@@ -26,6 +30,7 @@ const settings: ProductionSettings = {
   kpiDefaultLeader: 80,
   chatAttachmentsEnabled: true,
   jobPermissions: defaultJobPermissions,
+  featurePermissions: defaultFeaturePermissions,
   timezone: "Asia/Ho_Chi_Minh"
 };
 
@@ -71,12 +76,14 @@ describe("Cài đặt chung — KPI close day and Khoán pay policy (PD-032, PD-
     vi.spyOn(productionApi, "settings").mockResolvedValue(settings);
     const update = vi
       .spyOn(productionApi, "updateSettings")
-      .mockImplementation((input) => Promise.resolve({ ...settings, ...input } as ProductionSettings));
+      .mockImplementation((input) =>
+        Promise.resolve({ ...settings, ...input } as ProductionSettings)
+      );
     renderPage();
     fireEvent.click(await screen.findByRole("radio", { name: /Chỉ trả khi đạt KPI/ }));
-    expect(screen.getByRole("radio", { name: /Chỉ trả khi đạt KPI/ }).getAttribute("aria-checked")).toBe(
-      "true"
-    );
+    expect(
+      screen.getByRole("radio", { name: /Chỉ trả khi đạt KPI/ }).getAttribute("aria-checked")
+    ).toBe("true");
     expect(screen.getByText("Bạn có thay đổi chưa lưu.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
@@ -95,7 +102,10 @@ describe("Cài đặt chung — read-only for everyone but the superadmin (PD-05
   });
 
   it("a production Admin reads every value as text and cannot change or save anything", async () => {
-    vi.spyOn(productionApi, "settings").mockResolvedValue({ ...settings, kpiDefaultMember: 2610.5 });
+    vi.spyOn(productionApi, "settings").mockResolvedValue({
+      ...settings,
+      kpiDefaultMember: 2610.5
+    });
     const update = vi.spyOn(productionApi, "updateSettings");
     renderPage({ superadmin: false });
     expect(
@@ -113,7 +123,7 @@ describe("Cài đặt chung — read-only for everyone but the superadmin (PD-05
     expect(screen.getByText("80")).toBeTruthy();
     expect(screen.getAllByText("Bật")).toHaveLength(1); // chatAttachmentsEnabled
     expect(screen.getAllByText("Tắt")).toHaveLength(2); // kpiProrateLeave, moneyPublic
-    expect(screen.getByText("Luôn bật")).toBeTruthy(); // scoresPublic, retired (PD-052)
+    expect(screen.getByText("Theo phân quyền")).toBeTruthy(); // scoresPublic, retired (PD-052, PD-065)
     // The Khoán cards stay readable, the saved one checked, but cannot be picked.
     const radios = screen.getAllByRole("radio");
     expect(radios.map((radio) => radio.getAttribute("aria-checked"))).toEqual(["true", "false"]);
@@ -126,13 +136,13 @@ describe("Cài đặt chung — read-only for everyone but the superadmin (PD-05
   });
 });
 
-describe("Cài đặt chung — “Công khai bảng điểm” is retired (PD-052)", () => {
-  it("shows it as “Luôn bật” text, never a switch, even for the superadmin", async () => {
+describe("Cài đặt chung — “Công khai bảng điểm” is retired (PD-052, PD-065)", () => {
+  it("shows it as “Theo phân quyền” text, never a switch, even for the superadmin", async () => {
     vi.spyOn(productionApi, "settings").mockResolvedValue({ ...settings, scoresPublic: false });
     renderPage();
     await screen.findByRole("combobox", { name: "Ngày chốt KPI" });
     expect(screen.getByText("Công khai bảng điểm")).toBeTruthy();
-    expect(screen.getByText("Luôn bật")).toBeTruthy();
+    expect(screen.getByText("Theo phân quyền")).toBeTruthy();
     expect(screen.queryByRole("switch", { name: /Công khai bảng điểm/ })).toBeNull();
     // The remaining switches: KPI theo ngày nghỉ, tiền công, tệp trong chat.
     expect(screen.getAllByRole("switch")).toHaveLength(3);
@@ -142,7 +152,9 @@ describe("Cài đặt chung — “Công khai bảng điểm” is retired (PD-0
     vi.spyOn(productionApi, "settings").mockResolvedValue({ ...settings, scoresPublic: false });
     const update = vi
       .spyOn(productionApi, "updateSettings")
-      .mockImplementation((input) => Promise.resolve({ ...settings, ...input } as ProductionSettings));
+      .mockImplementation((input) =>
+        Promise.resolve({ ...settings, ...input } as ProductionSettings)
+      );
     renderPage();
     fireEvent.click(await screen.findByRole("switch", { name: /Công khai tiền công/ }));
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));

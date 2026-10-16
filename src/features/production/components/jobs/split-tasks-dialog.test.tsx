@@ -209,7 +209,7 @@ describe("SplitTasksDialog — line cards", () => {
     expect(screen.getByRole("button", { name: "Thêm 1 task" })).toBeTruthy();
   });
 
-  it("Thêm task copies process, shift and dates from the previous line and focuses its person", async () => {
+  it("Thêm task copies everything from task 1 except the person (quantity included) and focuses its person", async () => {
     renderDialog();
     // Let the dialog place its initial focus first (as a person would, before clicking).
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
@@ -235,8 +235,10 @@ describe("SplitTasksDialog — line cards", () => {
     const [, second] = cards();
     const scope = within(second!);
     expect(scope.getByText("Task 2")).toBeTruthy();
-    // Same process (its price shows), no link: each line is its own batch (nothing optional filled yet).
+    // Same process (its price shows) and the same quantity (owner, 2026-10-16); no person yet.
     expect(scope.getByText("5,5 điểm/tấm")).toBeTruthy();
+    expect(scope.getByPlaceholderText("Số tấm")).toHaveProperty("value", "20");
+    expect(scope.getByText(/≈ 110,00 điểm/)).toBeTruthy();
     expect(scope.getByRole("button", { name: /Chi tiết thêm/ }).textContent).not.toContain("Link");
     expect(document.activeElement?.id).toMatch(/-assignee$/);
     expect(second!.contains(document.activeElement)).toBe(true);

@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   Ellipsis,
   MessageSquare,
-  MessagesSquare,
   ListPlus,
   PencilLine,
   Split,
@@ -28,9 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import type { JobDetail } from "@/contracts/production-jobs";
-import { useSessionContext } from "@/features/auth/hooks";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import {
   Fact,
@@ -55,18 +52,8 @@ import { TagChips } from "@/features/production/components/tag-picker";
 import { fieldsFor, isEmptyValue } from "@/features/production/custom-fields";
 import { productionErrorMessage } from "@/features/production/errors";
 import { formatInteger } from "@/features/production/format";
-import {
-  useCustomFields,
-  useProductionAccess,
-  useProductionMe,
-  useTags
-} from "@/features/production/hooks";
-import {
-  useDeleteJob,
-  useJob,
-  useOpenJobChat,
-  useUpdateJob
-} from "@/features/production/jobs-hooks";
+import { useCustomFields, useProductionMe, useTags } from "@/features/production/hooks";
+import { useDeleteJob, useJob, useUpdateJob } from "@/features/production/jobs-hooks";
 import {
   assignedNormalQty,
   canSeeJob,
@@ -141,17 +128,8 @@ const JobPage = ({ job }: { job: JobDetail }) => {
   );
   const openTask = useOpenTask();
   const mover = useTaskMover();
-  const chat = useOpenJobChat();
   const update = useUpdateJob(job.id);
   const remove = useDeleteJob(job.id);
-  const access = useProductionAccess();
-  const myId = useSessionContext().user.id;
-  // Mirrors the API: the job's leader (any Leader when it has none, PD-035), an Account or an Admin creates the job
-  // chat.
-  const actsAsLeader = job.leader
-    ? job.leader.id === myId && access.can("LEADER")
-    : access.can("LEADER");
-  const canCreateChat = actsAsLeader || access.can("ACCOUNT");
   const people = useProductionPeople([
     job.leader,
     job.createdBy,
@@ -178,22 +156,6 @@ const JobPage = ({ job }: { job: JobDetail }) => {
     (part, index, parts): part is string =>
       Boolean(part) && part !== job.project.code && parts.indexOf(part) === index
   );
-
-  // Anyone who can see the job opens its chat through the API (which adds them as a member);
-  // creating it stays with Leader / Account / Admin. Archived jobs only reopen an existing chat.
-  const openChat = () => {
-    if (!active && job.channelId) {
-      void navigate(`/c/${job.channelId}`);
-      return;
-    }
-    chat.mutate(job.id, {
-      onSuccess: (result) => {
-        if (result.created) toast.success("Đã tạo nhóm chat cho job");
-        void navigate(`/c/${result.channelId}`);
-      },
-      onError: (error) => toast.error(productionErrorMessage(error))
-    });
-  };
 
   // PD-044: the job's subtasks — their own status / create rows repeat their line's in the side timeline.
   const subtaskIds = new Set(job.tasks.filter((task) => task.isSubtask).map((task) => task.id));
@@ -406,12 +368,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
                   </Button>
                 )
               ) : null}
-              {(canCreateChat && active) || job.channelId ? (
-                <Button variant="outline" onClick={openChat} disabled={chat.isPending}>
-                  {chat.isPending ? <Spinner /> : <MessagesSquare />}
-                  Nhóm chat
-                </Button>
-              ) : null}
+              {/* "Nhóm chat" of a job is retired (owner, 2026-10-16): conversations live in the chat module. */}
               {!desktop ? (
                 <Button variant="outline" onClick={() => setTimelineOpen(true)}>
                   <MessageSquare />

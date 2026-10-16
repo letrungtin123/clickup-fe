@@ -8,7 +8,12 @@ import {
   visibleRows
 } from "./catalog";
 import { splitEmails } from "./emails";
-import { visibleNavEntries, visibleSettingsPages } from "./nav";
+import {
+  productionNavEntries,
+  RANKING_VISIBLE,
+  visibleNavEntries,
+  visibleSettingsPages
+} from "./nav";
 import { hasAnyRole, sortRoles, toggleRole } from "./roles";
 
 describe("roles", () => {
@@ -37,13 +42,8 @@ describe("navigation by role", () => {
   });
 
   it("shows the union of menus for multi-role users", () => {
-    // Every production member: overview, own scores, ranking and the leave calendar.
-    const everyone = [
-      "/production",
-      "/production/scores",
-      "/production/scores/board",
-      "/production/leave"
-    ];
+    // Every production member: overview, own scores and the leave calendar.
+    const everyone = ["/production", "/production/scores", "/production/leave"];
     expect(paths(["STAFF"])).toEqual(expect.arrayContaining(everyone));
     expect(paths(["STAFF"])).not.toContain("/production/clients");
     // PD-049: everyone reaches Cấu hình to read "Trạng thái & luồng chuyển".
@@ -55,14 +55,16 @@ describe("navigation by role", () => {
     expect(paths(["ADMIN"])).toEqual(
       expect.arrayContaining([...everyone, "/production/clients", "/production/settings"])
     );
+    expect(paths(["DIRECTOR"])).toEqual(expect.arrayContaining(everyone));
   });
 
-  it("shows the ranking to every production role (PD-052, no longer hidden by scoresPublic)", () => {
-    for (const role of ["STAFF", "QC", "LEADER", "ACCOUNT", "ADMIN"] as const) {
-      expect(paths([role])).toEqual(
-        expect.arrayContaining(["/production/scores", "/production/scores/board"])
-      );
+  it("hides Xếp hạng from the menu for everyone (owner, 2026-10-16; the route stays by URL)", () => {
+    expect(RANKING_VISIBLE).toBe(false);
+    for (const role of ["STAFF", "QC", "LEADER", "ACCOUNT", "ADMIN", "DIRECTOR"] as const) {
+      expect(paths([role])).toContain("/production/scores");
+      expect(paths([role])).not.toContain("/production/scores/board");
     }
+    expect(productionNavEntries.some((entry) => entry.label === "Xếp hạng")).toBe(false);
   });
 
   it("shows jobs, my tasks and the QC queue by role (Phase 2)", () => {
@@ -89,6 +91,68 @@ describe("navigation by role", () => {
     expect(slugs(["ADMIN"])).toHaveLength(15);
     // "Phân quyền Job" moved to Cài đặt → Vai trò & phân quyền (PD-042).
     expect(slugs(["ADMIN"])).not.toContain("job-permissions");
+  });
+});
+
+describe("navigation by feature (PD-065)", () => {
+  const paths = (roles: Parameters<typeof visibleNavEntries>[0]) =>
+    visibleNavEntries(roles).map((entry) => entry.to);
+  const withFeatures = (
+    roles: Parameters<typeof visibleNavEntries>[0],
+    features: NonNullable<Parameters<typeof visibleNavEntries>[1]>["features"]
+  ) => visibleNavEntries(roles, { features }).map((entry) => entry.to);
+
+  it("a Director sees Bất thường and Quản trị số liệu; an Admin without those features does not", () => {
+    const director = withFeatures(
+      ["DIRECTOR"],
+      [
+        "view_others_scores",
+        "view_others_money",
+        "leader_dashboard",
+        "admin_dashboard",
+        "anomalies"
+      ]
+    );
+    expect(director).toEqual(
+      expect.arrayContaining([
+        "/production/anomalies",
+        "/production/admin",
+        "/production/dashboard"
+      ])
+    );
+    expect(director).not.toContain("/production/qc");
+    const admin = withFeatures(
+      ["ADMIN"],
+      ["qc_queue", "view_others_scores", "leader_dashboard", "leave_approval", "clients"]
+    );
+    expect(admin).not.toContain("/production/anomalies");
+    expect(admin).not.toContain("/production/admin");
+    expect(admin).toEqual(
+      expect.arrayContaining(["/production/dashboard", "/production/qc", "/production/clients"])
+    );
+  });
+
+  it("the features win over the roles once known", () => {
+    expect(withFeatures(["STAFF"], ["qc_queue", "anomalies"])).toEqual(
+      expect.arrayContaining(["/production/qc", "/production/anomalies"])
+    );
+    expect(withFeatures(["QC"], [])).not.toContain("/production/qc");
+    expect(withFeatures(["ACCOUNT"], [])).not.toContain("/production/clients");
+    // Pages that are not features keep their roles.
+    expect(withFeatures(["ACCOUNT"], [])).toContain("/production/jobs");
+    expect(withFeatures(["STAFF"], [])).toContain("/production/my-tasks");
+  });
+
+  it("falls back to the default matrix of the roles while the features are unknown", () => {
+    expect(paths(["DIRECTOR"])).toEqual(
+      expect.arrayContaining([
+        "/production/anomalies",
+        "/production/admin",
+        "/production/dashboard"
+      ])
+    );
+    expect(paths(["ADMIN"])).not.toContain("/production/anomalies");
+    expect(paths(["ADMIN"])).not.toContain("/production/admin");
   });
 });
 

@@ -1,3 +1,4 @@
+import { UpdateNoticeRuntime } from "@/features/app-update/update-runtime";
 import { ChatDialogs } from "@/features/chat/components/chat-dialogs";
 import { ChatRuntime } from "@/features/chat/realtime/chat-runtime";
 import { DesktopNotificationsRuntime } from "@/features/desktop-notifications/desktop-notifications-runtime";
@@ -25,5 +26,7 @@ export const ShellServices = () => (
     <DesktopNotificationsRuntime />
     <ProductionRuntime />
     <ChatDialogs />
+    {/* "Đã có phiên bản mới — Tải lại" after a deploy, instead of clicks that silently fail. */}
+    <UpdateNoticeRuntime />
   </>
 );

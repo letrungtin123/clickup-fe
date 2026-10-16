@@ -42,6 +42,8 @@ export type ListPerson = { id: string; displayName: string };
  */
 const tableColumns = (perPerson: boolean): [string, number][] => [
   ["minmax(13.5rem,2fr)", 13.5],
+  // "Dự án" (owner, 2026-10-16): the job's project (code + name; the client in the tooltip).
+  ["minmax(9rem,1.1fr)", 9],
   perPerson ? ["minmax(10rem,1.5fr)", 10] : ["7.5rem", 7.5],
   // "Người tạo" (owner, 2026-10-16): who created the job.
   ["minmax(9rem,1fr)", 9],
@@ -230,6 +232,9 @@ const JobTable = ({
             >
               Gói công việc
             </span>
+            <span role="columnheader" className="px-3 whitespace-nowrap">
+              Dự án
+            </span>
             {person ? (
               <PersonHeader label="Công đoạn" person={person} />
             ) : (
@@ -327,6 +332,9 @@ const JobTable = ({
                         {job.name}
                       </span>
                     ) : null}
+                  </span>
+                  <span role="cell" className="min-w-0 px-3">
+                    <JobProject project={job.project} />
                   </span>
                   {person ? (
                     <span role="cell" className="min-w-0 px-3">
@@ -429,6 +437,27 @@ const JobTable = ({
   );
 };
 
+/** "ABC · Tên dự án" — the code alone when the name repeats it (imported projects often do). */
+const projectLabel = (project: JobSummary["project"]) =>
+  project.name && project.name !== project.code
+    ? `${project.code} · ${project.name}`
+    : project.code;
+
+const projectTitle = (project: JobSummary["project"]) =>
+  [projectLabel(project), project.clientName ? `Khách hàng: ${project.clientName}` : null]
+    .filter(Boolean)
+    .join(" — ");
+
+/** "Dự án": code (bold) and name on one line, the client in the tooltip. */
+const JobProject = ({ project }: { project: JobSummary["project"] }) => (
+  <span className="flex min-w-0 flex-col" title={projectTitle(project)}>
+    <span className="truncate font-medium">{project.code}</span>
+    {project.name && project.name !== project.code ? (
+      <span className="truncate text-xs text-foreground-muted">{project.name}</span>
+    ) : null}
+  </span>
+);
+
 /** "Người tạo": the job's creator (avatar + name), "—" when unknown (e.g. imported jobs). */
 const JobCreator = ({ creator }: { creator: JobSummary["createdBy"] }) =>
   creator ? (
@@ -497,11 +526,13 @@ const JobCards = ({
                   >
                     {job.code}
                   </span>
-                  {job.name ? (
-                    <span className="truncate text-xs text-foreground-muted" title={job.name}>
-                      {job.name}
-                    </span>
-                  ) : null}
+                  <span
+                    className="truncate text-xs text-foreground-muted"
+                    title={projectTitle(job.project)}
+                  >
+                    {projectLabel(job.project)}
+                    {job.name ? ` · ${job.name}` : ""}
+                  </span>
                 </span>
                 {/* At most half the row, so the package name keeps its room. */}
                 <JobStatusChip status={job.jobStatus} size="sm" className="max-w-[50%] shrink-0" />

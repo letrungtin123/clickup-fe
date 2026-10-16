@@ -5,9 +5,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { RequireProductionRole } from "@/features/production/components/production-gate";
+import { RequireProductionFeature } from "@/features/production/components/production-gate";
 import { formatDay } from "@/features/production/format";
-import { useProductionMe } from "@/features/production/hooks";
+import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
 import {
   AdminCards,
   AdminCardsSkeleton,
@@ -26,16 +26,18 @@ import { REPORTS_MODULE_VISIBLE } from "@/features/production/nav";
  * /production/admin — Admin dashboard (SPEC Phase 5 §3, PLAN §7): the six fixed cards (points today, late
  * jobs, FB rate by worker / client, productivity by shift, KPI attainment), each opening the report builder
  * with its config (the KPI card opens the KPI report: % per person), "Xuất" (CSV of the six cards or one
- * card's Excel), then the saved reports an Admin pinned. ADMIN only (the API answers 403 otherwise).
+ * card's Excel), then the saved reports an Admin pinned. For whoever holds the "Quản trị số liệu" feature (PD-065;
+ * Director by default — the API answers 403 otherwise); its buttons to the other pages follow their own features.
  */
 export const ProductionAdminDashboardRoute = () => (
-  <RequireProductionRole roles={["ADMIN"]}>
+  <RequireProductionFeature feature="admin_dashboard">
     <AdminDashboardPage />
-  </RequireProductionRole>
+  </RequireProductionFeature>
 );
 
 const AdminDashboardPage = () => {
   const me = useProductionMe();
+  const access = useProductionAccess();
   const breakpoint = useBreakpoint();
   const dashboard = useAdminDashboard();
   useLiveReports();
@@ -68,22 +70,26 @@ const AdminDashboardPage = () => {
               <Spinner className="size-4 text-foreground-muted" />
             ) : null}
             <AdminExportMenu data={data} timeZone={timeZone} />
-            <Button
-              variant="outline"
-              render={<Link to="/production/dashboard" />}
-              nativeButton={false}
-            >
-              <LayoutDashboard />
-              <span className="max-md:sr-only">Dashboard Leader</span>
-            </Button>
-            <Button
-              variant="outline"
-              render={<Link to="/production/anomalies" />}
-              nativeButton={false}
-            >
-              <ScanSearch />
-              <span className="max-md:sr-only">Bất thường</span>
-            </Button>
+            {access.hasFeature("leader_dashboard") ? (
+              <Button
+                variant="outline"
+                render={<Link to="/production/dashboard" />}
+                nativeButton={false}
+              >
+                <LayoutDashboard />
+                <span className="max-md:sr-only">Dashboard Leader</span>
+              </Button>
+            ) : null}
+            {access.hasFeature("anomalies") ? (
+              <Button
+                variant="outline"
+                render={<Link to="/production/anomalies" />}
+                nativeButton={false}
+              >
+                <ScanSearch />
+                <span className="max-md:sr-only">Bất thường</span>
+              </Button>
+            ) : null}
             {REPORTS_MODULE_VISIBLE ? (
               <Button render={<Link to="/production/reports" />} nativeButton={false}>
                 <ChartNoAxesCombined />

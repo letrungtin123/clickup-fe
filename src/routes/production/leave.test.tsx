@@ -36,11 +36,12 @@ const session = {
   departments: ["PHOTO_RETOUCH"]
 } as unknown as SessionContext;
 
-const meAs = (roles: string[], isAdmin: boolean) =>
+const meAs = (roles: string[], isAdmin: boolean, features: string[] = []) =>
   ({
     roles,
     isAdmin,
     teamId: null,
+    features,
     jobPermissions: { view: "all", create: "none", update: "own", delete: "none" },
     settings: {
       timezone: "Asia/Ho_Chi_Minh",
@@ -114,9 +115,17 @@ const renderPage = (search: string) =>
     </QueryClientProvider>
   );
 
-const setup = ({ admin, canDecide = admin }: { admin: boolean; canDecide?: boolean }) => {
+const setup = ({
+  admin,
+  canDecide = admin,
+  me
+}: {
+  admin: boolean;
+  canDecide?: boolean;
+  me?: ProductionMe;
+}) => {
   vi.spyOn(productionApi, "me").mockResolvedValue(
-    admin ? meAs(["ADMIN"], true) : meAs(["LEADER"], false)
+    me ?? (admin ? meAs(["ADMIN"], true, ["leave_approval"]) : meAs(["LEADER"], false))
   );
   vi.spyOn(productionApi, "teams").mockResolvedValue({ items: [] });
   vi.spyOn(leaveApi, "calendar").mockImplementation((from, to) =>
@@ -142,7 +151,22 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Xuất Excel (Quản trị only)", () => {
+describe("Xuất Excel (Duyệt lịch nghỉ, PD-065)", () => {
+  it("follows the feature, not the role: a Director holding it exports, an Admin without it does not", async () => {
+    setup({ admin: false, me: meAs(["DIRECTOR"], false, ["leave_approval"]) });
+    const { unmount } = renderPage("?month=2026-10");
+    expect(await screen.findByRole("button", { name: /Xuất Excel/ })).toBeTruthy();
+    // Holding the feature also opens the approval queue.
+    expect(screen.getByRole("tab", { name: /Chờ duyệt/ })).toBeTruthy();
+    unmount();
+    vi.restoreAllMocks();
+    setup({ admin: true, me: meAs(["ADMIN"], true, []) });
+    renderPage("?month=2026-10");
+    await screen.findByRole("tab", { name: /Chờ duyệt/ });
+    await waitFor(() => expect(leaveApi.calendar).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /Xuất Excel/ })).toBeNull();
+  });
+
   it("is hidden for a Leader", async () => {
     setup({ admin: false });
     renderPage("?month=2026-10");
@@ -193,7 +217,7 @@ describe("Xuất Excel (Quản trị only)", () => {
     );
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "Chỉ Quản trị mới xuất được bảng chấm công nghỉ phép."
+        "Bạn không có quyền Duyệt lịch nghỉ nên không xuất được bảng chấm công nghỉ phép."
       )
     );
   });
@@ -267,7 +291,9 @@ describe("Chờ duyệt — only Quản trị decides", () => {
   it("a Leader reads the queue without Duyệt / Từ chối", async () => {
     setup({ admin: false, canDecide: false });
     renderPage("?tab=pending");
-    expect(await screen.findByText("Chỉ Quản trị duyệt đơn nghỉ.")).toBeTruthy();
+    expect(
+      await screen.findByText("Chỉ người có quyền Duyệt lịch nghỉ mới duyệt đơn.")
+    ).toBeTruthy();
     expect(screen.getByText("Đồng Nghiệp Thử")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Duyệt" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Từ chối" })).toBeNull();
@@ -278,6 +304,6 @@ describe("Chờ duyệt — only Quản trị decides", () => {
     renderPage("?tab=pending");
     expect(await screen.findByRole("button", { name: "Duyệt" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Từ chối" })).toBeTruthy();
-    expect(screen.queryByText("Chỉ Quản trị duyệt đơn nghỉ.")).toBeNull();
+    expect(screen.queryByText("Chỉ người có quyền Duyệt lịch nghỉ mới duyệt đơn.")).toBeNull();
   });
 });

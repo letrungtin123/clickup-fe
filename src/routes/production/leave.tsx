@@ -78,9 +78,10 @@ const timeModes = [
 /**
  * /production/leave — shared leave calendar (SPEC §6.3, PLAN §10): month grid with avatars of people
  * on leave (half days marked), team filter, "Xin nghỉ", own requests with cancel, and the pending
- * queue (LEADER/ADMIN read it; only ADMIN decides, PD-057). Phones get an agenda list. PD-057 adds a
- * time filter — "Theo tháng" or "Khoảng ngày" (a list of the requests overlapping the range) — and,
- * for Quản trị, "Xuất Excel" of the current filter (payroll attendance). Live via `production:leave`
+ * queue (LEADER/ADMIN and whoever holds "Duyệt lịch nghỉ" read it; deciding follows each request's `canDecide`,
+ * PD-057/PD-065). Phones get an agenda list. PD-057 adds a time filter — "Theo tháng" or "Khoảng ngày" (a list of
+ * the requests overlapping the range) — and, with the "Duyệt lịch nghỉ" feature (PD-065, Quản trị by default),
+ * "Xuất Excel" of the current filter (payroll attendance). Live via `production:leave`
  * (ProductionRuntime). ?month=YYYY-MM | ?from=YYYY-MM-DD&to=YYYY-MM-DD, &tab=mine|pending, &team=<id>.
  */
 export const ProductionLeaveRoute = () => {
@@ -90,8 +91,9 @@ export const ProductionLeaveRoute = () => {
   const [params, setParams] = useSearchParams();
   const settings = me.data?.settings;
   const today = todayIn(settings?.timezone ?? "Asia/Ho_Chi_Minh");
-  // LEADER/ADMIN read the approval queue; only Quản trị decides (`canDecide` per request, PD-057).
-  const seesQueue = access.can("LEADER");
+  // PD-065: "Duyệt lịch nghỉ" decides (`canDecide` per request) and exports; LEADER/ADMIN also read the queue.
+  const approves = access.hasFeature("leave_approval");
+  const seesQueue = access.can("LEADER") || approves;
 
   const filter = parseLeaveTimeFilter(params, today);
   const tabParam = params.get("tab");
@@ -171,7 +173,7 @@ export const ProductionLeaveRoute = () => {
         description={
           breakpoint === "mobile"
             ? undefined
-            : "Ai nghỉ ngày nào để sắp việc. Mọi người chỉ thấy tên và ngày; lý do chỉ người xin và Leader/Quản trị thấy. Quản trị duyệt đơn."
+            : "Ai nghỉ ngày nào để sắp việc. Mọi người chỉ thấy tên và ngày; lý do chỉ người xin và Leader/Quản trị thấy. Người có quyền Duyệt lịch nghỉ duyệt đơn."
         }
         actions={
           <Button onClick={() => openRequest(null)}>
@@ -211,7 +213,7 @@ export const ProductionLeaveRoute = () => {
             filter={filter}
             today={today}
             teamId={teamId}
-            canExport={access.isAdmin}
+            canExport={approves}
             selected={selected}
             mobile={breakpoint === "mobile"}
             maxAvatars={breakpoint === "desktop" ? 3 : 4}
@@ -235,9 +237,9 @@ export const ProductionLeaveRoute = () => {
           <Panel
             title="Đơn chờ duyệt"
             description={
-              access.isAdmin
+              approves
                 ? "Duyệt hoặc từ chối; người xin nghỉ nhận thông báo ngay."
-                : "Chỉ Quản trị duyệt đơn nghỉ; bạn xem để sắp việc cho team."
+                : "Bạn không có quyền duyệt đơn nghỉ; bạn xem để sắp việc cho team."
             }
           >
             {pending.isPending ? (
@@ -293,7 +295,7 @@ const CalendarTab = ({
   filter: LeaveTimeFilter;
   today: string;
   teamId: string | null;
-  /** Quản trị: "Xuất Excel" of the current filter (PD-057). */
+  /** "Duyệt lịch nghỉ" (PD-065, Quản trị by default): "Xuất Excel" of the current filter (PD-057). */
   canExport: boolean;
   selected: string | null;
   mobile: boolean;

@@ -10,11 +10,15 @@ import { EmptyState, ErrorState, SkeletonRows } from "@/components/shared/states
 import { Button } from "@/components/ui/button";
 import { departmentLabels, type Department } from "@/contracts/departments";
 import {
+  defaultFeaturePermissions,
   defaultJobPermissions,
+  type FeaturePermissionKey,
+  type FeaturePermissionMatrix,
   type JobPermissionAction,
   type JobPermissionMatrix,
   type JobPermissionRole,
-  type JobPermissionScope
+  type JobPermissionScope,
+  type ProductionRole
 } from "@/contracts/production-catalog";
 import { adminApi, useAdminPermissions, useAdminRoles } from "@/features/admin/api";
 import { adminErrorMessage } from "@/features/admin/errors";
@@ -35,7 +39,7 @@ import {
 } from "@/features/permissions/org-catalog";
 import { OrgMatrix, type OrgCellState } from "@/features/permissions/org-matrix";
 import { RetouchMatrix, RetouchReadOnlyNote } from "@/features/permissions/retouch-matrix";
-import { retouchFixedRules } from "@/features/permissions/retouch-rules";
+import { retouchFeatureRows, retouchFixedRules } from "@/features/permissions/retouch-rules";
 import {
   CreateRoleDialog,
   DeleteRoleDialog,
@@ -44,20 +48,30 @@ import {
 import { useCanEditProductionConfig } from "@/features/production/config-access";
 import { productionErrorMessage } from "@/features/production/errors";
 import {
+  featureChanges,
+  sameFeaturePermissions,
+  withFeatureRole
+} from "@/features/production/feature-permissions";
+import {
   useProductionAccess,
   useProductionMe,
   useProductionSettings,
   useUpdateSettings
 } from "@/features/production/hooks";
-import { jobScopeChanges, sameJobPermissions, withJobScope } from "@/features/production/job-permissions";
+import {
+  jobScopeChanges,
+  sameJobPermissions,
+  withJobScope
+} from "@/features/production/job-permissions";
 import type { AdminRole } from "@/lib/api/schemas";
 import { toneClass } from "@/lib/colors";
 import { qk } from "@/lib/query-keys";
 
 /**
  * Cài đặt → Vai trò & phân quyền (PD-042). One page that follows the department chosen in the header (PD-041):
- *   Photo Retouch — production roles × features: the job permission matrix (PD-036; read by a production ADMIN,
- *                   edited by the superadmin only since PD-050) and the fixed rules (read-only, retouch-rules.ts);
+ *   Photo Retouch — production roles × features: the job permission matrix (PD-036) and "Quyền theo tính năng"
+ *                   (PD-065), both read by a production ADMIN and edited by the superadmin only (PD-050), then the
+ *                   rules still fixed by role (read-only, retouch-rules.ts);
  *   Production    — organization roles × project / list / task permissions;
  *   both          — "Chung": channels, knowledge, members, roles (+ where departments are set).
  * Changes are drafted (changed cells tinted) and saved together from the sticky bar. Access: role.view or
@@ -119,7 +133,8 @@ const PermissionsPage = () => {
   const toggleOrg = (role: AdminRole, key: string, checked: boolean) =>
     setRoleDrafts((drafts) => {
       const base =
-        drafts[role.id] ?? new Set(role.permissions.filter((item) => editablePermissionKeys.has(item)));
+        drafts[role.id] ??
+        new Set(role.permissions.filter((item) => editablePermissionKeys.has(item)));
       const next = new Set(base);
       if (checked) next.add(key);
       else next.delete(key);
@@ -137,8 +152,12 @@ const PermissionsPage = () => {
       : groups;
 
   const roleMenu = {
-    onRename: can(P.RoleUpdate) ? (role: AdminRole) => setDialog({ kind: "rename", role }) : undefined,
-    onDelete: can(P.RoleDelete) ? (role: AdminRole) => setDialog({ kind: "delete", role }) : undefined
+    onRename: can(P.RoleUpdate)
+      ? (role: AdminRole) => setDialog({ kind: "rename", role })
+      : undefined,
+    onDelete: can(P.RoleDelete)
+      ? (role: AdminRole) => setDialog({ kind: "delete", role })
+      : undefined
   };
   const newRoleButton = can(P.RoleCreate) ? (
     <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "create" })}>
@@ -147,7 +166,7 @@ const PermissionsPage = () => {
     </Button>
   ) : null;
 
-  // --- Photo Retouch job permissions -------------------------------------------------------------
+  // --- Photo Retouch job & feature permissions ---------------------------------------------------
   const production = useProductionAccess();
   const me = useProductionMe();
   // A production ADMIN (or the superadmin) reads the matrix; only the superadmin edits it (PD-050).
@@ -160,23 +179,48 @@ const PermissionsPage = () => {
   const jobValue = jobDraft ?? jobSaved;
   const jobChangeCount = jobSaved && jobDraft ? jobScopeChanges(jobSaved, jobDraft).length : 0;
 
-  const setScope = (role: JobPermissionRole, action: JobPermissionAction, scope: JobPermissionScope) => {
+  const setScope = (
+    role: JobPermissionRole,
+    action: JobPermissionAction,
+    scope: JobPermissionScope
+  ) => {
     if (!jobValue) return;
     const next = withJobScope(jobValue, role, action, scope);
     setJobDraft(jobSaved && sameJobPermissions(next, jobSaved) ? null : next);
   };
   const resetJobs = () =>
-    setJobDraft(jobSaved && sameJobPermissions(defaultJobPermissions, jobSaved) ? null : defaultJobPermissions);
+    setJobDraft(
+      jobSaved && sameJobPermissions(defaultJobPermissions, jobSaved) ? null : defaultJobPermissions
+    );
 
-  const rules = useMemo(
-    () => retouchFixedRules({ moneyPublic: me.data?.settings.moneyPublic }),
-    [me.data]
-  );
+  // PD-065: feature × role checkboxes, drafted like the job scopes and saved in the same PATCH.
+  const featureSaved = settings.data?.featurePermissions ?? null;
+  const [featureDraft, setFeatureDraft] = useState<FeaturePermissionMatrix | null>(null);
+  const featureValue = featureDraft ?? featureSaved;
+  const featureChangeCount =
+    featureSaved && featureDraft ? featureChanges(featureSaved, featureDraft).length : 0;
+
+  const setFeature = (feature: FeaturePermissionKey, role: ProductionRole, granted: boolean) => {
+    if (!featureValue) return;
+    const next = withFeatureRole(featureValue, feature, role, granted);
+    setFeatureDraft(featureSaved && sameFeaturePermissions(next, featureSaved) ? null : next);
+  };
+  const resetFeatures = () =>
+    setFeatureDraft(
+      featureSaved && sameFeaturePermissions(defaultFeaturePermissions, featureSaved)
+        ? null
+        : defaultFeaturePermissions
+    );
+
+  const moneyPublic = me.data?.settings.moneyPublic;
+  const featureRows = useMemo(() => retouchFeatureRows({ moneyPublic }), [moneyPublic]);
+  const rules = useMemo(() => retouchFixedRules(), []);
 
   // --- Save --------------------------------------------------------------------------------------
   const draftRoles = sortedRoles.filter((role) => roleDrafts[role.id]);
   const changeCount =
     jobChangeCount +
+    featureChangeCount +
     draftRoles.reduce(
       (sum, role) => sum + countChanges(role.permissions, roleDrafts[role.id] ?? new Set()),
       0
@@ -186,13 +230,22 @@ const PermissionsPage = () => {
   const save = async () => {
     setSaving(true);
     let failed = false;
-    if (jobDraft && jobChangeCount > 0) {
+    const savesJobs = jobDraft !== null && jobChangeCount > 0;
+    const savesFeatures = featureDraft !== null && featureChangeCount > 0;
+    if (savesJobs || savesFeatures) {
       try {
-        await updateSettings.mutateAsync({ jobPermissions: jobDraft });
+        // One PATCH for both Photo Retouch matrices (superadmin only, PD-050).
+        await updateSettings.mutateAsync({
+          ...(savesJobs ? { jobPermissions: jobDraft } : {}),
+          ...(savesFeatures ? { featurePermissions: featureDraft } : {})
+        });
         setJobDraft(null);
+        setFeatureDraft(null);
       } catch (error) {
         failed = true;
-        toast.error("Không lưu được phân quyền Job", { description: productionErrorMessage(error) });
+        toast.error("Không lưu được phân quyền Photo Retouch", {
+          description: productionErrorMessage(error)
+        });
       }
     }
     const results = await Promise.allSettled(
@@ -237,10 +290,15 @@ const PermissionsPage = () => {
   const undo = () => {
     setRoleDrafts({});
     setJobDraft(null);
+    setFeatureDraft(null);
   };
 
   // --- Layout ------------------------------------------------------------------------------------
-  const orgBody = (groups: readonly OrgPermissionGroup[], caption: string, footerRows?: ReactNode) =>
+  const orgBody = (
+    groups: readonly OrgPermissionGroup[],
+    caption: string,
+    footerRows?: ReactNode
+  ) =>
     roles.isPending ? (
       <SkeletonRows rows={6} className="px-4 py-3" />
     ) : roles.isError ? (
@@ -304,22 +362,45 @@ const PermissionsPage = () => {
         <MatrixCard
           title="Photo Retouch"
           actions={
-            retouchEditor && jobValue ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={saving || sameJobPermissions(jobValue, defaultJobPermissions)}
-                title={
-                  sameJobPermissions(jobValue, defaultJobPermissions)
-                    ? "Phân quyền Job đang là mặc định"
-                    : "Đưa phân quyền Job về mặc định (chưa lưu cho tới khi bấm “Lưu thay đổi”)"
-                }
-                onClick={resetJobs}
-              >
-                <RotateCcw />
-                Mặc định Job
-              </Button>
+            retouchEditor && (jobValue || featureValue) ? (
+              <>
+                {jobValue ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={saving || sameJobPermissions(jobValue, defaultJobPermissions)}
+                    title={
+                      sameJobPermissions(jobValue, defaultJobPermissions)
+                        ? "Phân quyền Job đang là mặc định"
+                        : "Đưa phân quyền Job về mặc định (chưa lưu cho tới khi bấm “Lưu thay đổi”)"
+                    }
+                    onClick={resetJobs}
+                  >
+                    <RotateCcw />
+                    Mặc định Job
+                  </Button>
+                ) : null}
+                {featureValue ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      saving || sameFeaturePermissions(featureValue, defaultFeaturePermissions)
+                    }
+                    title={
+                      sameFeaturePermissions(featureValue, defaultFeaturePermissions)
+                        ? "Quyền theo tính năng đang là mặc định"
+                        : "Đưa quyền theo tính năng về mặc định (chưa lưu cho tới khi bấm “Lưu thay đổi”)"
+                    }
+                    onClick={resetFeatures}
+                  >
+                    <RotateCcw />
+                    Mặc định tính năng
+                  </Button>
+                ) : null}
+              </>
             ) : null
           }
           description={
@@ -335,16 +416,23 @@ const PermissionsPage = () => {
             <RetouchMatrix
               value={retouchAdmin ? jobValue : null}
               saved={jobSaved}
+              features={retouchAdmin ? featureValue : null}
+              featuresSaved={featureSaved}
               loading={retouchAdmin && settings.isPending}
               editable={retouchEditor}
               disabled={saving}
-              unreadableNote="Chỉ Quản trị Photo Retouch hoặc Siêu quản trị xem phân quyền Job; chỉ Siêu quản trị sửa."
+              unreadableNote="Chỉ Quản trị Photo Retouch hoặc Siêu quản trị xem phần này; chỉ Siêu quản trị sửa."
               onScope={setScope}
+              onFeature={setFeature}
+              featureRows={featureRows}
               rules={rules}
             />
           )}
           <p className="flex items-start gap-2 border-t px-4 py-3 text-xs leading-relaxed text-foreground-muted md:px-5">
-            <GitBranch className="mt-0.5 size-3.5 shrink-0 text-foreground-subtle" aria-hidden="true" />
+            <GitBranch
+              className="mt-0.5 size-3.5 shrink-0 text-foreground-subtle"
+              aria-hidden="true"
+            />
             <span>
               Việc chuyển trạng thái task (nhận việc, gửi QC, Done…) không nằm ở đây: đặt ở{" "}
               {retouchAdmin ? (

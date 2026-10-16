@@ -11,6 +11,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   jobPermissionActions,
+  type FeaturePermissionKey,
+  type FeaturePermissionMatrix,
   type JobPermissionAction,
   type JobPermissionMatrix,
   type JobPermissionRole,
@@ -18,6 +20,7 @@ import {
   type ProductionRole
 } from "@/contracts/production-catalog";
 import { RoleBadge } from "@/features/production/components/role-chips";
+import { featureGranted } from "@/features/production/feature-permissions";
 import {
   jobScopeItems,
   jobScopeLabels,
@@ -26,8 +29,16 @@ import {
 } from "@/features/production/job-permissions";
 import { productionRoleLabels } from "@/features/production/roles";
 
-import { GroupRow, HeadCell, MarkCell, MatrixTable, RowHead, fixedRuleHint } from "./matrix-kit";
-import { retouchColumns, type RetouchRule } from "./retouch-rules";
+import {
+  CheckCell,
+  GroupRow,
+  HeadCell,
+  MarkCell,
+  MatrixTable,
+  RowHead,
+  fixedRuleHint
+} from "./matrix-kit";
+import { retouchColumns, type FeatureRow, type RetouchRule } from "./retouch-rules";
 
 /** Row labels of the job permission matrix (PD-036) on this page. */
 const jobRowLabels: Record<JobPermissionAction, string> = {
@@ -48,8 +59,11 @@ const jobRowDescription = (action: JobPermissionAction) =>
 
 const statusChangeLabel = "Đổi trạng thái job — theo quyền Sửa (Của mình = job mình được giao)";
 
-/** PD-050: the job permission matrix is edited by the organization superadmin only. */
+/** PD-050: the Photo Retouch permissions are edited by the organization superadmin only. */
 export const retouchEditNote = "Chỉ Siêu quản trị chỉnh sửa phân quyền Photo Retouch.";
+
+/** Why a cell cannot be changed by a reader who is not the superadmin. */
+const readOnlyReason = "Chỉ Siêu quản trị sửa được";
 
 /** Shown above the matrix to a production Admin, who reads it but no longer edits it (PD-050). */
 export const RetouchReadOnlyNote = () => (
@@ -60,28 +74,44 @@ export const RetouchReadOnlyNote = () => (
 );
 
 /**
- * Photo Retouch view: production roles × features. The four job rows edit the `job_permissions` setting (ADMIN is
- * always "Tất cả"; `editable` only for the organization superadmin, PD-050); "Đổi trạng thái job" follows "Sửa"
- * (PD-038); the other rows are fixed rules (read-only). `value` null = the matrix cannot be read here (only a
- * production ADMIN or the superadmin reads the settings).
+ * Photo Retouch view: production roles × features.
+ *   - "Job & task": the four job rows edit the `job_permissions` setting (ADMIN is always "Tất cả"); "Đổi trạng thái
+ *     job" follows "Sửa" (PD-038);
+ *   - "Quyền theo tính năng" (PD-065): one checkbox per feature × role, the `feature_permissions` setting (ADMIN is a
+ *     column like the others: e.g. "Bất thường" is Director only by default);
+ *   - the rules that stay fixed (read-only): "Cấu hình Photo Retouch".
+ * `editable` only for the organization superadmin (PD-050). `value` / `features` null = that part cannot be read here
+ * (only a production ADMIN or the superadmin reads the settings).
  */
 export const RetouchMatrix = ({
   value,
   saved,
+  features,
+  featuresSaved,
   loading,
   editable,
   disabled,
   unreadableNote,
   onScope,
+  onFeature,
+  featureRows,
   rules
 }: {
   value: JobPermissionMatrix | null;
   saved: JobPermissionMatrix | null;
+  features: FeaturePermissionMatrix | null;
+  featuresSaved: FeaturePermissionMatrix | null;
   loading: boolean;
   editable: boolean;
   disabled: boolean;
   unreadableNote: string;
-  onScope: (role: JobPermissionRole, action: JobPermissionAction, scope: JobPermissionScope) => void;
+  onScope: (
+    role: JobPermissionRole,
+    action: JobPermissionAction,
+    scope: JobPermissionScope
+  ) => void;
+  onFeature: (feature: FeaturePermissionKey, role: ProductionRole, granted: boolean) => void;
+  featureRows: readonly FeatureRow[];
   rules: readonly RetouchRule[];
 }) => {
   const span = retouchColumns.length;
@@ -102,28 +132,19 @@ export const RetouchMatrix = ({
       />
       {loading ? (
         jobPermissionActions.map((action) => (
-          <tr key={action}>
-            <RowHead label={jobRowLabels[action]} description={jobRowDescription(action)} />
-            <td colSpan={span} className="border-b px-3 py-2">
-              <Skeleton className="h-8 w-full rounded-md" />
-            </td>
-          </tr>
+          <SkeletonRow
+            key={action}
+            label={jobRowLabels[action]}
+            description={jobRowDescription(action)}
+            span={span}
+          />
         ))
       ) : value === null ? (
-        <tr>
-          <th
-            scope="row"
-            className="sticky left-0 z-10 border-r border-b bg-surface px-3 py-3 text-left font-normal md:px-4"
-          >
-            {jobPermissionActions.map((action) => jobRowLabels[action]).join(" · ")}
-          </th>
-          <td colSpan={span} className="border-b px-3 py-3 text-left text-[13px] text-foreground-muted">
-            <span className="flex items-center gap-2">
-              <Lock className="size-3.5 shrink-0 text-foreground-subtle" aria-hidden="true" />
-              {unreadableNote}
-            </span>
-          </td>
-        </tr>
+        <UnreadableRow
+          label={jobPermissionActions.map((action) => jobRowLabels[action]).join(" · ")}
+          note={unreadableNote}
+          span={span}
+        />
       ) : (
         <>
           {jobPermissionActions.map((action) => (
@@ -131,17 +152,18 @@ export const RetouchMatrix = ({
               <RowHead label={jobRowLabels[action]} description={jobRowDescription(action)} />
               {retouchColumns.map((role) =>
                 role === "ADMIN" ? (
-                  <ScopeTextCell key={role} scope="all" locked lockReason="Quản trị luôn có toàn quyền" />
+                  <ScopeTextCell
+                    key={role}
+                    scope="all"
+                    locked
+                    lockReason="Quản trị luôn có toàn quyền"
+                  />
                 ) : editable ? (
                   <td key={role} className="border-b px-1.5 py-1 align-middle">
                     <ScopeSelect
                       label={`${jobRowLabels[action]} — ${productionRoleLabels[role]}`}
                       value={value[role][action]}
-                      changed={
-                        saved !== null &&
-                        saved[role][action] !==
-                          value[role][action]
-                      }
+                      changed={saved !== null && saved[role][action] !== value[role][action]}
                       disabled={disabled}
                       onChange={(scope) => onScope(role, action, scope)}
                     />
@@ -150,7 +172,7 @@ export const RetouchMatrix = ({
                   <ScopeTextCell
                     key={role}
                     scope={value[role][action]}
-                    lockReason="Chỉ Siêu quản trị sửa được"
+                    lockReason={readOnlyReason}
                   />
                 )
               )}
@@ -174,10 +196,49 @@ export const RetouchMatrix = ({
         </>
       )}
       <GroupRow
-        title="Cố định theo vai trò"
-        description="Chưa chỉnh được ở đây — hiển thị đúng quy tắc đang áp dụng."
+        title="Quyền theo tính năng"
+        description="Tích vai trò được dùng tính năng. Một người nhiều vai trò có quyền của mọi vai trò; Siêu quản trị luôn có mọi quyền."
         span={span}
       />
+      {loading ? (
+        featureRows.map((row) => (
+          <SkeletonRow
+            key={row.feature}
+            label={row.label}
+            description={row.description}
+            span={span}
+          />
+        ))
+      ) : features === null ? (
+        <UnreadableRow
+          label={featureRows.map((row) => row.label).join(" · ")}
+          note={unreadableNote}
+          span={span}
+        />
+      ) : (
+        featureRows.map((row) => (
+          <tr key={row.feature}>
+            <RowHead label={row.label} description={row.description} />
+            {retouchColumns.map((role) => {
+              const checked = featureGranted(features, row.feature, role);
+              return (
+                <CheckCell
+                  key={role}
+                  checked={checked}
+                  label={`${row.label} — ${productionRoleLabels[role]}`}
+                  disabled={!editable || disabled}
+                  changed={
+                    featuresSaved !== null &&
+                    featureGranted(featuresSaved, row.feature, role) !== checked
+                  }
+                  lockReason={editable ? undefined : readOnlyReason}
+                  onChange={(next) => onFeature(row.feature, role, next)}
+                />
+              );
+            })}
+          </tr>
+        ))
+      )}
       {rules.map((rule) => (
         <tr key={rule.id}>
           <RowHead label={rule.label} description={rule.description} locked />
@@ -193,6 +254,41 @@ export const RetouchMatrix = ({
     </MatrixTable>
   );
 };
+
+const SkeletonRow = ({
+  label,
+  description,
+  span
+}: {
+  label: string;
+  description: string;
+  span: number;
+}) => (
+  <tr>
+    <RowHead label={label} description={description} />
+    <td colSpan={span} className="border-b px-3 py-2">
+      <Skeleton className="h-8 w-full rounded-md" />
+    </td>
+  </tr>
+);
+
+/** One row standing for a whole section the viewer may not read (`label` lists what it hides). */
+const UnreadableRow = ({ label, note, span }: { label: string; note: string; span: number }) => (
+  <tr>
+    <th
+      scope="row"
+      className="sticky left-0 z-10 border-r border-b bg-surface px-3 py-3 text-left font-normal md:px-4"
+    >
+      {label}
+    </th>
+    <td colSpan={span} className="border-b px-3 py-3 text-left text-[13px] text-foreground-muted">
+      <span className="flex items-center gap-2">
+        <Lock className="size-3.5 shrink-0 text-foreground-subtle" aria-hidden="true" />
+        {note}
+      </span>
+    </td>
+  </tr>
+);
 
 const scopeDotClass: Record<JobPermissionScope, string> = {
   none: "bg-foreground-subtle",

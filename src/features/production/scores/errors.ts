@@ -7,7 +7,7 @@ import { productionErrorMessage } from "../errors";
  * leave services). Unknown codes fall back to the production map, then the shared one.
  */
 const messages: Record<string, string> = {
-  SCORES_PRIVATE: "Bảng điểm chung đang để riêng tư.",
+  SCORES_PRIVATE: "Bạn không có quyền xem điểm của người khác.",
   SCORE_USER_NOT_FOUND: "Không tìm thấy nhân viên này trong Photo Retouch.",
   INVALID_RANGE: "Khoảng thời gian không hợp lệ.",
   KPI_PERIOD_INVALID:
@@ -18,7 +18,8 @@ const messages: Record<string, string> = {
   LEAVE_NOT_FOUND: "Không tìm thấy đơn nghỉ. Có thể đơn đã bị xóa.",
   LEAVE_OVERLAP: "Bạn đã có đơn nghỉ (đang chờ duyệt hoặc đã duyệt) trùng thời gian này.",
   LEAVE_NOT_PENDING: "Đơn nghỉ này đã được xử lý.",
-  LEAVE_ALREADY_STARTED: "Đơn nghỉ đã diễn ra nên không thể hủy — chỉ hủy được đơn nghỉ từ ngày mai trở đi.",
+  LEAVE_ALREADY_STARTED:
+    "Đơn nghỉ đã diễn ra nên không thể hủy — chỉ hủy được đơn nghỉ từ ngày mai trở đi.",
   LEAVE_NOT_CANCELLABLE: "Đơn nghỉ này đã bị từ chối hoặc đã hủy.",
   LEAVE_DATE_INVALID: "Ngày nghỉ không hợp lệ.",
   LEAVE_RANGE_INVALID: "Ngày kết thúc phải sau hoặc trùng ngày bắt đầu.",

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { RequireProductionRole } from "@/features/production/components/production-gate";
+import { RequireProductionFeature } from "@/features/production/components/production-gate";
 import { formatDay, todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
 import {
@@ -33,15 +33,15 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 const windows = [7, 30, 90, 180] as const;
 
 /**
- * /production/anomalies — anomalies report (SPEC Phase 5 §5, PLAN §10). LEADER: tasks of the jobs they
- * lead; ADMIN: every job. Tabs per kind with unreviewed counts, rows link to the task / job, "Đã xem"
+ * /production/anomalies — anomalies report (SPEC Phase 5 §5, PLAN §10), for whoever holds the "Bất thường" feature
+ * (PD-065; Director by default). ADMIN / DIRECTOR: every job; anyone else: tasks of the jobs they lead. Tabs per kind with unreviewed counts, rows link to the task / job, "Đã xem"
  * (optional note) hides a row until it changes again; "Bỏ đã xem" for whoever marked it (or ADMIN).
  * Filters in the URL. The Leader dashboard shows the same list in its "Bất thường" tab.
  */
 export const ProductionAnomaliesRoute = () => (
-  <RequireProductionRole roles={["LEADER"]}>
+  <RequireProductionFeature feature="anomalies">
     <AnomaliesPage />
-  </RequireProductionRole>
+  </RequireProductionFeature>
 );
 
 const AnomaliesPage = () => {
@@ -99,7 +99,7 @@ const AnomaliesPage = () => {
         description={
           breakpoint === "mobile"
             ? undefined
-            : access.isAdmin
+            : access.seesEveryJob
               ? "Những điểm cần kiểm tra trên mọi job. Bấm “Đã xem” để ẩn mục đã xử lý."
               : "Những điểm cần kiểm tra trên các job bạn phụ trách. Bấm “Đã xem” để ẩn mục đã xử lý."
         }

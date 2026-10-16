@@ -10,6 +10,10 @@ export const personScoresPath = (userId: string, meId: string, period: string | 
   return period ? `${base}?period=${encodeURIComponent(period)}` : base;
 };
 
+/** "Bảng điểm của tôi", keeping a period other than the current one. */
+export const myScoresPath = (period: string | null = null) =>
+  period ? `/production/scores?period=${encodeURIComponent(period)}` : "/production/scores";
+
 /** The ranking ("Xếp hạng"), keeping a period other than the current one. */
 export const boardPath = (period: string | null = null) =>
   period

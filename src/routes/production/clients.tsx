@@ -2,7 +2,7 @@ import { motion } from "motion/react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ClientsPanel } from "@/features/production/components/clients-panel";
-import { RequireProductionRole } from "@/features/production/components/production-gate";
+import { RequireProductionFeature } from "@/features/production/components/production-gate";
 import {
   ConfigReadOnlyNote,
   PageIntro,
@@ -12,12 +12,13 @@ import { useCanEditProductionConfig } from "@/features/production/config-access"
 
 /**
  * /production/clients — the Account's client list (SPEC Phase 0 menu: ACCOUNT → Clients). PD-050: read-only for
- * everyone but the organization superadmin; this page has no PageIntro, so it shows the read-only note itself.
+ * everyone but the organization superadmin; this page has no PageIntro, so it shows the read-only note itself. Opens for
+ * whoever holds the "Khách hàng" feature (PD-065).
  */
 export const ProductionClientsRoute = () => {
   const canEdit = useCanEditProductionConfig();
   return (
-    <RequireProductionRole roles={["ACCOUNT"]}>
+    <RequireProductionFeature feature="clients">
       <div className="flex h-full min-h-0 flex-col">
         <PageHeader
           eyebrow="Photo Retouch"
@@ -36,7 +37,7 @@ export const ProductionClientsRoute = () => {
           </motion.div>
         </div>
       </div>
-    </RequireProductionRole>
+    </RequireProductionFeature>
   );
 };
 

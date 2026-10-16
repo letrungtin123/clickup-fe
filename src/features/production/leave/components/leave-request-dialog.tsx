@@ -35,9 +35,10 @@ import {
 import { useCreateLeave } from "../hooks";
 
 /**
- * "Xin nghỉ" (SPEC §6.3): dates, part of day (half days only for a single day) and the required
- * reason (PD-057 — it goes on the payroll attendance export). Limits come from the contract's
- * leaveLimits; the server validates again. The request starts PENDING until Quản trị decides.
+ * "Xin nghỉ" (SPEC §6.3): dates, part of day (half days only for a single day) and an optional reason
+ * (PD-065; when given it goes on the payroll attendance export). Limits come from the contract's
+ * leaveLimits; the server validates again. The request starts PENDING until someone holding "Duyệt lịch
+ * nghỉ" decides.
  */
 export const LeaveRequestDialog = ({
   open,
@@ -59,15 +60,14 @@ export const LeaveRequestDialog = ({
   const [toDate, setToDate] = useState(start);
   const [part, setPart] = useState<LeavePart>("FULL_DAY");
   const [note, setNote] = useState("");
-  // The reason's inline message shows once the field was left or a submit was tried.
-  const [noteTouched, setNoteTouched] = useState(false);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   const singleDay = fromDate === toDate;
   const draft = { fromDate, toDate, part: singleDay ? part : "FULL_DAY", note } as const;
   const days = draftDays(draft);
-  const noteProblem = noteTouched ? leaveNoteError(note) : null;
+  // Optional reason (PD-065): only its length can be wrong; the textarea's maxLength already caps it.
+  const noteProblem = leaveNoteError(note);
 
   const close = (next: boolean) => {
     if (!next && create.isPending) return;
@@ -77,18 +77,18 @@ export const LeaveRequestDialog = ({
   const submit = () => {
     const problem = validateLeaveDates(draft, today);
     setError(problem);
-    if (leaveNoteError(note)) {
-      setNoteTouched(true);
+    if (noteProblem) {
       if (!problem) noteRef.current?.focus();
       return;
     }
     if (problem) return;
+    const reason = note.trim();
     create.mutate(
       {
         fromDate: draft.fromDate,
         toDate: draft.toDate,
         part: draft.part,
-        note: note.trim()
+        ...(reason ? { note: reason } : {})
       },
       {
         onSuccess: (request) => {
@@ -108,7 +108,8 @@ export const LeaveRequestDialog = ({
         <DialogHeader>
           <DialogTitle>Xin nghỉ</DialogTitle>
           <DialogDescription>
-            Quản trị duyệt đơn; mọi người chỉ thấy tên và ngày nghỉ, không thấy lý do.
+            Đơn chờ người có quyền Duyệt lịch nghỉ duyệt; mọi người chỉ thấy tên và ngày nghỉ, không
+            thấy lý do.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -170,18 +171,18 @@ export const LeaveRequestDialog = ({
             ) : null}
           </Field>
           <Field data-invalid={noteProblem ? true : undefined}>
-            <FieldLabel htmlFor={`${ids}-note`}>Lý do nghỉ</FieldLabel>
+            <FieldLabel htmlFor={`${ids}-note`}>
+              Lý do nghỉ <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
+            </FieldLabel>
             <Textarea
               ref={noteRef}
               id={`${ids}-note`}
               rows={3}
-              required
               maxLength={leaveLimits.noteMaxLength}
               value={note}
               placeholder="Ví dụ: Việc gia đình, khám bệnh…"
               aria-invalid={noteProblem ? true : undefined}
               aria-describedby={`${ids}-note-help`}
-              onBlur={() => setNoteTouched(true)}
               onChange={(event) => setNote(event.target.value)}
             />
             {noteProblem ? (

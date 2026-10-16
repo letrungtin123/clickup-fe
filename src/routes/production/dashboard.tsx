@@ -24,7 +24,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RequireProductionRole } from "@/features/production/components/production-gate";
+import { RequireProductionFeature } from "@/features/production/components/production-gate";
 import { formatDay, formatInteger } from "@/features/production/format";
 import {
   useProductionAccess,
@@ -53,14 +53,15 @@ const ALL = "__all";
 
 /**
  * /production/dashboard — Leader dashboard (SPEC Phase 5 §2): late (red) and due-soon (amber) tasks of
- * the jobs the leader leads, today's workload of every worker, team points per week. ADMIN sees every
- * job or picks a leader (`?leader=`). "Bất thường" tab (`?tab=anomalies`, SPEC Phase 5.5): the unreviewed
- * anomalies of the leader's jobs. Refreshes every minute and on `production:changed`.
+ * the jobs the leader leads, today's workload of every worker, team points per week. For whoever holds the "Bảng điều
+ * khiển" feature (PD-065). ADMIN and DIRECTOR see every job or pick a leader (`?leader=`). "Bất thường"
+ * tab (`?tab=anomalies`, SPEC Phase 5.5) and button: the unreviewed anomalies, only with the "Bất thường" feature.
+ * Refreshes every minute and on `production:changed`.
  */
 export const ProductionDashboardRoute = () => (
-  <RequireProductionRole roles={["LEADER"]}>
+  <RequireProductionFeature feature="leader_dashboard">
     <LeaderDashboardPage />
-  </RequireProductionRole>
+  </RequireProductionFeature>
 );
 
 const LeaderDashboardPage = () => {
@@ -68,14 +69,16 @@ const LeaderDashboardPage = () => {
   const me = useProductionMe();
   const breakpoint = useBreakpoint();
   const [params, setParams] = useSearchParams();
-  const isAdmin = access.isAdmin;
+  // PD-065: ADMIN and DIRECTOR see every job and may pick one leader (`?leader=`).
+  const everyJob = access.seesEveryJob;
+  const withAnomalies = access.hasFeature("anomalies");
   const leaderParam = params.get("leader");
-  const leaderId = isAdmin && leaderParam && uuidPattern.test(leaderParam) ? leaderParam : null;
-  const tab = params.get("tab") === "anomalies" ? "anomalies" : "overview";
+  const leaderId = everyJob && leaderParam && uuidPattern.test(leaderParam) ? leaderParam : null;
+  const tab = withAnomalies && params.get("tab") === "anomalies" ? "anomalies" : "overview";
   const dashboard = useLeaderDashboard(leaderId, tab === "overview");
-  const anomalies = useAnomalies(leaderAnomalyDays, false);
+  const anomalies = useAnomalies(leaderAnomalyDays, false, withAnomalies);
   const anomalyCount = unreviewedTotal(anomalies.data?.counts);
-  const members = useProductionMembers(isAdmin);
+  const members = useProductionMembers(everyJob);
   useLiveReports();
 
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
@@ -94,7 +97,7 @@ const LeaderDashboardPage = () => {
   ];
   const selectedLeader = leaders.find((leader) => leader.userId === leaderId) ?? null;
 
-  const scope = isAdmin
+  const scope = everyJob
     ? selectedLeader
       ? `các job do ${selectedLeader.displayName} phụ trách`
       : "mọi job"
@@ -123,106 +126,113 @@ const LeaderDashboardPage = () => {
             {dashboard.isFetching && !dashboard.isPending ? (
               <Spinner className="size-4 text-foreground-muted" aria-label="Đang cập nhật" />
             ) : null}
-            <Button
-              variant="outline"
-              render={<Link to="/production/anomalies" />}
-              nativeButton={false}
-            >
-              <ScanSearch />
-              <span className="max-sm:sr-only">Bất thường</span>
-            </Button>
+            {withAnomalies ? (
+              <Button
+                variant="outline"
+                render={<Link to="/production/anomalies" />}
+                nativeButton={false}
+              >
+                <ScanSearch />
+                <span className="max-sm:sr-only">Bất thường</span>
+              </Button>
+            ) : null}
             {/* "Báo cáo" is hidden for now (owner, 2026-10-16), like its menu entry in features/production/nav.ts. */}
           </div>
         }
       >
-        <div className="flex flex-col gap-2">
-          {isAdmin ? (
-            <div className={`flex items-center gap-2 ${touchTargets}`}>
-              <span className="text-xs text-foreground-muted">Xem theo Leader</span>
-              <Select
-                items={leaderItems}
-                value={leaderId ?? ALL}
-                onValueChange={(next: string | null) =>
+        {everyJob || withAnomalies ? (
+          <div className="flex flex-col gap-2">
+            {everyJob ? (
+              <div className={`flex items-center gap-2 ${touchTargets}`}>
+                <span className="text-xs text-foreground-muted">Xem theo Leader</span>
+                <Select
+                  items={leaderItems}
+                  value={leaderId ?? ALL}
+                  onValueChange={(next: string | null) =>
+                    setParams(
+                      (previous) => {
+                        const nextParams = new URLSearchParams(previous);
+                        if (!next || next === ALL) nextParams.delete("leader");
+                        else nextParams.set("leader", next);
+                        return nextParams;
+                      },
+                      { replace: true }
+                    )
+                  }
+                >
+                  <SelectTrigger size="sm" className="min-w-44" aria-label="Chọn Leader">
+                    <SelectValue>
+                      {selectedLeader ? (
+                        <span className="flex min-w-0 items-center gap-2">
+                          <UserAvatar
+                            user={{
+                              id: selectedLeader.userId,
+                              displayName: selectedLeader.displayName,
+                              avatarUrl: selectedLeader.avatarUrl
+                            }}
+                            size="xs"
+                          />
+                          <span className="truncate">{selectedLeader.displayName}</span>
+                        </span>
+                      ) : (
+                        "Mọi job"
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {leaderItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            {/* The "Bất thường" tab needs its feature (PD-065); without it there is nothing to switch to. */}
+            {withAnomalies ? (
+              <Tabs
+                value={tab}
+                onValueChange={(value) =>
                   setParams(
                     (previous) => {
                       const nextParams = new URLSearchParams(previous);
-                      if (!next || next === ALL) nextParams.delete("leader");
-                      else nextParams.set("leader", next);
+                      if (value === "anomalies") nextParams.set("tab", "anomalies");
+                      else nextParams.delete("tab");
                       return nextParams;
                     },
                     { replace: true }
                   )
                 }
               >
-                <SelectTrigger size="sm" className="min-w-44" aria-label="Chọn Leader">
-                  <SelectValue>
-                    {selectedLeader ? (
-                      <span className="flex min-w-0 items-center gap-2">
-                        <UserAvatar
-                          user={{
-                            id: selectedLeader.userId,
-                            displayName: selectedLeader.displayName,
-                            avatarUrl: selectedLeader.avatarUrl
-                          }}
-                          size="xs"
-                        />
-                        <span className="truncate">{selectedLeader.displayName}</span>
+                <TabsList variant="line" className="-mb-3 h-9">
+                  <TabsTrigger value="overview" className="max-sm:min-h-10">
+                    Tổng quan
+                  </TabsTrigger>
+                  <TabsTrigger value="anomalies" className="gap-1.5 max-sm:min-h-10">
+                    Bất thường
+                    {anomalyCount > 0 ? (
+                      <span
+                        className="min-w-5 rounded-full bg-danger-soft px-1.5 text-[11px] font-semibold text-danger tabular-nums"
+                        aria-label={`${anomalyCount} mục chưa xem`}
+                      >
+                        {anomalyCount}
                       </span>
-                    ) : (
-                      "Mọi job"
-                    )}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {leaderItems.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-          <Tabs
-            value={tab}
-            onValueChange={(value) =>
-              setParams(
-                (previous) => {
-                  const nextParams = new URLSearchParams(previous);
-                  if (value === "anomalies") nextParams.set("tab", "anomalies");
-                  else nextParams.delete("tab");
-                  return nextParams;
-                },
-                { replace: true }
-              )
-            }
-          >
-            <TabsList variant="line" className="-mb-3 h-9">
-              <TabsTrigger value="overview" className="max-sm:min-h-10">
-                Tổng quan
-              </TabsTrigger>
-              <TabsTrigger value="anomalies" className="gap-1.5 max-sm:min-h-10">
-                Bất thường
-                {anomalyCount > 0 ? (
-                  <span
-                    className="min-w-5 rounded-full bg-danger-soft px-1.5 text-[11px] font-semibold text-danger tabular-nums"
-                    aria-label={`${anomalyCount} mục chưa xem`}
-                  >
-                    {anomalyCount}
-                  </span>
-                ) : null}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+                    ) : null}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            ) : null}
+          </div>
+        ) : null}
       </PageHeader>
       <PageBody className="max-w-7xl">
         {tab === "anomalies" ? (
           <LeaderAnomaliesPanel
             timeZone={timeZone}
-            scope={isAdmin ? "mọi job" : "các job bạn phụ trách"}
+            scope={everyJob ? "mọi job" : "các job bạn phụ trách"}
             note={
-              isAdmin && selectedLeader
+              everyJob && selectedLeader
                 ? "Danh sách này chưa lọc theo Leader đang chọn."
                 : undefined
             }

@@ -64,7 +64,9 @@ describe("leave export errors", () => {
   it("maps any 403 to the Quản trị-only message", () => {
     const forbidden = new ApiError({ status: 403, code: "FORBIDDEN", message: "Forbidden" });
     expect(leaveExportErrorMessage(forbidden)).toBe(LEAVE_EXPORT_FORBIDDEN);
-    expect(LEAVE_EXPORT_FORBIDDEN).toBe("Chỉ Quản trị mới xuất được bảng chấm công nghỉ phép.");
+    expect(LEAVE_EXPORT_FORBIDDEN).toBe(
+      "Bạn không có quyền Duyệt lịch nghỉ nên không xuất được bảng chấm công nghỉ phép."
+    );
   });
 
   it("keeps the server's wording of the window limit, the leave copy for other codes", () => {

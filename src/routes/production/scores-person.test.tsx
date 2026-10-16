@@ -49,6 +49,7 @@ const me = {
   isAdmin: false,
   teamId: null,
   jobPermissions: { view: "all", create: "none", update: "own", delete: "none" },
+  features: ["qc_queue", "view_others_scores"],
   settings: {
     timezone: "Asia/Ho_Chi_Minh",
     kpiCloseDay: 25,
@@ -217,14 +218,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PD-052 — the ranking for every member", () => {
-  it("the menu shows Xếp hạng even though scoresPublic is off", async () => {
+describe("PD-052 — the ranking (hidden from the menu, owner 2026-10-16)", () => {
+  it("the menu has Bảng điểm but no Xếp hạng; the route still works by URL", async () => {
     const { result } = renderHook(() => useProductionNavEntries(), {
       wrapper: ({ children }) => wrap(children, "/production")
     });
     await waitFor(() =>
-      expect(result.current.map((entry) => entry.to)).toContain("/production/scores/board")
+      expect(result.current.map((entry) => entry.to)).toContain("/production/scores")
     );
+    expect(result.current.map((entry) => entry.to)).not.toContain("/production/scores/board");
+    render(wrap(<ProductionScoreBoardRoute />, "/production/scores/board"));
+    expect(await screen.findByRole("table")).toBeTruthy();
+  });
+
+  it("needs “Xem điểm người khác” (PD-065)", async () => {
+    vi.mocked(productionApi.me).mockResolvedValue({ ...me, features: ["qc_queue"] });
+    render(wrap(<ProductionScoreBoardRoute />, "/production/scores/board"));
+    expect(await screen.findByText("Bạn không có quyền xem trang này")).toBeTruthy();
+    expect(screen.getByText(/Xem điểm người khác/)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("each board row opens that person's Điểm cá nhân; your own row opens Bảng điểm của tôi", async () => {
@@ -265,9 +277,19 @@ describe("PD-052 — Điểm cá nhân", () => {
     expect(screen.getByText("Khoán trong kỳ")).toBeTruthy();
     expect(screen.queryByText("Tiền Khoán tạm tính")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Tiền" })).toBeNull();
-    expect(screen.getByText("Xếp hạng").closest("a")?.getAttribute("data-to")).toBe(
-      "/production/scores/board"
+    // The ranking is hidden: the way back is Bảng điểm, and no second "Bảng điểm của tôi" button.
+    expect(screen.getByText("Bảng điểm").closest("a")?.getAttribute("data-to")).toBe(
+      "/production/scores"
     );
+    expect(screen.queryByText("Xếp hạng")).toBeNull();
+    expect(screen.queryByText("Bảng điểm của tôi")).toBeNull();
+  });
+
+  it("another person's scores need “Xem điểm người khác” (PD-065)", async () => {
+    vi.mocked(productionApi.me).mockResolvedValue({ ...me, features: [] });
+    renderPerson(otherId);
+    expect(await screen.findByText("Bạn không có quyền xem trang này")).toBeTruthy();
+    expect(scoresApi.user).not.toHaveBeenCalled();
   });
 
   it("Kết quả chốt asks the KPI API for that person only", async () => {
@@ -288,6 +310,9 @@ describe("PD-052 — Điểm cá nhân", () => {
     );
     renderPerson(otherId);
     expect(await screen.findByText("Không tìm thấy nhân viên")).toBeTruthy();
+    expect(screen.getByText("Về Bảng điểm").closest("a")?.getAttribute("data-to")).toBe(
+      "/production/scores"
+    );
   });
 
   it("your own id goes to Bảng điểm của tôi", async () => {

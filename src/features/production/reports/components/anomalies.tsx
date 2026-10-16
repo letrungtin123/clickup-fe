@@ -207,7 +207,8 @@ const ReviewButton = ({ item }: { item: Anomaly }) => {
   const unreview = useUnreviewAnomaly();
   const session = useSessionContext();
   const access = useProductionAccess();
-  const canUndo = canUndoReview(item, { userId: session.user.id, isAdmin: access.isAdmin });
+  // PD-065: ADMIN and DIRECTOR undo anyone's review (they see every job).
+  const canUndo = canUndoReview(item, { userId: session.user.id, isAdmin: access.seesEveryJob });
 
   const undo = async () => {
     try {

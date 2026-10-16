@@ -57,7 +57,7 @@ type Decision = "APPROVED" | "REJECTED";
 /**
  * One leave request with the actions the API allows (`canCancel`, `canDecide`). Notes are only
  * present when the caller may read them (owner, LEADER/ADMIN). In the approval queue a pending
- * request the viewer may not decide shows “Chỉ Quản trị duyệt đơn nghỉ.” instead (PD-057).
+ * request the viewer may not decide shows ADMIN_ONLY_DECISION instead (PD-057, PD-065).
  */
 export const LeaveRequestRow = ({
   request,
@@ -178,11 +178,11 @@ export const DecideDialog = ({
           );
           onClose();
         },
-        // PD-057: only Quản trị decides (a role changed since the page loaded).
+        // PD-057 / PD-065: only "Duyệt lịch nghỉ" decides (a permission changed since the page loaded).
         onError: (failure) =>
           setError(
             isApiError(failure) && failure.status === 403
-              ? "Chỉ Quản trị mới duyệt được đơn nghỉ."
+              ? "Bạn không có quyền Duyệt lịch nghỉ nên không duyệt được đơn nghỉ."
               : scoreErrorMessage(failure)
           )
       }

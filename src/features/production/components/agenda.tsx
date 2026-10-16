@@ -13,7 +13,7 @@ import { useMemo } from "react";
 import { Link } from "@/components/shared/router-link";
 import { ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ProductionRole } from "@/contracts/production-catalog";
+import type { FeaturePermissionKey, ProductionRole } from "@/contracts/production-catalog";
 import {
   JobStatusChip,
   LateBadge,
@@ -64,6 +64,7 @@ export const HomeProductionAgenda = () => {
   return (
     <ProductionAgenda
       roles={me.data.roles}
+      features={me.data.features}
       timeZone={me.data.settings.timezone}
       withMyTasks={false}
     />
@@ -84,23 +85,30 @@ const ProductionAgendaFallback = () => (
 const taskRoles: readonly ProductionRole[] = ["STAFF", "QC", "LEADER"];
 
 /**
- * What needs doing now, per role: my open tasks (Staff / QC / Leader), the QC queue (QC) and late
- * jobs (Leader / Account / Admin, who all see every job). `withMyTasks: false` (the module overview, owner
+ * What needs doing now, per role: my open tasks (Staff / QC / Leader), the QC queue (QC holding the "Hàng chờ QC"
+ * feature, PD-065; `features` unknown → the role alone) and late jobs (Leader / Account / Admin / Director, who all see
+ * every job). `withMyTasks: false` (the module overview, owner
  * 2026-10-16) leaves "Việc của tôi" out — it is a sidebar page of its own — and lays the other cards out in a grid.
  */
 export const ProductionAgenda = ({
   roles,
+  features,
   timeZone,
   withMyTasks = true
 }: {
   roles: readonly ProductionRole[];
+  /** The caller's features (`/production/me`, PD-065). */
+  features?: readonly FeaturePermissionKey[] | undefined;
   timeZone: string;
   withMyTasks?: boolean;
 }) => {
   const hasTasks = roles.some((role) => taskRoles.includes(role));
-  const isQc = roles.includes("QC");
+  const isQc = roles.includes("QC") && (features?.includes("qc_queue") ?? true);
   const watchesJobs =
-    roles.includes("LEADER") || roles.includes("ACCOUNT") || roles.includes("ADMIN");
+    roles.includes("LEADER") ||
+    roles.includes("ACCOUNT") ||
+    roles.includes("ADMIN") ||
+    roles.includes("DIRECTOR");
   if (!hasTasks && !isQc && !watchesJobs) return null;
   if (!withMyTasks) {
     return (

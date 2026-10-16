@@ -100,7 +100,14 @@ describe("lockedRoles", () => {
       { kind: "org-admin", reason: "" },
       { roles: [], viewerIsSuperadmin: false }
     );
-    expect(Object.keys(locked).sort()).toEqual(["ACCOUNT", "ADMIN", "LEADER", "QC", "STAFF"]);
+    expect(Object.keys(locked).sort()).toEqual([
+      "ACCOUNT",
+      "ADMIN",
+      "DIRECTOR",
+      "LEADER",
+      "QC",
+      "STAFF"
+    ]);
     expect(lockedRoles(null, { roles: ["ADMIN"], viewerIsSuperadmin: false })).toEqual({});
   });
 });

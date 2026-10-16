@@ -1,6 +1,5 @@
 import {
   leaveLimits,
-  leaveNoteRequiredMessage,
   type LeavePart,
   type LeaveRequest,
   type LeaveStatus
@@ -138,11 +137,12 @@ export const leaveStatusLabels: Record<LeaveStatus, string> = {
   CANCELLED: "Đã hủy"
 };
 
-export const ADMIN_ONLY_DECISION = "Chỉ Quản trị duyệt đơn nghỉ.";
+/** PD-065: deciding follows the "Duyệt lịch nghỉ" feature (Quản trị by default). */
+export const ADMIN_ONLY_DECISION = "Chỉ người có quyền Duyệt lịch nghỉ mới duyệt đơn.";
 
 /**
- * A pending request the viewer sees in the approval queue but may not decide (PD-057: only Quản trị
- * decides — Leaders only read the queue): "Chỉ Quản trị duyệt đơn nghỉ." replaces Duyệt / Từ chối.
+ * A pending request the viewer sees in the approval queue but may not decide (PD-057 / PD-065: only whoever holds
+ * "Duyệt lịch nghỉ" decides — Leaders read the queue): ADMIN_ONLY_DECISION replaces Duyệt / Từ chối.
  */
 export const showsAdminOnlyNote = (
   request: Pick<LeaveRequest, "status" | "canDecide">,
@@ -205,13 +205,11 @@ export const draftDays = (draft: Pick<LeaveDraft, "fromDate" | "toDate" | "part"
 };
 
 /**
- * The reason field's own problem (PD-057: required, leaveLimits.noteMinLength…noteMaxLength
- * characters once trimmed — the contract's wording), or null.
+ * The reason field's own problem, or null. PD-065: the reason is optional — only its length is checked
+ * (at most leaveLimits.noteMaxLength characters once trimmed, the contract's wording).
  */
 export const leaveNoteError = (note: string): string | null => {
-  const length = note.trim().length;
-  if (length < leaveLimits.noteMinLength) return leaveNoteRequiredMessage;
-  if (length > leaveLimits.noteMaxLength) {
+  if (note.trim().length > leaveLimits.noteMaxLength) {
     return `Lý do nghỉ tối đa ${leaveLimits.noteMaxLength} ký tự.`;
   }
   return null;
@@ -241,8 +239,8 @@ export const validateLeaveDates = (
 };
 
 /**
- * Client-side checks mirroring the server rules (leaveLimits, required reason). Returns the first
- * problem as Vietnamese copy (dates first, then the reason), or null. The server validates again.
+ * Client-side checks mirroring the server rules (leaveLimits; the reason is optional, PD-065). Returns the
+ * first problem as Vietnamese copy (dates first, then the reason's length), or null. The server validates again.
  */
 export const validateLeaveDraft = (draft: LeaveDraft, today: string): string | null =>
   validateLeaveDates(draft, today) ?? leaveNoteError(draft.note);

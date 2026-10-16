@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   CreateLeaveRequestSchema,
   leaveLimits,
-  leaveNoteRequiredMessage,
   type LeaveRequest
 } from "@/contracts/production-leave";
 
@@ -191,46 +190,50 @@ describe("request form", () => {
     ).toMatch(/trước tối đa/);
   });
 
-  it("requires a reason of at least 3 characters once trimmed (PD-057)", () => {
+  it("the reason is optional, only its length is checked (PD-065)", () => {
     const draft = { fromDate: today, toDate: today, part: "FULL_DAY" as const, note: "" };
-    expect(validateLeaveDraft(draft, today)).toBe(leaveNoteRequiredMessage);
-    expect(leaveNoteRequiredMessage).toBe("Nhập lý do nghỉ (ít nhất 3 ký tự).");
-    expect(leaveNoteError("")).toBe(leaveNoteRequiredMessage);
-    expect(leaveNoteError("ab")).toBe(leaveNoteRequiredMessage);
-    expect(leaveNoteError("   ab   ")).toBe(leaveNoteRequiredMessage);
-    expect(leaveNoteError(" Ốm ")).toBe(leaveNoteRequiredMessage);
-    expect(leaveNoteError("Ốm!")).toBeNull();
-    expect(leaveNoteError("Khám bệnh")).toBeNull();
+    expect(validateLeaveDraft(draft, today)).toBeNull();
+    expect(validateLeaveDraft({ ...draft, note: "   " }, today)).toBeNull();
+    expect(leaveNoteError("")).toBeNull();
+    expect(leaveNoteError("ab")).toBeNull();
+    expect(leaveNoteError(" Ốm ")).toBeNull();
     expect(leaveNoteError("x".repeat(leaveLimits.noteMaxLength))).toBeNull();
+    // Surrounding spaces do not count.
+    expect(leaveNoteError(`  ${"x".repeat(leaveLimits.noteMaxLength)}  `)).toBeNull();
     expect(leaveNoteError("x".repeat(leaveLimits.noteMaxLength + 1))).toBe(
       "Lý do nghỉ tối đa 1000 ký tự."
     );
-    expect(validateLeaveDraft({ ...draft, note: "Việc gia đình" }, today)).toBeNull();
-    // Date problems come first; the reason is checked on its own by the dialog.
+    expect(validateLeaveDraft({ ...draft, note: "x".repeat(1001) }, today)).toBe(
+      "Lý do nghỉ tối đa 1000 ký tự."
+    );
+    // Date problems come first.
     expect(validateLeaveDraft({ ...draft, toDate: shiftDay(today, -1) }, today)).toMatch(
       /Ngày kết thúc/
     );
     expect(validateLeaveDates(draft, today)).toBeNull();
   });
 
-  it("matches the contract's required reason", () => {
+  it("matches the contract: no reason, a blank one or a short one are fine; the rest trimmed", () => {
     const base = { fromDate: today, toDate: today, part: "FULL_DAY" as const };
-    expect(CreateLeaveRequestSchema.safeParse({ ...base, note: "  ab " }).success).toBe(false);
-    expect(CreateLeaveRequestSchema.safeParse(base).success).toBe(false);
-    const parsed = CreateLeaveRequestSchema.safeParse({ ...base, note: "  Khám bệnh  " });
-    expect(parsed.success && parsed.data.note).toBe("Khám bệnh");
-    // The dialog and the contract say the same thing.
-    const short = CreateLeaveRequestSchema.safeParse({ ...base, note: "ab" });
-    expect(short.error?.issues[0]?.message).toBe(leaveNoteError("ab"));
+    const none = CreateLeaveRequestSchema.safeParse(base);
+    expect(none.success && none.data.note).toBeNull();
+    const blank = CreateLeaveRequestSchema.safeParse({ ...base, note: "   " });
+    expect(blank.success && blank.data.note).toBeNull();
+    const nulled = CreateLeaveRequestSchema.safeParse({ ...base, note: null });
+    expect(nulled.success && nulled.data.note).toBeNull();
+    const short = CreateLeaveRequestSchema.safeParse({ ...base, note: "  ab " });
+    expect(short.success && short.data.note).toBe("ab");
+    // The dialog and the contract say the same thing about a reason that is too long.
     const long = CreateLeaveRequestSchema.safeParse({ ...base, note: "x".repeat(1001) });
     expect(long.error?.issues[0]?.message).toBe(leaveNoteError("x".repeat(1001)));
   });
 });
 
 describe("approval (PD-057)", () => {
-  it("shows “Chỉ Quản trị duyệt đơn nghỉ.” only on queued pending requests the viewer cannot decide", () => {
+  it("shows the approver note only on queued pending requests the viewer cannot decide", () => {
     const pending = request({ status: "PENDING", canDecide: false });
-    expect(ADMIN_ONLY_DECISION).toBe("Chỉ Quản trị duyệt đơn nghỉ.");
+    // PD-065: deciding follows the "Duyệt lịch nghỉ" feature.
+    expect(ADMIN_ONLY_DECISION).toBe("Chỉ người có quyền Duyệt lịch nghỉ mới duyệt đơn.");
     expect(showsAdminOnlyNote(pending, true)).toBe(true);
     expect(showsAdminOnlyNote(pending, false)).toBe(false);
     expect(showsAdminOnlyNote({ ...pending, canDecide: true }, true)).toBe(false);
