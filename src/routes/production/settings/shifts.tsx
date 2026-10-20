@@ -46,11 +46,12 @@ const payModeLabels: Record<PayMode, string> = {
 const payModeHelp: Record<PayMode, string> = {
   POINTS: "Chỉ ghi điểm và cộng vào KPI tháng (ca chính thức, OT).",
   MONEY_IF_KPI:
-    "Hiện song song điểm và tiền tạm tính; khi chốt KPI, tiền được trả theo chính sách Khoán ở Cài đặt chung (luôn trả, hoặc chỉ khi đạt KPI)."
+    "Tính tiền theo đơn giá (không hiện điểm). Khi chốt KPI: thiếu KPI bao nhiêu thì bù từ Khoán bấy nhiêu, phần Khoán còn lại được trả tiền."
 };
 
 /**
- * Work shifts and how they pay (PLAN §5): points, or Khoán money (paid per settings.khoanPayPolicy, PD-033).
+ * Work shifts and how they pay (PLAN §5): points, or Khoán money (PD-066: shown as money only; at the KPI close a
+ * shortfall is topped up from the Khoán work and the rest is paid).
  * PD-050: only the organization superadmin adds, edits, reorders or archives shifts; everyone else reads them.
  */
 export const ProductionShiftsRoute = () => {
@@ -185,9 +186,7 @@ export const ProductionShiftsRoute = () => {
             icon={CalendarClock}
             title="Chưa có ca làm"
             description={
-              canEdit
-                ? "Thêm ca chính thức, OT (tính điểm) và ca khoán (có tiền, trả theo chính sách Khoán)."
-                : undefined
+              canEdit ? "Thêm ca chính thức, OT (tính điểm) và ca Khoán (tính tiền)." : undefined
             }
             action={
               canEdit ? (

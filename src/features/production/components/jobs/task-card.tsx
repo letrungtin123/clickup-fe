@@ -6,7 +6,7 @@ import type { CustomField } from "@/contracts/production-catalog";
 import type { ProductionTask, TaskTransitionOption } from "@/contracts/production-jobs";
 import { toneClass } from "@/lib/colors";
 
-import { formatCredit, formatInteger } from "../../format";
+import { formatInteger } from "../../format";
 import {
   formatDateTime,
   formatWorkDay,
@@ -168,7 +168,7 @@ export const TaskCard = memo(function TaskCard({
             title={`Điểm của tôi: ${credits.detail}`}
           >
             <Coins className="size-3" aria-hidden="true" />
-            {formatCredit(credits.credits)} điểm{credits.khoan ? " Khoán" : ""}
+            {credits.label}
             <span className="sr-only"> của tôi</span>
           </span>
         ) : null}

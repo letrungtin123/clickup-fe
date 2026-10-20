@@ -22,7 +22,7 @@ const renderMatrix = (props: Partial<Parameters<typeof RetouchMatrix>[0]> = {}) 
       unreadableNote="Chỉ Quản trị xem được."
       onScope={vi.fn()}
       onFeature={vi.fn()}
-      featureRows={retouchFeatureRows({ moneyPublic: false })}
+      featureRows={retouchFeatureRows()}
       rules={retouchFixedRules()}
       {...props}
     />

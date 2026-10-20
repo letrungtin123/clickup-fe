@@ -81,10 +81,22 @@ export type ChangePlan = {
   scores: boolean;
 };
 
+/**
+ * Whether paged data holds one of `ids`. Entries under a list prefix that are not paged (the job List view counts,
+ * PD-067, sit under the job lists' key) hold nothing.
+ */
 const pagesContain = (
   data: { pages: { items: { id: string }[] }[] } | undefined,
   ids: ReadonlySet<string>
-) => Boolean(data?.pages.some((page) => page.items.some((item) => ids.has(item.id))));
+) => {
+  const pages: unknown = data?.pages;
+  return (
+    Array.isArray(pages) &&
+    (pages as { items: { id: string }[] }[]).some((page) =>
+      page.items.some((item) => ids.has(item.id))
+    )
+  );
+};
 
 const pageHolds = (data: { items: { id: string }[] } | undefined, ids: ReadonlySet<string>) =>
   Boolean(data?.items.some((item) => ids.has(item.id)));
@@ -321,7 +333,14 @@ export const patchJobInPages = (
     pages: data.pages.map((page) => ({
       ...page,
       items: page.items.map((item) =>
-        item.id === summary.id ? { ...summary, personShare: item.personShare } : item
+        item.id === summary.id
+          ? {
+              ...summary,
+              personShare: item.personShare,
+              // PD-070: a per-person row's points are the person's only — the job's own total never replaces them.
+              pointsOfficial: item.personShare ? item.pointsOfficial : summary.pointsOfficial
+            }
+          : item
       )
     }))
   };

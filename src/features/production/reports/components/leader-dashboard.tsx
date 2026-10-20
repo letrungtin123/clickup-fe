@@ -487,10 +487,10 @@ export const WorkloadPanel = ({
 
 // Team points ----------------------------------------------------------------------------------------
 
+/** PD-066: official points only — Khoán work is money, never charted as points. */
 export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["teamPoints"] }) => {
-  const [key, setKey] = useState<"points" | "pointsKhoan">("points");
-  const model = useMemo(() => teamPointsModel(teamPoints, key), [teamPoints, key]);
-  const empty = teamPoints.series.every((series) => series[key].every((value) => value === 0));
+  const model = useMemo(() => teamPointsModel(teamPoints, "points"), [teamPoints]);
+  const empty = teamPoints.series.every((series) => series.points.every((value) => value === 0));
   return (
     <section
       aria-labelledby="team-points-title"
@@ -502,24 +502,9 @@ export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["t
             Điểm team theo tuần
           </h2>
           <p className="text-xs text-foreground-muted">
-            8 tuần gần nhất, tính theo ngày ghi điểm (tuần bắt đầu thứ Hai).
+            Điểm chính thức 8 tuần gần nhất, tính theo ngày ghi điểm (tuần bắt đầu thứ Hai).
           </p>
         </div>
-        <ToggleGroup
-          value={[key]}
-          onValueChange={(next: string[]) => next[0] && setKey(next[0] as "points" | "pointsKhoan")}
-          variant="outline"
-          size="sm"
-          spacing={0}
-          aria-label="Loại điểm"
-        >
-          <ToggleGroupItem value="points" className="px-2.5 pointer-coarse:min-h-10">
-            Điểm
-          </ToggleGroupItem>
-          <ToggleGroupItem value="pointsKhoan" className="px-2.5 pointer-coarse:min-h-10">
-            Điểm khoán
-          </ToggleGroupItem>
-        </ToggleGroup>
       </header>
       {empty ? (
         <EmptyState
@@ -531,13 +516,7 @@ export const TeamPointsPanel = ({ teamPoints }: { teamPoints: LeaderDashboard["t
       ) : (
         <div className="p-4">
           <Suspense fallback={<ChartSkeleton />}>
-            <ReportChart
-              model={model}
-              kind="BAR"
-              stacked
-              format="points"
-              measureLabel={key === "points" ? "Điểm" : "Điểm khoán"}
-            />
+            <ReportChart model={model} kind="BAR" stacked format="points" measureLabel="Điểm" />
           </Suspense>
         </div>
       )}

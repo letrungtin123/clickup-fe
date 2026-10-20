@@ -14,6 +14,7 @@
  *   ["production", "allowed-emails"]                         login whitelist
  *   ["me", "notification-preferences"]                       personal (not production-only)
  *   ["production", "jobs", query]                            job list pages (infinite)
+ *   ["production", "jobs", "facets", query]                  job List view counts per month / project (PD-067)
  *   ["production", "job", id] / ["production", "task", id]  job detail / task detail
  *   ["production", "my-tasks", role, includeFinished(, filters)]  my tasks (infinite)
  *   ["production", "qc-queue"(, filters)]                    tasks waiting for my QC
@@ -61,6 +62,14 @@ export const productionKeys = {
     query === undefined
       ? (["production", "jobs"] as const)
       : (["production", "jobs", query] as const),
+  /**
+   * Month / project counts of the job List view (PD-067). Under the job lists' prefix, so whatever refreshes the lists
+   * refreshes them too (the list helpers skip this non-paged entry).
+   */
+  jobFacets: (query?: Record<string, unknown>) =>
+    query === undefined
+      ? (["production", "jobs", "facets"] as const)
+      : (["production", "jobs", "facets", query] as const),
   job: (jobId: string) => ["production", "job", jobId] as const,
   jobAll: () => ["production", "job"] as const,
   task: (taskId: string) => ["production", "task", taskId] as const,

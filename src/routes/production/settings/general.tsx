@@ -24,8 +24,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   isKpiCloseDay,
   kpiCloseDayEndOfMonth,
-  KhoanPayPolicySchema,
-  type KhoanPayPolicy,
   type ProductionSettings
 } from "@/contracts/production-catalog";
 import {
@@ -45,7 +43,7 @@ import {
   todayIn
 } from "@/features/production/format";
 import { useProductionSettings, useUpdateSettings } from "@/features/production/hooks";
-import { khoanPolicyMeta, khoanPolicyOptions } from "@/features/production/kpi/khoan-policy";
+import { khoanPolicyMeta, topUpRule } from "@/features/production/kpi/khoan-policy";
 
 /** Close days offered: 1–28 (every month has them), then 31 = "Cuối tháng" (PD-032). */
 const closeDayItems = [
@@ -85,10 +83,8 @@ const formSchema = z.object({
   kpiDefaultMember: decimalIn(0, 1_000_000, kpiMessage),
   kpiDefaultLeader: decimalIn(0, 1_000_000, kpiMessage),
   kpiProrateLeave: z.boolean(),
-  khoanPayPolicy: KhoanPayPolicySchema,
   /** Retired (PD-052): no control; the stored value is sent back unchanged so the PATCH stays complete. */
   scoresPublic: z.boolean(),
-  moneyPublic: z.boolean(),
   dueSoonHours: intIn(1, 72, "Từ 1 đến 72 giờ."),
   anomalyFailPercent: decimalIn(0, 100, "Từ 0 đến 100%."),
   chatAttachmentsEnabled: z.boolean()
@@ -100,9 +96,7 @@ const toForm = (settings: ProductionSettings): FormValues => ({
   kpiDefaultMember: String(settings.kpiDefaultMember),
   kpiDefaultLeader: String(settings.kpiDefaultLeader),
   kpiProrateLeave: settings.kpiProrateLeave,
-  khoanPayPolicy: settings.khoanPayPolicy,
   scoresPublic: settings.scoresPublic,
-  moneyPublic: settings.moneyPublic,
   dueSoonHours: String(settings.dueSoonHours),
   anomalyFailPercent: String(Math.round(settings.anomalyFailRate * 10_000) / 100),
   chatAttachmentsEnabled: settings.chatAttachmentsEnabled
@@ -112,7 +106,9 @@ const toNumber = (value: string) => Number(value.replace(",", "."));
 
 /**
  * Organization-wide production settings (Admin). Timezone is fixed server-side. PD-050: only the organization
- * superadmin changes them; everyone else reads the values as text (no inputs, switches or save bar).
+ * superadmin changes them; everyone else reads the values as text (no inputs, switches or save bar). PD-066: the Khoán
+ * pay policy and "Công khai tiền công" are no longer settings — the page states the fixed rule (TOP_UP) and who sees
+ * money (the owner, "Xem tiền Khoán người khác").
  */
 export const ProductionGeneralRoute = () => {
   const canEdit = useCanEditProductionConfig();
@@ -175,9 +171,7 @@ const SettingsForm = ({
         kpiDefaultMember: toNumber(values.kpiDefaultMember),
         kpiDefaultLeader: toNumber(values.kpiDefaultLeader),
         kpiProrateLeave: values.kpiProrateLeave,
-        khoanPayPolicy: values.khoanPayPolicy,
         scoresPublic: values.scoresPublic,
-        moneyPublic: values.moneyPublic,
         dueSoonHours: Number(values.dueSoonHours),
         anomalyFailRate: Math.round(toNumber(values.anomalyFailPercent) * 100) / 10_000,
         chatAttachmentsEnabled: values.chatAttachmentsEnabled
@@ -188,9 +182,6 @@ const SettingsForm = ({
           const notes = [
             plan?.changes && Number(values.kpiCloseDay) !== plan.inForce
               ? `Chốt ${closeDayLabel(Number(values.kpiCloseDay))} áp dụng từ kỳ ${formatKpiPeriod(plan.next)}.`
-              : null,
-            values.khoanPayPolicy !== settings.khoanPayPolicy
-              ? `Tiền Khoán: “${khoanPolicyMeta[values.khoanPayPolicy].label}” — áp dụng cho lần chốt tiếp theo.`
               : null
           ].filter((note): note is string => note !== null);
           toast.success(
@@ -333,18 +324,11 @@ const SettingsForm = ({
             label="Tính KPI theo ngày nghỉ"
             hint="Giảm chỉ tiêu tháng theo số ngày nghỉ đã được duyệt."
           />
-          <Controller
-            control={control}
-            name="khoanPayPolicy"
-            render={({ field }) => (
-              <KhoanPolicyRow
-                labelId={`${ids}-khoanPayPolicy`}
-                value={field.value}
-                onChange={field.onChange}
-                saved={settings.khoanPayPolicy}
-                readOnly={readOnly}
-              />
-            )}
+          {/* PD-066: one fixed rule, no choice any more. */}
+          <ReadOnlyRow
+            label="Tiền Khoán khi chốt KPI"
+            hint={`${topUpRule} KPI là bắt buộc: chưa set KPI cho đủ mọi người thì chưa chốt được kỳ.`}
+            value={khoanPolicyMeta.TOP_UP.short}
           />
         </div>
       </SettingsSection>
@@ -357,16 +341,16 @@ const SettingsForm = ({
           {/* PD-052 retired the switch; PD-065: others' scores follow "Xem điểm người khác" — a fixed text here. */}
           <ReadOnlyRow
             label="Công khai bảng điểm"
-            hint="Ai xem được xếp hạng, Điểm cá nhân và điểm từng task của người khác theo quyền “Xem điểm người khác” ở Cài đặt → Vai trò & phân quyền (mặc định mọi vai trò). Điểm của mình luôn xem được."
+            hint="Ai xem được Toàn đội, Điểm cá nhân và điểm từng task của người khác theo quyền “Xem điểm người khác” ở Cài đặt → Vai trò & phân quyền (mặc định mọi vai trò). Điểm của mình luôn xem được."
             value="Theo phân quyền"
             muted
           />
-          <SwitchRow
-            readOnly={readOnly}
-            control={control}
-            name="moneyPublic"
-            label="Công khai tiền công"
-            hint="Tắt: tiền của người khác chỉ vai trò có quyền “Xem tiền Khoán người khác” thấy (Cài đặt → Vai trò & phân quyền). Bật để mọi người thấy đơn giá tiền và tiền khoán."
+          {/* PD-066 retired "Công khai tiền công": money follows "Xem tiền Khoán người khác" only. */}
+          <ReadOnlyRow
+            label="Tiền Khoán của người khác"
+            hint="Ai cũng xem được tiền Khoán của chính mình. Tiền của người khác và đơn giá tiền ở Bảng đơn giá chỉ vai trò có quyền “Xem tiền Khoán người khác” thấy (Cài đặt → Vai trò & phân quyền; mặc định Quản trị và Director)."
+            value="Theo phân quyền"
+            muted
           />
         </div>
       </SettingsSection>
@@ -491,82 +475,6 @@ const CloseDayHint = ({
   );
 };
 
-/**
- * Khoán pay policy (PD-033): two option cards with a one-line explanation each, stacked on phones.
- * The setting applies to the next settlement run (automatic or re-run) and to provisional figures.
- */
-const KhoanPolicyRow = ({
-  labelId,
-  value,
-  onChange,
-  saved,
-  readOnly
-}: {
-  labelId: string;
-  value: KhoanPayPolicy;
-  onChange: (value: KhoanPayPolicy) => void;
-  saved: KhoanPayPolicy;
-  /** PD-050: both cards stay visible (the chosen one highlighted) but cannot be picked. */
-  readOnly: boolean;
-}) => (
-  <div className="flex flex-col gap-2.5 px-4 py-3.5 md:px-5">
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <span id={labelId} className="text-[13px] font-medium">
-        Tiền Khoán khi chốt KPI
-      </span>
-      <p className="text-xs leading-relaxed text-foreground-muted">
-        Đạt KPI = điểm chính thức (gồm OT và QC) ≥ chỉ tiêu. Áp dụng cho lần chốt tiếp theo; kỳ đã
-        chốt giữ kết quả cho tới khi chạy chốt lại.
-        {value !== saved ? (
-          <span className="font-medium text-brand-text"> Lưu để đổi chính sách.</span>
-        ) : null}
-      </p>
-    </div>
-    <div role="radiogroup" aria-labelledby={labelId} className="grid gap-2 sm:grid-cols-2">
-      {khoanPolicyOptions.map((policy) => {
-        const checked = value === policy;
-        return (
-          <button
-            key={policy}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            disabled={readOnly}
-            onClick={() => onChange(policy)}
-            className={cn(
-              "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
-              checked ? "border-brand/50 bg-brand-soft" : !readOnly && "hover:bg-surface-hover"
-            )}
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-                checked ? "border-brand bg-brand" : "border-input bg-surface"
-              )}
-            >
-              {checked ? <span className="size-1.5 rounded-full bg-brand-foreground" /> : null}
-            </span>
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="flex flex-wrap items-center gap-x-1.5 text-[13px] font-medium">
-                {khoanPolicyMeta[policy].label}
-                {policy === "ALWAYS" ? (
-                  <span className="rounded bg-muted px-1.5 py-px text-[11px] font-normal text-foreground-muted">
-                    Mặc định
-                  </span>
-                ) : null}
-              </span>
-              <span className="text-xs leading-relaxed text-foreground-muted">
-                {khoanPolicyMeta[policy].description}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  </div>
-);
-
 const SettingRow = ({
   htmlFor,
   labelId,
@@ -626,10 +534,7 @@ const ReadOnlyRow = ({
   </div>
 );
 
-type BooleanField = Extract<
-  FieldPath<FormValues>,
-  "kpiProrateLeave" | "moneyPublic" | "chatAttachmentsEnabled"
->;
+type BooleanField = Extract<FieldPath<FormValues>, "kpiProrateLeave" | "chatAttachmentsEnabled">;
 
 const SwitchRow = ({
   control,

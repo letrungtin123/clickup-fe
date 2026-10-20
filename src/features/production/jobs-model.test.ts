@@ -184,16 +184,14 @@ describe("progress and allocation", () => {
     expect(qtyText(12)).toBe("12 tấm");
   });
 
-  it("estimates credit, and money only for Khoán shifts with a price", () => {
+  it("estimates points on an official shift and money only on a Khoán shift (PD-066)", () => {
     const rule = { creditPerImage: 1.5, moneyPerImage: 7000 };
-    expect(expectedEarnings(rule, 4, "MONEY_IF_KPI")).toEqual({ credit: 6, money: 28000 });
+    expect(expectedEarnings(rule, 4, "MONEY_IF_KPI")).toEqual({ credit: null, money: 28000 });
     expect(expectedEarnings(rule, 4, "POINTS")).toEqual({ credit: 6, money: null });
+    // Money price hidden (or none): nothing to estimate — never points for a Khoán shift.
     expect(
       expectedEarnings({ creditPerImage: 0.1, moneyPerImage: null }, 3, "MONEY_IF_KPI")
-    ).toEqual({
-      credit: 0.3,
-      money: null
-    });
+    ).toEqual({ credit: null, money: null });
     expect(expectedEarnings(null, 4, "POINTS")).toEqual({ credit: null, money: null });
   });
 });
@@ -329,16 +327,14 @@ describe("task lines", () => {
     );
   });
 
-  it("labels the unit price of a line; money only on a Khoán shift with a price", () => {
+  it("labels the unit price of a line: points on an official shift, money only on a Khoán shift (PD-066)", () => {
     const rule = { creditPerImage: 5.5, moneyPerImage: 2000 };
     expect(unitPriceLabel(null, "POINTS")).toBeNull();
     expect(unitPriceLabel(rule, "POINTS")).toBe("5,5 điểm/tấm");
     expect(unitPriceLabel({ creditPerImage: 2, moneyPerImage: null }, "MONEY_IF_KPI")).toBe(
-      "2 điểm/tấm"
+      "Ca Khoán (tính tiền)"
     );
-    expect(unitPriceLabel(rule, "MONEY_IF_KPI")?.replace(/\s/g, " ")).toBe(
-      "5,5 điểm/tấm · 2.000 ₫/tấm"
-    );
+    expect(unitPriceLabel(rule, "MONEY_IF_KPI")?.replace(/\s/g, " ")).toBe("2.000 ₫/tấm");
   });
 });
 
@@ -1256,7 +1252,7 @@ describe("maxDeclaredDoneQty", () => {
 });
 
 describe("myCreditSummary", () => {
-  it("sums the caller's rows and marks Khoán-only tasks", () => {
+  it("sums the caller's official points; Khoán rows show as Khoán images, never points (PD-066)", () => {
     expect(myCreditSummary({ myCredits: [] })).toBeNull();
     expect(
       myCreditSummary({
@@ -1268,11 +1264,28 @@ describe("myCreditSummary", () => {
     ).toEqual({
       credits: 11.25,
       khoan: false,
+      khoanQty: 0,
+      label: "11,25 điểm",
       detail: "Người làm 12,5 điểm · 10 tấm; Người làm -1,25 điểm · -1 tấm"
     });
+    const khoan = myCreditSummary({
+      myCredits: [{ role: "QC", credits: 3, qty: 30, payMode: "MONEY_IF_KPI" }]
+    });
+    expect(khoan).toMatchObject({
+      credits: 0,
+      khoan: true,
+      label: "Khoán · 30 tấm",
+      detail: "QC Khoán · 30 tấm"
+    });
+    expect(`${khoan?.label} ${khoan?.detail}`).not.toMatch(/điểm/);
     expect(
-      myCreditSummary({ myCredits: [{ role: "QC", credits: 3, qty: 30, payMode: "MONEY_IF_KPI" }] })
-    ).toMatchObject({ credits: 3, khoan: true, detail: "QC 3 điểm Khoán · 30 tấm" });
+      myCreditSummary({
+        myCredits: [
+          { role: "WORKER", credits: 5, qty: 5, payMode: "POINTS" },
+          { role: "QC", credits: 3, qty: 30, payMode: "MONEY_IF_KPI" }
+        ]
+      })?.label
+    ).toBe("5,00 điểm + Khoán");
   });
 });
 

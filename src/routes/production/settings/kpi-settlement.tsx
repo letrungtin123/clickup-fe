@@ -49,7 +49,6 @@ export const ProductionKpiSettlementRoute = () => {
         readOnly={!canEdit}
         currentPeriod={currentPeriod}
         closeDays={closeDays}
-        khoanPolicy={settings?.khoanPayPolicy ?? "ALWAYS"}
         onDone={setFocus}
       />
       <div ref={reportRef} id={kpiReportAnchor} className="scroll-mt-4">

@@ -24,6 +24,7 @@ import { useUiStore } from "@/stores/ui-store";
 
 import { DetailPanel } from "./detail-panel";
 import { RouteFallback } from "./route-fallback";
+import { RouteProgress } from "./route-progress";
 import { Sidebar } from "./sidebar";
 import { OrgMark } from "./user-menu";
 
@@ -71,6 +72,7 @@ export const AppShell = () => {
       >
         Bỏ qua tới nội dung chính
       </a>
+      <RouteProgress />
 
       {breakpoint === "mobile" ? null : (
         <aside

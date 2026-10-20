@@ -28,7 +28,7 @@ export const SettlementRuns = () => {
   return (
     <Panel
       title="Lịch sử chạy chốt"
-      description="Mỗi lần chạy (tự động hoặc chạy tay) được lưu lại cùng chính sách tiền Khoán đã dùng; kết quả hiện hành của kỳ lấy từ lần chạy mới nhất."
+      description="Mỗi lần chạy (tự động hoặc chạy tay) được lưu lại cùng quy tắc tiền Khoán đã dùng; kết quả hiện hành của kỳ lấy từ lần chạy mới nhất."
     >
       {runs.isPending ? (
         <div className="flex flex-col gap-2 p-4" aria-hidden="true">
@@ -118,8 +118,8 @@ const RunRow = ({ run }: { run: KpiSettlementRun }) => (
           </>
         }
       />
-      <RunFigure label="Tiền Khoán" value={formatMoney(run.khoanMoneyTotal)} />
-      <RunFigure label="Quy điểm" value={formatCredit(run.khoanPointsConvertedTotal)} />
+      <RunFigure label="Tiền Khoán trả" value={formatMoney(run.khoanMoneyTotal)} />
+      <RunFigure label="Bù từ Khoán" value={formatCredit(run.khoanPointsConvertedTotal)} />
     </dl>
   </li>
 );

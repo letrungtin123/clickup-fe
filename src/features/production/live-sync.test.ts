@@ -86,6 +86,7 @@ const makeTask = (n: number, extra: Partial<ProductionTask> = {}): ProductionTas
   customValues: {},
   tagIds: [],
   myCredits: [],
+  points: null,
   lastQcFail: null,
   createdAt: "2026-10-01T01:00:00.000Z",
   updatedAt: "2026-10-01T01:00:00.000Z",
@@ -136,6 +137,7 @@ const makeJob = (n: number, extra: Partial<JobSummary> = {}): JobSummary => ({
   openFeedbackCount: 0,
   people: { workers: [], qc: [] },
   personShare: null,
+  pointsOfficial: null,
   customValues: {},
   tagIds: [],
   createdBy: null,
@@ -494,5 +496,27 @@ describe("patching own writes", () => {
     const patched = patchJobInPages(data, makeJob(1, { qtyDone: 40 }));
     expect(patched?.pages[0]?.items[0]?.qtyDone).toBe(40);
     expect(patched?.pages[0]?.items[0]?.personShare).toEqual(personShare);
+  });
+
+  it("PD-070: the job's points follow the detail, except a per-person row's (the person's own)", () => {
+    const mine = { credits: 12.5, expected: false };
+    const whole = { credits: 40, expected: true };
+    const plain = patchJobInPages(
+      infinite([makeJob(1, { pointsOfficial: null })]),
+      makeJob(1, { pointsOfficial: whole })
+    );
+    expect(plain?.pages[0]?.items[0]?.pointsOfficial).toEqual(whole);
+    const personShare = {
+      processes: ["Retouch"],
+      taskCount: 1,
+      qtyAssigned: 10,
+      qtyDone: 0,
+      qtyChecked: 0
+    };
+    const person = patchJobInPages(
+      infinite([makeJob(1, { personShare, pointsOfficial: mine })]),
+      makeJob(1, { pointsOfficial: whole })
+    );
+    expect(person?.pages[0]?.items[0]?.pointsOfficial).toEqual(mine);
   });
 });

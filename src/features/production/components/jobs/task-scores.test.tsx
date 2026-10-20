@@ -157,3 +157,69 @@ describe("TaskScoresSection (PD-048)", () => {
     expect(within(rows[1]!).getByTitle("Subtask #3a")).toBeTruthy();
   });
 });
+
+describe("TaskScoresSection — Khoán is money, never points (PD-066)", () => {
+  const khoanScores = (money: number | null): TaskScores => ({
+    taskId: task.id,
+    moneyVisible: money !== null,
+    items: [
+      entry(1, {
+        shift: { id: id(31), name: "Ca tối" },
+        payMode: "MONEY_IF_KPI",
+        qty: 10,
+        unitCredits: 2,
+        credits: 20,
+        money
+      })
+    ],
+    totals: [{ role: "WORKER", user: WORKER, qty: 10, credits: 20, money }],
+    byProcess: [{ process: RETOUCH, qty: 10, credits: 20, unitCredits: 2, missingRule: false }]
+  });
+  const renderWith = (value: TaskScores) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } }
+    });
+    client.setQueryData(productionKeys.me(), {
+      roles: ["STAFF"],
+      isAdmin: false,
+      teamId: null,
+      jobPermissions: { view: "all", create: "none", update: "own", delete: "none" },
+      settings: { timezone: "Asia/Ho_Chi_Minh" }
+    });
+    client.setQueryData(productionKeys.taskScores(task.id), value);
+    return render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TaskScoresSection task={task} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
+  const words = (text: string | null | undefined) => text?.replace(/\s/g, " ") ?? "";
+
+  it("a Khoán row shows its money per process, per person and in the ledger", async () => {
+    renderWith(khoanScores(150_000));
+    const byProcess = screen.getByRole("list", { name: "Điểm theo công đoạn" });
+    expect(words(byProcess.textContent)).toContain("10 tấm · ca Khoán");
+    expect(words(byProcess.textContent)).toContain("150.000 ₫");
+    const people = screen.getByRole("list", { name: "Điểm theo người" });
+    expect(words(people.textContent)).toContain("150.000 ₫");
+    expect(people.textContent).not.toContain("20,00 điểm");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Các dòng điểm (1)" }));
+      await Promise.resolve();
+    });
+    const ledger = screen.getByRole("list", { name: "Các dòng điểm" });
+    expect(words(ledger.textContent)).toContain("+150.000 ₫");
+    expect(ledger.textContent).not.toContain("điểm");
+    expect(document.body.textContent).not.toMatch(/điểm Khoán/i);
+  });
+
+  it("someone else's hidden money reads “Khoán”, still never points", () => {
+    renderWith(khoanScores(null));
+    const people = screen.getByRole("list", { name: "Điểm theo người" });
+    expect(people.textContent).toContain("Khoán");
+    expect(people.textContent).not.toContain("20,00");
+    expect(people.textContent).not.toContain("₫");
+  });
+});

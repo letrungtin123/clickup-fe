@@ -31,8 +31,8 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /production/jobs[/:jobId]      jobs (filters in the URL) / job detail; ?task=<id> opens a task sheet
  *   /production/my-tasks, /qc      my tasks (kanban) / QC queue
  *   /production/tasks/:taskId      shareable task page (notification and e-mail links)
- *   /production/scores            my scores & KPI forecast (?period=&tab=settled)
- *   /production/scores/board       public ranking (?period=&team=); a row opens the person's page (hidden from the UI, RANKING_VISIBLE)
+ *   /production/scores            Bảng điểm: my scores & KPI forecast (?period=&tab=settled|team; team = "Toàn đội", PD-069)
+ *   /production/scores/board       retired ranking: redirects to /production/scores?tab=team (keeps period / team / people filter)
  *   /production/scores/person/:userId  "Điểm cá nhân" of any member (PD-052; ?period=&tab=settled)
  *   /production/leave              shared leave calendar (?month=&tab=)
  *   /production/dashboard          Leader dashboard (?leader= for ADMIN)

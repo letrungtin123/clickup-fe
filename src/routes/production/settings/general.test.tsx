@@ -21,9 +21,7 @@ const settings: ProductionSettings = {
   kpiCloseDay: 31,
   kpiCloseDays: [{ fromPeriod: null, closeDay: 31 }],
   scoresPublic: true,
-  moneyPublic: false,
   kpiProrateLeave: false,
-  khoanPayPolicy: "ALWAYS",
   anomalyFailRate: 0.15,
   dueSoonHours: 2,
   kpiDefaultMember: 100,
@@ -56,23 +54,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Cài đặt chung — KPI close day and Khoán pay policy (PD-032, PD-033)", () => {
-  it("shows “Cuối tháng” as the close day and the two Khoán options, ALWAYS selected", async () => {
+describe("Cài đặt chung — KPI close day; Khoán rule fixed (PD-032, PD-066)", () => {
+  it("shows “Cuối tháng” as the close day and the one Khoán rule as text — no choice, no money switch", async () => {
     vi.spyOn(productionApi, "settings").mockResolvedValue(settings);
     renderPage();
     const picker = await screen.findByRole("combobox", { name: "Ngày chốt KPI" });
     expect(picker.textContent).toContain("Cuối tháng");
     expect(screen.getByText(/chốt cuối tháng\)/)).toBeTruthy();
-    const group = screen.getByRole("radiogroup", { name: "Tiền Khoán khi chốt KPI" });
-    const options = Array.from(group.querySelectorAll('[role="radio"]'));
-    expect(options.map((option) => option.textContent)).toEqual([
-      expect.stringContaining("Luôn trả tiền Khoán (như Excel)"),
-      expect.stringContaining("Chỉ trả khi đạt KPI")
-    ]);
-    expect(options.map((option) => option.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    expect(screen.getByText("Tiền Khoán khi chốt KPI")).toBeTruthy();
+    expect(screen.getByText("Bù KPI từ Khoán")).toBeTruthy();
+    expect(screen.getByText(/bù bấy nhiêu/)).toBeTruthy();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByText(/Công khai tiền công/)).toBeNull();
+    expect(screen.queryByText(/Luôn trả tiền Khoán/)).toBeNull();
   });
 
-  it("switching to “Chỉ trả khi đạt KPI” and saving sends the policy with the other settings", async () => {
+  it("saving sends neither khoanPayPolicy nor moneyPublic (the API refuses them)", async () => {
     vi.spyOn(productionApi, "settings").mockResolvedValue(settings);
     const update = vi
       .spyOn(productionApi, "updateSettings")
@@ -80,14 +78,13 @@ describe("Cài đặt chung — KPI close day and Khoán pay policy (PD-032, PD-
         Promise.resolve({ ...settings, ...input } as ProductionSettings)
       );
     renderPage();
-    fireEvent.click(await screen.findByRole("radio", { name: /Chỉ trả khi đạt KPI/ }));
-    expect(
-      screen.getByRole("radio", { name: /Chỉ trả khi đạt KPI/ }).getAttribute("aria-checked")
-    ).toBe("true");
+    fireEvent.click(await screen.findByRole("switch", { name: /Tính KPI theo ngày nghỉ/ }));
     expect(screen.getByText("Bạn có thay đổi chưa lưu.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
-    expect(update.mock.calls[0]?.[0]).toMatchObject({ kpiCloseDay: 31, khoanPayPolicy: "IF_KPI" });
+    const sent = update.mock.calls[0]?.[0] ?? {};
+    expect(sent).toMatchObject({ kpiCloseDay: 31, kpiProrateLeave: true });
+    expect("khoanPayPolicy" in sent || "moneyPublic" in sent).toBe(false);
   });
 });
 
@@ -97,7 +94,7 @@ describe("Cài đặt chung — read-only for everyone but the superadmin (PD-05
     renderPage();
     await screen.findByRole("combobox", { name: "Ngày chốt KPI" });
     expect(screen.getByRole("textbox", { name: "KPI mặc định – Nhân viên" })).toBeTruthy();
-    expect(screen.getByRole("switch", { name: /Công khai tiền công/ })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: /Tính KPI theo ngày nghỉ/ })).toBeTruthy();
     expect(screen.queryByText(/chế độ chỉ đọc/)).toBeNull();
   });
 
@@ -122,14 +119,10 @@ describe("Cài đặt chung — read-only for everyone but the superadmin (PD-05
     expect(screen.getByText("2610,5")).toBeTruthy();
     expect(screen.getByText("80")).toBeTruthy();
     expect(screen.getAllByText("Bật")).toHaveLength(1); // chatAttachmentsEnabled
-    expect(screen.getAllByText("Tắt")).toHaveLength(2); // kpiProrateLeave, moneyPublic
-    expect(screen.getByText("Theo phân quyền")).toBeTruthy(); // scoresPublic, retired (PD-052, PD-065)
-    // The Khoán cards stay readable, the saved one checked, but cannot be picked.
-    const radios = screen.getAllByRole("radio");
-    expect(radios.map((radio) => radio.getAttribute("aria-checked"))).toEqual(["true", "false"]);
-    expect(radios.every((radio) => (radio as HTMLButtonElement).disabled)).toBe(true);
-    fireEvent.click(radios[1]!);
-    expect(radios[1]!.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getAllByText("Tắt")).toHaveLength(1); // kpiProrateLeave
+    // scoresPublic (PD-052, PD-065) and others' money (PD-066) follow the permissions.
+    expect(screen.getAllByText("Theo phân quyền")).toHaveLength(2);
+    expect(screen.getByText("Bù KPI từ Khoán")).toBeTruthy();
     expect(screen.queryByText("Bạn có thay đổi chưa lưu.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Lưu cài đặt" })).toBeNull();
     expect(update).not.toHaveBeenCalled();
@@ -142,10 +135,10 @@ describe("Cài đặt chung — “Công khai bảng điểm” is retired (PD-0
     renderPage();
     await screen.findByRole("combobox", { name: "Ngày chốt KPI" });
     expect(screen.getByText("Công khai bảng điểm")).toBeTruthy();
-    expect(screen.getByText("Theo phân quyền")).toBeTruthy();
+    expect(screen.getAllByText("Theo phân quyền")).toHaveLength(2);
     expect(screen.queryByRole("switch", { name: /Công khai bảng điểm/ })).toBeNull();
-    // The remaining switches: KPI theo ngày nghỉ, tiền công, tệp trong chat.
-    expect(screen.getAllByRole("switch")).toHaveLength(3);
+    // The remaining switches: KPI theo ngày nghỉ, tệp trong chat (PD-066: no "Công khai tiền công").
+    expect(screen.getAllByRole("switch")).toHaveLength(2);
   });
 
   it("saving other fields sends the stored value back unchanged", async () => {
@@ -156,9 +149,12 @@ describe("Cài đặt chung — “Công khai bảng điểm” is retired (PD-0
         Promise.resolve({ ...settings, ...input } as ProductionSettings)
       );
     renderPage();
-    fireEvent.click(await screen.findByRole("switch", { name: /Công khai tiền công/ }));
+    fireEvent.click(await screen.findByRole("switch", { name: /Cho phép gửi tệp trong chat/ }));
     fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
-    expect(update.mock.calls[0]?.[0]).toMatchObject({ moneyPublic: true, scoresPublic: false });
+    expect(update.mock.calls[0]?.[0]).toMatchObject({
+      chatAttachmentsEnabled: false,
+      scoresPublic: false
+    });
   });
 });

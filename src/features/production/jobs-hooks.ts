@@ -2,6 +2,7 @@ import {
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type InfiniteData,
@@ -68,6 +69,30 @@ export const useJobs = (query: JobListQuery, enabled = true) =>
     getNextPageParam: nextCursor,
     placeholderData: keepPreviousData,
     enabled
+  });
+
+/**
+ * PD-067 counts of the job List view: jobs per month of "Ngày nhận" (group headers) and per project (sidebar), same
+ * filters as the list. The previous answer stays while the next filters load.
+ */
+export const useJobFacets = (query: JobListQuery, enabled = true) =>
+  useQuery({
+    queryKey: productionKeys.jobFacets(query),
+    queryFn: ({ signal }) => jobsApi.facets(query, signal),
+    placeholderData: keepPreviousData,
+    enabled
+  });
+
+/**
+ * The details of the jobs expanded in the List view (PD-067: a job row unfolds into its tasks): the job page's own query
+ * (same key, so the page, task moves and realtime updates share it), fetched when expanded and cached.
+ */
+export const useJobDetails = (jobIds: readonly string[]) =>
+  useQueries({
+    queries: jobIds.map((jobId) => ({
+      queryKey: productionKeys.job(jobId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => jobsApi.get(jobId, signal)
+    }))
   });
 
 /**

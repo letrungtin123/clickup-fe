@@ -40,6 +40,9 @@ beforeEach(() => {
   vi.spyOn(productionApi, "tags").mockReturnValue(pending());
   vi.spyOn(kpiApi, "report").mockReturnValue(pending());
   vi.spyOn(kpiApi, "runs").mockResolvedValue({ items: [] });
+  vi.spyOn(kpiApi, "missingTargets").mockImplementation((period?: string) =>
+    Promise.resolve({ period: period ?? "2026-10", requiredCount: 2, items: [] })
+  );
 });
 
 afterEach(() => {
@@ -74,5 +77,47 @@ describe("Cấu hình → Chốt KPI & báo cáo (PD-050)", () => {
     expect(screen.queryByRole("button", { name: /^Chạy chốt / })).toBeNull();
     expect(screen.getByText("Lịch sử chạy chốt")).toBeTruthy();
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe("Chốt KPI — blocked while someone has no KPI (PD-066)", () => {
+  const someone = {
+    id: "00000000-0000-4000-8000-000000000011",
+    displayName: "Người Chưa KPI",
+    email: null,
+    avatarUrl: null
+  };
+
+  it("shows who is missing, links to Cấu hình → KPI and disables the run", async () => {
+    vi.mocked(kpiApi.missingTargets).mockImplementation((period?: string) =>
+      Promise.resolve({
+        period: period ?? "2026-10",
+        requiredCount: 2,
+        items: [{ user: someone, teamId: null, teamName: null, roles: ["STAFF"] }]
+      })
+    );
+    const run = vi.spyOn(kpiApi, "runSettlement");
+    renderPage();
+    expect(
+      await screen.findByText(/^Còn 1 người chưa có KPI .* — set KPI trước khi chốt$/)
+    ).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Danh sách người chưa có KPI" }).textContent).toContain(
+      "Người Chưa KPI"
+    );
+    expect(screen.getByText("Đặt KPI").closest("a")?.getAttribute("data-to")).toBe(
+      "/production/settings/kpi"
+    );
+    const button = screen.getByRole("button", { name: /^Chạy chốt / });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("the rule shown is TOP_UP — no policy switch to compare any more", async () => {
+    renderPage();
+    expect(await screen.findByText("Chưa chạy chốt lần nào")).toBeTruthy();
+    expect(screen.getByText("Thiếu bao nhiêu bù bấy nhiêu")).toBeTruthy();
+    expect(screen.queryByText(/Cài đặt chung/)).toBeNull();
+    const button = screen.getByRole("button", { name: /^Chạy chốt / });
+    expect(button.hasAttribute("disabled")).toBe(false);
   });
 });

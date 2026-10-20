@@ -1,4 +1,4 @@
-import { ChartColumnBig, ChevronLeft, Trophy, UserX } from "lucide-react";
+import { ChartColumnBig, ChevronLeft, UserX, UsersRound } from "lucide-react";
 import { Navigate, useLocation, useParams } from "react-router";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -15,8 +15,7 @@ import { PageBody, Panel } from "@/features/production/scores/components/kit";
 import { ScoresOverview } from "@/features/production/scores/components/scores-overview";
 import { useScores } from "@/features/production/scores/hooks";
 import { useScoresPageState } from "@/features/production/scores/page-state";
-import { RANKING_VISIBLE } from "@/features/production/nav";
-import { boardPath, myScoresPath } from "@/features/production/scores/person-link";
+import { teamScoresPath } from "@/features/production/scores/person-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { isNotFoundError } from "@/lib/api/errors";
 
@@ -26,9 +25,9 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 /**
  * /production/scores/person/:userId — "Điểm cá nhân" (PD-052): what "Bảng điểm của tôi" shows its owner, for any
- * Photo Retouch member, opened from the ranking (hidden for now, RANKING_VISIBLE: by URL only; the way back is then
- * "Bảng điểm") (?period=YYYY-MM&tab=settled like /production/scores). Needs "Xem điểm
- * người khác" (PD-065). Money appears only where the API sent it ("Xem tiền Khoán người khác" or settings.moneyPublic).
+ * Photo Retouch member, opened from "Bảng điểm → Toàn đội" (PD-069; the way back leads there, same period)
+ * (?period=YYYY-MM&tab=settled like /production/scores). Needs "Xem điểm người khác" (PD-065). Money appears only
+ * where the API sent it ("Xem tiền Khoán người khác", PD-066).
  * Your own id redirects to /production/scores; someone outside Photo Retouch (404) gets a not-found state with the way
  * back.
  */
@@ -50,12 +49,11 @@ export const ProductionScorePersonRoute = () => {
     userId !== null && !own && allowed
   );
   const person = head.data?.pages[0];
-  // While the ranking is hidden (RANKING_VISIBLE, owner 2026-10-16) the way back is "Bảng điểm".
+  // PD-069: the way back is "Toàn đội" (where the person was opened), for the same period.
   const keptPeriod = state.period === state.current ? null : state.period;
-  const back = RANKING_VISIBLE
-    ? { to: boardPath(keptPeriod), label: "Xếp hạng", icon: Trophy }
-    : { to: myScoresPath(keptPeriod), label: "Bảng điểm", icon: ChartColumnBig };
-  const BackIcon = back.icon;
+  const back = { to: teamScoresPath(keptPeriod), label: "Toàn đội" };
+  // "Toàn đội" is a tab of /production/scores only: here it reads as "Tổng quan".
+  const tab = state.tab === "team" ? "overview" : state.tab;
 
   if (own) {
     return <Navigate to={{ pathname: "/production/scores", search: location.search }} replace />;
@@ -96,20 +94,13 @@ export const ProductionScorePersonRoute = () => {
         }
         description={details.length > 0 ? `${details.join(" · ")}.` : undefined}
         actions={
-          // Without the ranking the back link already leads to "Bảng điểm".
-          RANKING_VISIBLE ? (
-            <Button
-              variant="outline"
-              render={<Link to="/production/scores" />}
-              nativeButton={false}
-            >
-              <ChartColumnBig />
-              <span className="max-sm:sr-only">Bảng điểm của tôi</span>
-            </Button>
-          ) : null
+          <Button variant="outline" render={<Link to="/production/scores" />} nativeButton={false}>
+            <ChartColumnBig />
+            <span className="max-sm:sr-only">Bảng điểm của tôi</span>
+          </Button>
         }
       >
-        {missing ? null : <ScoresTabs tab={state.tab} onChange={state.setTab} />}
+        {missing ? null : <ScoresTabs tab={tab} onChange={state.setTab} />}
       </PageHeader>
 
       <PageBody>
@@ -121,19 +112,14 @@ export const ProductionScorePersonRoute = () => {
               description="Người này không còn trong Photo Retouch hoặc đường dẫn không đúng."
               action={
                 <Button render={<Link to={back.to} />} nativeButton={false}>
-                  <BackIcon />
+                  <UsersRound />
                   Về {back.label}
                 </Button>
               }
             />
           </Panel>
-        ) : state.tab === "settled" ? (
-          <MySettlements
-            userId={userId}
-            self={false}
-            currentPeriod={state.current}
-            khoanPolicy={state.khoanPolicy}
-          />
+        ) : tab === "settled" ? (
+          <MySettlements userId={userId} self={false} currentPeriod={state.current} />
         ) : (
           <ScoresOverview
             userId={userId}
@@ -141,7 +127,6 @@ export const ProductionScorePersonRoute = () => {
             current={state.current}
             closeDays={state.closeDays}
             today={state.today}
-            khoanPolicy={state.khoanPolicy}
             onPeriodChange={state.setPeriod}
           />
         )}

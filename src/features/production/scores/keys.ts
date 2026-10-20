@@ -8,6 +8,7 @@
  *   ["production", "scores", "user", userId, "forecast", period]
  *   ["production", "scores", "board", period, teamId, peopleFilter]
  *   ["production", "kpi", "targets", year]
+ *   ["production", "kpi", "missing", period]                  people without a KPI (PD-066)
  *   ["production", "kpi", "settlements", period, userId]
  *   ["production", "kpi", "runs", period]
  *   ["production", "kpi", "report", from, to, teamId, peopleFilter, userId]
@@ -32,6 +33,8 @@ export const scoreKeys = {
 export const kpiKeys = {
   all: () => ["production", "kpi"] as const,
   targets: (year: number) => ["production", "kpi", "targets", year] as const,
+  /** PD-066: who must have a KPI for the period and has none (null = the current period). */
+  missing: (period: string | null) => ["production", "kpi", "missing", period] as const,
   /** `userId`: one member's row ("Điểm cá nhân", PD-052); null = the API default (own row, or everyone for ADMIN). */
   settlements: (period: string | null, userId: string | null = null) =>
     ["production", "kpi", "settlements", period, userId] as const,

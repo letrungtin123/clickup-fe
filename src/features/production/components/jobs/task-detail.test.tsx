@@ -72,6 +72,7 @@ const task = (overrides: Partial<ProductionTask> = {}): ProductionTask =>
     customValues: {},
     tagIds: [],
     myCredits: [],
+    points: null,
     lastQcFail: { note: "Còn bụi ở 2 tấm", at: "2026-10-02T15:00:00+07:00", by: QC },
     createdAt: "2026-10-01T08:00:00+07:00",
     updatedAt: "2026-10-01T08:00:00+07:00",

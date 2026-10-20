@@ -37,7 +37,7 @@ const qcConflict = "Chỉ được có một quy trình QC đang dùng. Bỏ QC 
 /**
  * Retouch processes shared by every project (SPEC Phase 1). Exactly one active process is the QC
  * process (Checking, PD-037): a normal work line done by the QC person, whose points are recorded at
- * its Done at the project's Checking rate (Khoán points on a Khoán shift). A process nobody has used
+ * its Done at the project's Checking rate (Khoán money on a Khoán shift, PD-066). A process nobody has used
  * yet can be deleted; once tasks, rates or scores refer to it the API answers 409 PROCESS_IN_USE and
  * it can only be archived. PD-050: only the organization superadmin adds, renames, reorders, flags,
  * archives or deletes processes; everyone else reads the list (QC shown as a badge).
@@ -205,7 +205,7 @@ export const ProductionProcessesRoute = () => {
           </TooltipTrigger>
           <TooltipContent className="max-w-72">
             Task của người QC: điểm ghi khi task Done, theo đơn giá của quy trình này trong dự án
-            (ca Khoán: điểm Khoán)
+            (ca Khoán: tính tiền Khoán)
           </TooltipContent>
         </Tooltip>
       ) : (
@@ -252,7 +252,7 @@ export const ProductionProcessesRoute = () => {
       <InfoNote icon={BadgeCheck} tone="brand">
         Quy trình QC (thường là “Checking”) là một task bình thường do người QC làm: điểm QC được
         ghi khi task Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán thì
-        là điểm Khoán. Luôn có đúng một quy trình đang dùng là QC.
+        tính tiền Khoán. Luôn có đúng một quy trình đang dùng là QC.
       </InfoNote>
       <SettingsSection
         title="Danh sách quy trình"

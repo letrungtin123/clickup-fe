@@ -197,7 +197,6 @@ export const AdminCards = ({ cards, timeZone }: { cards: Cards; timeZone: string
         href={reportBuilderHref(pointsToday.config, pointsToday.title)}
       >
         <Headline value={formatCredit(pointsToday.result.totals.points ?? 0)} unit="điểm">
-          Khoán {formatCredit(pointsToday.result.totals.points_khoan ?? 0)} điểm ·{" "}
           {formatInteger(pointsToday.result.totals.qty_done ?? 0)} tấm done
         </Headline>
         {pointsToday.result.rows.length === 0 ? (

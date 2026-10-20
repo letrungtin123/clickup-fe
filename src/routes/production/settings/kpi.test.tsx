@@ -96,6 +96,10 @@ beforeEach(() => {
   vi.spyOn(productionApi, "me").mockReturnValue(new Promise<never>(() => undefined));
   vi.spyOn(productionApi, "teams").mockReturnValue(new Promise<never>(() => undefined));
   vi.spyOn(kpiApi, "matrix").mockImplementation((year: number) => Promise.resolve(matrix(year)));
+  // PD-066: nobody is missing a KPI unless a test says so.
+  vi.spyOn(kpiApi, "missingTargets").mockImplementation((period?: string) =>
+    Promise.resolve({ period: period ?? "2026-10", requiredCount: 1, items: [] })
+  );
 });
 
 afterEach(() => {
@@ -137,5 +141,35 @@ describe("Cấu hình → KPI nhân viên (PD-050)", () => {
     expect(screen.queryByRole("button", { name: "Lưu KPI" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Xóa phiên bản/ })).toBeNull();
     expect(put).not.toHaveBeenCalled();
+  });
+});
+
+describe("Cấu hình → KPI nhân viên — KPI is mandatory (PD-066)", () => {
+  const someone = { id: id(11), displayName: "Người Chưa KPI", email: null, avatarUrl: null };
+
+  it("lists who has no KPI for the current period and filters the grid to them", async () => {
+    vi.mocked(kpiApi.missingTargets).mockResolvedValue({
+      period: "2026-10",
+      requiredCount: 2,
+      items: [{ user: someone, teamId: null, teamName: "Team Thử", roles: ["QC", "STAFF"] }]
+    });
+    renderPage();
+    expect(await screen.findByText(/^Còn 1 người chưa có KPI/)).toBeTruthy();
+    const list = screen.getByRole("list", { name: "Danh sách người chưa có KPI" });
+    expect(list.textContent).toContain("Người Chưa KPI");
+    // The test person of the grid has a KPI: filtering to the missing ones hides them.
+    expect(await screen.findByRole("button", { name: /^Nhân viên Thử, Kỳ 01\// })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Chỉ hiện những người này" }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: /^Nhân viên Thử, Kỳ 01\// })).toBeNull();
+    expect(screen.getByRole("button", { name: "Hiện tất cả" })).toBeTruthy();
+  });
+
+  it("no banner once everyone has a KPI", async () => {
+    renderPage();
+    await openJanuary();
+    expect(screen.queryByText(/chưa có KPI/)).toBeNull();
   });
 });

@@ -36,6 +36,7 @@ import {
 import { useKpiReport } from "../hooks";
 import {
   attainment,
+  figuresOfTotal,
   reportKeys,
   reportRowsFor,
   rollupStatus,
@@ -47,8 +48,8 @@ import {
 import { KpiFiguresTable, RollupStatusBadge, type KpiFiguresRow } from "./kpi-figures-table";
 
 /**
- * KPI report (SPEC Phase 6 §4, /admin/kpi/report): person × period — target, official points,
- * Khoán converted, total, % đạt, vượt/thiếu, Khoán money — with quarter and year rollups (always the
+ * KPI report (SPEC Phase 6 §4, /admin/kpi/report): person × period — KPI, official points, shortfall, points topped
+ * up from Khoán, total, % đạt, Khoán money earned / paid (PD-066) — with quarter and year rollups (always the
  * whole quarter / year, "Đã chốt" / "Tạm tính" / "Chưa hết kỳ"), the team and organization totals
  * (ADMIN, PLAN §6 "theo NV, team"), people filters by team, members' custom fields (e.g. Năng lực) and
  * tags (ADMIN), and the Excel export (GET /production/kpi/export, same query; sheet "Tổng theo team").
@@ -117,13 +118,7 @@ export const KpiReportPanel = ({
       key: `team:${total.teamId ?? "none"}`,
       label: total.teamName ?? "Chưa có team",
       sublabel: totalSummary(total),
-      target: total.target,
-      pointsOfficial: total.pointsOfficial,
-      khoanPointsConverted: total.khoanPointsConverted,
-      totalPoints: total.totalPoints,
-      percent: total.percent,
-      difference: total.difference,
-      khoanMoney: total.khoanMoney
+      ...figuresOfTotal(total)
     })),
     ...(totals.org
       ? [
@@ -131,19 +126,13 @@ export const KpiReportPanel = ({
             key: "org",
             label: "Toàn bộ phận",
             sublabel: totalSummary(totals.org),
-            target: totals.org.target,
-            pointsOfficial: totals.org.pointsOfficial,
-            khoanPointsConverted: totals.org.khoanPointsConverted,
-            totalPoints: totals.org.totalPoints,
-            percent: totals.org.percent,
-            difference: totals.org.difference,
-            khoanMoney: totals.org.khoanMoney,
+            ...figuresOfTotal(totals.org),
             total: true
           }
         ]
       : [])
   ];
-  const showMoney = rows.some((row) => row.khoanMoney !== null);
+  const showMoney = rows.some((row) => row.khoanMoneyPaid !== null);
   const { withTarget, met, average } = attainment(rows);
   const filtered = !isPeopleFilterEmpty(filter);
   const filterText = filtered
@@ -164,7 +153,7 @@ export const KpiReportPanel = ({
   return (
     <Panel
       title="Báo cáo KPI"
-      description="% đạt = tổng điểm (chính thức + Khoán quy đổi) / chỉ tiêu. Kỳ chưa chốt là số tạm tính; quý và năm luôn tính đủ cả kỳ."
+      description="% đạt = tổng điểm (chính thức + điểm bù từ Khoán khi thiếu KPI) / KPI. Kỳ chưa chốt là số tạm tính; quý và năm luôn tính đủ cả kỳ."
       actions={
         <ExportButton
           path="/production/kpi/export"
@@ -299,7 +288,7 @@ export const KpiReportPanel = ({
               <KpiFiguresTable
                 rows={totalRows}
                 firstColumn="Team"
-                showMoney={totalRows.some((row) => row.khoanMoney !== null)}
+                showMoney={totalRows.some((row) => row.khoanMoneyPaid !== null)}
                 caption={`Tổng theo team ${keyLabel(key)}`}
               />
             </section>

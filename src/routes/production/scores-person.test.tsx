@@ -1,27 +1,26 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProductionMe } from "@/contracts/production-catalog";
 import type {
-  ScoreBoard,
+  MyScores,
   ScoreForecast,
   UserScoreForecast,
   UserScores
 } from "@/contracts/production-scores";
 import { SessionValueContext } from "@/features/auth/session-context";
 import { productionApi } from "@/features/production/api";
-import { useProductionNavEntries } from "@/features/production/hooks";
 import { kpiApi } from "@/features/production/kpi/api";
 import { scoresApi } from "@/features/production/scores/api";
 import { personScoresPath } from "@/features/production/scores/person-link";
 import { ApiError } from "@/lib/api/errors";
 import type { SessionContext } from "@/lib/api/schemas";
 
-import { ProductionScoreBoardRoute } from "./scores-board";
+import { ProductionScoresRoute } from "./scores";
 import { ProductionScorePersonRoute } from "./scores-person";
 
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
@@ -54,7 +53,7 @@ const me = {
     timezone: "Asia/Ho_Chi_Minh",
     kpiCloseDay: 25,
     kpiCloseDays: [{ fromPeriod: null, closeDay: 25 }],
-    khoanPayPolicy: "ALWAYS",
+    khoanPayPolicy: "IF_KPI",
     scoresPublic: false,
     moneyPublic: false,
     chatAttachmentsEnabled: true
@@ -67,35 +66,6 @@ const userRef = (userId: string, displayName: string) => ({
   email: null,
   avatarUrl: null
 });
-
-const board: ScoreBoard = {
-  period: "2026-10",
-  from: "2026-09-26",
-  to: "2026-10-25",
-  moneyVisible: false,
-  items: [
-    {
-      rank: 1,
-      user: userRef(otherId, "Đồng Nghiệp Thử"),
-      teamId: null,
-      teamName: "Team Thử",
-      pointsOfficial: 120,
-      pointsKhoan: 4,
-      qtyKhoan: 8,
-      money: null
-    },
-    {
-      rank: 2,
-      user: userRef(meId, "Người Xem"),
-      teamId: null,
-      teamName: null,
-      pointsOfficial: 80,
-      pointsKhoan: 0,
-      qtyKhoan: 0,
-      money: 0
-    }
-  ]
-};
 
 const totals = {
   pointsOfficial: 120,
@@ -167,8 +137,62 @@ const forecast = {
     month: { periodType: "MONTH", periods: ["2026-10"], points: 120, target: null, percent: null },
     quarter: { periodType: "QUARTER", periods: [], points: 120, target: null, percent: null },
     year: { periodType: "YEAR", periods: [], points: 120, target: null, percent: null }
-  }
+  },
+  // PD-066: this person must have a KPI and has none; their money is hidden from the viewer.
+  kpiRequired: true,
+  ifSettledToday: null
 } satisfies UserScoreForecast;
+
+/** "Bảng điểm của tôi" (PD-066): own Khoán money, a KPI of 2600 and 50 points short — topped up from Khoán. */
+const ownTotals = {
+  pointsOfficial: 2550,
+  pointsKhoan: 200,
+  moneyKhoanProvisional: 1_000_000,
+  qtyKhoan: 400,
+  qcPoints: 0
+};
+const ownScores: MyScores = {
+  from: "2026-09-26",
+  to: "2026-10-25",
+  today: "2026-10-15",
+  summary: { ...ownTotals, byDay: [], byProject: [] },
+  cards: {
+    today: ownTotals,
+    week: ownTotals,
+    period: { ...ownTotals, period: "2026-10", from: "2026-09-26", to: "2026-10-25" }
+  },
+  entries: [
+    {
+      ...personScores.entries[0]!,
+      qty: 400,
+      unitCredits: 0.5,
+      credits: 200,
+      money: 1_000_000
+    }
+  ],
+  truncated: false,
+  nextCursor: null
+};
+const ownForecast: ScoreForecast = {
+  ...forecast,
+  targetBase: 2600,
+  target: 2600,
+  pointsOfficial: 2550,
+  pointsKhoan: 200,
+  moneyKhoanProvisional: 1_000_000,
+  remaining: 50,
+  avgPerDayNeeded: 4.55,
+  percent: 98.08,
+  tone: "ON_TRACK",
+  kpiRequired: true,
+  ifSettledToday: {
+    shortfall: 50,
+    khoanPointsConverted: 50,
+    khoanMoneyEarned: 1_000_000,
+    khoanMoneyPaid: 750_000,
+    met: true
+  }
+};
 
 const client = () =>
   new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -197,7 +221,6 @@ const renderPerson = (userId: string, search = "") =>
 beforeEach(() => {
   vi.spyOn(productionApi, "me").mockResolvedValue(me);
   vi.spyOn(productionApi, "teams").mockResolvedValue({ items: [] });
-  vi.spyOn(scoresApi, "board").mockResolvedValue(board);
   vi.spyOn(scoresApi, "user").mockResolvedValue(personScores);
   vi.spyOn(scoresApi, "userForecast").mockResolvedValue(forecast);
   vi.spyOn(scoresApi, "forecast").mockResolvedValue(forecast as unknown as ScoreForecast);
@@ -218,42 +241,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PD-052 — the ranking (hidden from the menu, owner 2026-10-16)", () => {
-  it("the menu has Bảng điểm but no Xếp hạng; the route still works by URL", async () => {
-    const { result } = renderHook(() => useProductionNavEntries(), {
-      wrapper: ({ children }) => wrap(children, "/production")
-    });
-    await waitFor(() =>
-      expect(result.current.map((entry) => entry.to)).toContain("/production/scores")
-    );
-    expect(result.current.map((entry) => entry.to)).not.toContain("/production/scores/board");
-    render(wrap(<ProductionScoreBoardRoute />, "/production/scores/board"));
-    expect(await screen.findByRole("table")).toBeTruthy();
-  });
-
-  it("needs “Xem điểm người khác” (PD-065)", async () => {
-    vi.mocked(productionApi.me).mockResolvedValue({ ...me, features: ["qc_queue"] });
-    render(wrap(<ProductionScoreBoardRoute />, "/production/scores/board"));
-    expect(await screen.findByText("Bạn không có quyền xem trang này")).toBeTruthy();
-    expect(screen.getByText(/Xem điểm người khác/)).toBeTruthy();
-    expect(screen.queryByRole("table")).toBeNull();
-  });
-
-  it("each board row opens that person's Điểm cá nhân; your own row opens Bảng điểm của tôi", async () => {
-    render(wrap(<ProductionScoreBoardRoute />, "/production/scores/board"));
-    const table = await screen.findByRole("table");
-    const other = [...table.querySelectorAll("a")].find((link) =>
-      link.textContent.includes("Đồng Nghiệp Thử")
-    );
-    const own = [...table.querySelectorAll("a")].find((link) =>
-      link.textContent.includes("Người Xem")
-    );
-    expect(other?.getAttribute("data-to")).toBe(`/production/scores/person/${otherId}`);
-    expect(own?.getAttribute("data-to")).toBe("/production/scores");
-    expect(screen.queryByText(/riêng tư/i)).toBeNull();
-  });
-
-  it("links keep a past period", () => {
+describe("PD-052 — links to Điểm cá nhân", () => {
+  it("keep a past period; your own row opens Bảng điểm của tôi", () => {
     expect(personScoresPath(otherId, meId, "2026-09")).toBe(
       `/production/scores/person/${otherId}?period=2026-09`
     );
@@ -273,16 +262,24 @@ describe("PD-052 — Điểm cá nhân", () => {
     expect(range?.from).toMatch(/^\d{4}-\d{2}-26$/);
     expect(range?.to).toMatch(/^\d{4}-\d{2}-25$/);
     expect(await screen.findByText("#1237a")).toBeTruthy();
-    // Money is someone else's: no money card or column, the Khoán work instead.
+    // Money is someone else's: no money card, the Khoán images instead; the Khoán row says "Khoán", never points.
     expect(screen.getByText("Khoán trong kỳ")).toBeTruthy();
     expect(screen.queryByText("Tiền Khoán tạm tính")).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "Tiền" })).toBeNull();
-    // The ranking is hidden: the way back is Bảng điểm, and no second "Bảng điểm của tôi" button.
-    expect(screen.getByText("Bảng điểm").closest("a")?.getAttribute("data-to")).toBe(
+    expect(screen.queryByText(/Nếu chốt hôm nay/)).toBeNull();
+    expect(
+      screen.getByTitle("Tiền Khoán chỉ chính chủ và người có quyền xem mới thấy.").textContent
+    ).toBe("Khoán");
+    expect(document.body.textContent).not.toMatch(/điểm Khoán/i);
+    // PD-066: KPI is mandatory — this person has none.
+    expect(screen.getByText("Chưa có KPI kỳ này — liên hệ Quản trị.")).toBeTruthy();
+    // PD-069: the way back is "Toàn đội" (where the person was opened); "Bảng điểm của tôi" beside it; no ranking.
+    expect(screen.getByText("Toàn đội").closest("a")?.getAttribute("data-to")).toBe(
+      "/production/scores?tab=team"
+    );
+    expect(screen.getByText("Bảng điểm của tôi").closest("a")?.getAttribute("data-to")).toBe(
       "/production/scores"
     );
     expect(screen.queryByText("Xếp hạng")).toBeNull();
-    expect(screen.queryByText("Bảng điểm của tôi")).toBeNull();
   });
 
   it("another person's scores need “Xem điểm người khác” (PD-065)", async () => {
@@ -310,9 +307,32 @@ describe("PD-052 — Điểm cá nhân", () => {
     );
     renderPerson(otherId);
     expect(await screen.findByText("Không tìm thấy nhân viên")).toBeTruthy();
-    expect(screen.getByText("Về Bảng điểm").closest("a")?.getAttribute("data-to")).toBe(
-      "/production/scores"
+    expect(screen.getByText("Về Toàn đội").closest("a")?.getAttribute("data-to")).toBe(
+      "/production/scores?tab=team"
     );
+  });
+
+  it("PD-066 — Bảng điểm của tôi: Khoán as money, “Nếu chốt hôm nay” with the top-up, official points only", async () => {
+    vi.spyOn(scoresApi, "me").mockResolvedValue(ownScores);
+    vi.mocked(scoresApi.forecast).mockResolvedValue(ownForecast);
+    render(wrap(<ProductionScoresRoute />, "/production/scores"));
+    expect(
+      await screen.findByText(
+        (_, element) =>
+          element?.tagName === "SPAN" &&
+          element.textContent.replace(/\s/g, " ") ===
+            "Nếu chốt hôm nay: nhận 750.000 ₫ (bù 50 điểm từ Khoán để đủ KPI)."
+      )
+    ).toBeTruthy();
+    expect(screen.getByText("Tiền Khoán tạm tính")).toBeTruthy();
+    // The Khoán ledger row shows its money (and money per image), not points.
+    expect(await screen.findByText("#1237a")).toBeTruthy();
+    const moneyCells = screen.getAllByText((text) => text.replace(/\s/g, " ") === "1.000.000 ₫");
+    expect(moneyCells.length).toBeGreaterThan(0);
+    expect(screen.getByText((text) => text.replace(/\s/g, " ") === "2.500 ₫")).toBeTruthy();
+    expect(screen.queryByText("200,00")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/điểm Khoán/i);
+    expect(screen.queryByText(/Chưa có KPI kỳ này/)).toBeNull();
   });
 
   it("your own id goes to Bảng điểm của tôi", async () => {

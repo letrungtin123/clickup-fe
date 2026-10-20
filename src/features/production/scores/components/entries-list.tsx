@@ -19,7 +19,8 @@ import { formatSignedCredit } from "../forecast";
  * after Done shows as a separate correction row carrying the signed delta. Tasks show their display code
  * ("#1237", subtask "#1237a"). Table on tablet/desktop, stacked cards on phones (one tree per tier). The API
  * pages the ledger (newest first); "Tải thêm" loads older rows, the filters count the rows loaded so far.
- * `showMoney` false (someone else's money is private) drops the money column.
+ * PD-066: an official-shift row shows points, a Khoán row shows money (its unit price per image and amount) — never
+ * "điểm Khoán"; someone else's Khoán money stays hidden unless the API sent it.
  */
 
 export type EntriesPaging = {
@@ -57,14 +58,12 @@ const taskHref = (entry: ScoreEntryView) => `/production/tasks/${entry.task.id}`
 export const EntriesList = ({
   entries,
   paging,
-  self = true,
-  showMoney = true
+  self = true
 }: {
   entries: readonly ScoreEntryView[];
   paging: EntriesPaging;
   /** The ledger is the signed-in user's own (wording). */
   self?: boolean;
-  showMoney?: boolean;
 }) => {
   const breakpoint = useBreakpoint();
   const [filter, setFilter] = useState<Filter>("all");
@@ -121,14 +120,12 @@ export const EntriesList = ({
       {breakpoint === "mobile" ? (
         <ul className="divide-y">
           {visible.map((entry) => (
-            <EntryCard key={entry.id} entry={entry} showMoney={showMoney} />
+            <EntryCard key={entry.id} entry={entry} />
           ))}
         </ul>
       ) : (
         <div className="overflow-x-auto overscroll-x-contain">
-          <table
-            className={cn("w-full text-[13px]", showMoney ? "min-w-[46rem]" : "min-w-[40rem]")}
-          >
+          <table className="w-full min-w-[42rem] text-[13px]">
             <thead>
               <tr className="border-b text-left text-xs text-foreground-muted">
                 <th scope="col" className="py-2.5 pr-3 pl-4 font-medium">
@@ -149,22 +146,14 @@ export const EntriesList = ({
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">
                   Đơn giá
                 </th>
-                <th
-                  scope="col"
-                  className={cn("py-2.5 pl-3 text-right font-medium", showMoney ? "px-3" : "pr-4")}
-                >
-                  Điểm
+                <th scope="col" className="py-2.5 pr-4 pl-3 text-right font-medium">
+                  Điểm / Tiền Khoán
                 </th>
-                {showMoney ? (
-                  <th scope="col" className="py-2.5 pr-4 pl-3 text-right font-medium">
-                    Tiền
-                  </th>
-                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-border/70">
               {visible.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} showMoney={showMoney} />
+                <EntryRow key={entry.id} entry={entry} />
               ))}
             </tbody>
           </table>
@@ -243,7 +232,13 @@ const Tags = ({ entry }: { entry: ScoreEntryView }) => (
   </>
 );
 
-const PointsValue = ({ entry, className }: { entry: ScoreEntryView; className?: string }) => (
+const PointsValue = ({
+  entry,
+  className
+}: {
+  entry: ScoreEntryView;
+  className?: string | undefined;
+}) => (
   <span
     className={cn(
       "font-medium tabular-nums",
@@ -256,14 +251,62 @@ const PointsValue = ({ entry, className }: { entry: ScoreEntryView; className?: 
   </span>
 );
 
-const MoneyValue = ({ entry }: { entry: ScoreEntryView }) =>
-  entry.payMode === "MONEY_IF_KPI" && entry.money !== null && entry.money !== 0 ? (
-    <span className="tabular-nums">{formatMoney(entry.money)}</span>
+const isKhoan = (entry: ScoreEntryView) => entry.payMode === "MONEY_IF_KPI";
+
+/** Signed money of a correction (+15.000 ₫ / −7.500 ₫). */
+const signedMoney = (value: number) =>
+  value === 0 ? formatMoney(0) : `${value > 0 ? "+" : "−"}${formatMoney(Math.abs(value))}`;
+
+/** A Khoán row's money; hidden (someone else's) → "Khoán" without the amount. */
+const MoneyValue = ({
+  entry,
+  className
+}: {
+  entry: ScoreEntryView;
+  className?: string | undefined;
+}) =>
+  entry.money === null ? (
+    <span
+      className={cn("text-foreground-muted", className)}
+      title="Tiền Khoán chỉ chính chủ và người có quyền xem mới thấy."
+    >
+      Khoán
+    </span>
   ) : (
-    <span className="text-foreground-subtle">—</span>
+    <span
+      className={cn(
+        "font-medium tabular-nums",
+        isAdjustment(entry) && entry.money < 0 && "text-danger",
+        isAdjustment(entry) && entry.money > 0 && "text-success",
+        className
+      )}
+    >
+      {isAdjustment(entry) ? signedMoney(entry.money) : formatMoney(entry.money)}
+    </span>
   );
 
-const EntryRow = ({ entry, showMoney }: { entry: ScoreEntryView; showMoney: boolean }) => {
+/** What the row earned: points (official shift) or money (Khoán shift, PD-066). */
+const EarnedValue = ({
+  entry,
+  className
+}: {
+  entry: ScoreEntryView;
+  className?: string | undefined;
+}) =>
+  isKhoan(entry) ? (
+    <MoneyValue entry={entry} className={className} />
+  ) : (
+    <PointsValue entry={entry} className={className} />
+  );
+
+/** Unit price: points per image, or money per image of a Khoán row ("—" while its money is hidden). */
+const unitText = (entry: ScoreEntryView) => {
+  if (!isKhoan(entry)) return formatCredit(entry.unitCredits);
+  if (entry.money === null || entry.qty === 0) return "—";
+  return formatMoney(Math.abs(Math.round(entry.money / entry.qty)));
+};
+
+const EntryRow = ({ entry }: { entry: ScoreEntryView }) => {
   const adjustment = isAdjustment(entry);
   return (
     <tr className={cn("align-top", adjustment && "bg-warning-soft/35")}>
@@ -313,22 +356,17 @@ const EntryRow = ({ entry, showMoney }: { entry: ScoreEntryView; showMoney: bool
         ) : null}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">{qtyText(entry)}</td>
-      <td className="px-3 py-2.5 text-right text-foreground-muted tabular-nums">
-        {formatCredit(entry.unitCredits)}
+      <td className="px-3 py-2.5 text-right whitespace-nowrap text-foreground-muted tabular-nums">
+        {unitText(entry)}
       </td>
-      <td className={cn("py-2.5 pl-3 text-right", showMoney ? "px-3" : "pr-4")}>
-        <PointsValue entry={entry} />
+      <td className="py-2.5 pr-4 pl-3 text-right whitespace-nowrap">
+        <EarnedValue entry={entry} />
       </td>
-      {showMoney ? (
-        <td className="py-2.5 pr-4 pl-3 text-right whitespace-nowrap">
-          <MoneyValue entry={entry} />
-        </td>
-      ) : null}
     </tr>
   );
 };
 
-const EntryCard = ({ entry, showMoney }: { entry: ScoreEntryView; showMoney: boolean }) => {
+const EntryCard = ({ entry }: { entry: ScoreEntryView }) => {
   const adjustment = isAdjustment(entry);
   return (
     <li className={cn("flex items-start gap-3 px-4 py-3", adjustment && "bg-warning-soft/35")}>
@@ -356,19 +394,11 @@ const EntryCard = ({ entry, showMoney }: { entry: ScoreEntryView; showMoney: boo
           {showKhoanMark(entry) ? " (Khoán)" : ""}
         </span>
         <span className="text-xs text-foreground-muted tabular-nums">
-          {qtyText(entry)} tấm × {formatCredit(entry.unitCredits)}
+          {qtyText(entry)} tấm{unitText(entry) === "—" ? "" : ` × ${unitText(entry)}`}
         </span>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-        <PointsValue entry={entry} className="text-sm" />
-        {showMoney &&
-        entry.payMode === "MONEY_IF_KPI" &&
-        entry.money !== null &&
-        entry.money !== 0 ? (
-          <span className="text-xs">
-            <MoneyValue entry={entry} />
-          </span>
-        ) : null}
+        <EarnedValue entry={entry} className="text-sm" />
       </div>
     </li>
   );

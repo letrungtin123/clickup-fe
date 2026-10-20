@@ -20,9 +20,19 @@ import {
   ClipboardList,
   ClipboardPen,
   Columns3,
+  FilterX,
   List
 } from "lucide-react";
-import { memo, useMemo, useState, type HTMLAttributes } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type HTMLAttributes
+} from "react";
+import { useSearchParams } from "react-router";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { SegmentedControl } from "@/components/shared/radio-controls";
@@ -39,10 +49,12 @@ import { useTaskMover } from "@/features/production/components/jobs/use-task-mov
 import { WorkEntryDialog } from "@/features/production/components/jobs/work-entry-dialog";
 import { WorkflowUnavailable } from "@/features/production/components/jobs/workflow-unavailable";
 import { MyLedJobs } from "@/features/production/components/jobs/my-led-jobs";
+import { DateRangeFilter } from "@/features/production/components/date-range-filter";
 import { ListFiltersControl } from "@/features/production/components/list-filters";
+import { SearchField } from "@/features/production/components/settings-kit";
 import { todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe } from "@/features/production/hooks";
-import { emptyListFilters } from "@/features/production/list-filters";
+import { emptyListFilters, listFiltersToSearch } from "@/features/production/list-filters";
 import { useUrlListFilters } from "@/features/production/list-filters-hooks";
 import type { MyTasksRole } from "@/features/production/jobs-api";
 import { useMyTasks } from "@/features/production/jobs-hooks";
@@ -52,11 +64,21 @@ import {
   pagedCountLabel,
   type BoardColumn
 } from "@/features/production/jobs-model";
+import {
+  activeMyTaskFilterCount,
+  emptyMyTaskFilters,
+  myTaskFiltersFromSearch,
+  myTaskFiltersToQuery,
+  myTaskFiltersToSearch,
+  type MyTaskFilters
+} from "@/features/production/my-task-filters";
 import { useOpenTask } from "@/features/production/task-link";
 import { touchTargets } from "@/features/production/ui";
 import { toneClass } from "@/lib/colors";
 
 type View = "board" | "list";
+/** Tasks I do AND tasks I check: no "Tôi làm / Tôi QC / Tất cả" switch any more (owner, 2026-10-20). */
+const myTasksRole: MyTasksRole = "all";
 const VIEW_KEY = "production:my-tasks:view";
 
 const readView = (): View => {
@@ -89,18 +111,39 @@ export const ProductionMyTasksRoute = () => {
   const breakpoint = useBreakpoint();
   const openTask = useOpenTask();
   const mover = useTaskMover();
-  const [role, setRole] = useState<MyTasksRole>("all");
-  const [includeFinished, setIncludeFinished] = useState(false);
+  // PD-068: finished work shows by default on every visit; turning it off lasts for this visit only.
+  const [includeFinished, setIncludeFinished] = useState(true);
   const [view, setView] = useState<View>(readView);
   // "Nhập công việc" (PD-035): a work-log row for myself (or anyone with "create: all").
   const canEnter = useProductionAccess().jobScopes.create !== "none";
   const [entering, setEntering] = useState(false);
   // TASK tags / custom fields, kept in the URL (?tag=…&cf.<key>=…).
   const listFilters = useUrlListFilters("TASK");
-  const filtering = listFilters.count > 0;
-  const tasks = useMyTasks(role, includeFinished, listFilters.ready, listFilters.query);
+  // PD-068 search and date range, in the URL too (?q=…&dateBy=…&from=…&to=…).
+  const [params, setParams] = useSearchParams();
+  const taskFilters = useMemo(() => myTaskFiltersFromSearch(params), [params]);
+  const setTaskFilters = useCallback(
+    (next: MyTaskFilters) =>
+      setParams((current) => myTaskFiltersToSearch(next, current), { replace: true }),
+    [setParams]
+  );
+  // "Xóa bộ lọc": tags, fields, dates and search at once (the search box follows the URL).
+  const clearFilters = () =>
+    setParams(
+      (current) =>
+        myTaskFiltersToSearch(emptyMyTaskFilters, listFiltersToSearch(emptyListFilters, current)),
+      { replace: true }
+    );
+  const filterCount = listFilters.count + activeMyTaskFilterCount(taskFilters);
+  const filtering = filterCount > 0;
+  const query = useMemo(
+    () => ({ ...listFilters.query, ...myTaskFiltersToQuery(taskFilters) }),
+    [listFilters.query, taskFilters]
+  );
+  const tasks = useMyTasks(myTasksRole, includeFinished, listFilters.ready, query);
   const fields = listFilters.fields;
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
+  const today = todayIn(timeZone);
   // Subtasks are listed inside their line (PD-044), never as cards of their own.
   const items = useMemo(
     () => flattenPages(tasks.data?.pages).filter((task) => !task.isSubtask),
@@ -150,42 +193,61 @@ export const ProductionMyTasksRoute = () => {
           ) : undefined
         }
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <SegmentedControl<MyTasksRole>
-            aria-label="Vai trò"
-            value={role}
-            onChange={setRole}
-            className="max-sm:w-full"
-            options={[
-              { value: "assignee", label: "Tôi làm" },
-              { value: "qc", label: "Tôi QC" },
-              { value: "all", label: "Tất cả" }
-            ]}
-          />
+        {/* Two tidy rows: what to show (view, finished work), then how to narrow it (search, dates, fields).
+            Phones: search + dates; the switch and the field / tag sheet. */}
+        <div className="flex flex-col gap-2">
           {!mobile ? (
-            <SegmentedControl<View>
-              aria-label="Kiểu xem"
-              value={view}
-              onChange={changeView}
-              options={[
-                { value: "board", label: "Bảng", icon: Columns3 },
-                { value: "list", label: "Danh sách", icon: List }
-              ]}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <SegmentedControl<View>
+                aria-label="Kiểu xem"
+                value={view}
+                onChange={changeView}
+                options={[
+                  { value: "board", label: "Bảng", icon: Columns3 },
+                  { value: "list", label: "Danh sách", icon: List }
+                ]}
+              />
+              <FinishedSwitch
+                checked={includeFinished}
+                onChange={setIncludeFinished}
+                className="ml-auto"
+              />
+            </div>
           ) : null}
-          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-foreground-muted sm:ml-auto max-sm:min-h-10">
-            <Switch checked={includeFinished} onCheckedChange={setIncludeFinished} />
-            Hiện việc đã xong
-          </label>
-          <ListFiltersControl
-            fields={fields}
-            tags={listFilters.tags}
-            filters={listFilters.filters}
-            onChange={listFilters.setFilters}
-            today={todayIn(timeZone)}
-            title="Lọc task theo trường và tag"
-            className="max-sm:ml-auto md:basis-full lg:basis-auto"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Phones: search and dates share their own line; the switch and the field sheet go below. */}
+            <div className="flex min-w-0 items-center gap-2 max-sm:w-full">
+              <TaskSearch
+                value={taskFilters.q}
+                onChange={(q) => setTaskFilters({ ...taskFilters, q })}
+                className="max-sm:min-w-0 max-sm:flex-1 sm:w-64"
+              />
+              <DateRangeFilter
+                value={taskFilters.range}
+                onChange={(range) => setTaskFilters({ ...taskFilters, range })}
+                today={today}
+                className="min-w-0 shrink-0 max-sm:max-w-[50%]"
+              />
+            </div>
+            {mobile ? (
+              <FinishedSwitch checked={includeFinished} onChange={setIncludeFinished} />
+            ) : null}
+            <ListFiltersControl
+              fields={fields}
+              tags={listFilters.tags}
+              filters={listFilters.filters}
+              onChange={listFilters.setFilters}
+              today={today}
+              title="Lọc task theo trường và tag"
+              className="max-sm:ml-auto"
+            />
+            {filtering && !mobile ? (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <FilterX />
+                Xóa lọc ({filterCount})
+              </Button>
+            ) : null}
+          </div>
         </div>
       </PageHeader>
 
@@ -214,13 +276,14 @@ export const ProductionMyTasksRoute = () => {
           <EmptyState
             icon={ClipboardList}
             title="Không có task phù hợp bộ lọc"
-            description="Thử bỏ bớt tag hoặc trường đang lọc."
+            description={
+              includeFinished
+                ? "Thử bỏ bớt từ khóa, khoảng ngày, tag hoặc trường đang lọc."
+                : "Thử bỏ bớt bộ lọc — việc đã xong đang ẩn, bật “Hiện việc đã xong” để tìm cả việc đã xong."
+            }
             action={
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => listFilters.setFilters(emptyListFilters)}
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <FilterX />
                 Xóa bộ lọc
               </Button>
             }
@@ -231,8 +294,15 @@ export const ProductionMyTasksRoute = () => {
             title={includeFinished ? "Chưa có task nào" : "Không còn việc đang mở"}
             description={
               includeFinished
-                ? "Khi Leader giao task hoặc gán bạn làm QC, task sẽ hiện ở đây."
-                : "Bạn đã xong hết việc được giao. Bật “Hiện việc đã xong” để xem lại."
+                ? "Khi Leader giao task hoặc gán bạn làm QC, task sẽ hiện ở đây — cả việc đang làm lẫn việc đã xong."
+                : "Bạn đã xong hết việc được giao. Việc đã xong đang ẩn trong lần xem này."
+            }
+            action={
+              includeFinished ? undefined : (
+                <Button variant="outline" size="sm" onClick={() => setIncludeFinished(true)}>
+                  Hiện việc đã xong
+                </Button>
+              )
             }
           />
         ) : noWorkflow ? (
@@ -299,6 +369,73 @@ export const ProductionMyTasksRoute = () => {
 };
 
 type MoveFn = (task: ProductionTask, option: TaskTransitionOption, optimistic?: boolean) => void;
+
+/** "Hiện việc đã xong" (PD-068: on by default each visit). */
+const FinishedSwitch = ({
+  checked,
+  onChange,
+  className
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) => (
+  <label
+    className={cn(
+      "flex cursor-pointer items-center gap-2 text-[13px] whitespace-nowrap text-foreground-muted max-sm:min-h-10",
+      className
+    )}
+  >
+    <Switch checked={checked} onCheckedChange={onChange} />
+    Hiện việc đã xong
+  </label>
+);
+
+/**
+ * PD-068 search box: task code (#1286, a subtask's 1286a), Gói công việc, project, process, note — written to the URL
+ * (`?q=`) after a short pause; it follows the URL when the search changes elsewhere ("Xóa bộ lọc", back / forward).
+ */
+const TaskSearch = ({
+  value,
+  onChange,
+  className
+}: {
+  value: string;
+  onChange: (q: string) => void;
+  className?: string;
+}) => {
+  const [term, setTerm] = useState(value);
+  // The URL value the box last followed, and the last value it wrote there itself.
+  const [synced, setSynced] = useState(value);
+  const [written, setWritten] = useState<string | null>(null);
+  if (value !== synced) {
+    setSynced(value);
+    // Changed elsewhere: follow it. Our own write leaves what is being typed alone.
+    if (value !== written) setTerm(value);
+  }
+  const latest = useRef(onChange);
+  useEffect(() => {
+    latest.current = onChange;
+  });
+  useEffect(() => {
+    const next = term.trim();
+    if (next === value) return undefined;
+    const timer = window.setTimeout(() => {
+      setWritten(next);
+      latest.current(next);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [term, value]);
+  return (
+    <SearchField
+      value={term}
+      onChange={setTerm}
+      placeholder="Tìm mã task, gói, dự án, ghi chú"
+      label="Tìm task"
+      className={cn(className)}
+    />
+  );
+};
 
 /** "Đang hiện 200 task đầu" + "Tải thêm" while more pages exist; nothing for a complete list. */
 const PagingBar = ({ paging, className }: { paging: Paging; className?: string }) =>

@@ -1,10 +1,10 @@
+import { cn } from "cn";
 import { CalendarDays, CalendarRange, Coins, Sun } from "lucide-react";
 import { lazy, Suspense } from "react";
 
 import { ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import type { KhoanPayPolicy } from "@/contracts/production-catalog";
 import {
   kpiPeriodRange,
   type KpiCloseDays,
@@ -14,7 +14,6 @@ import {
 
 import { formatCredit, formatInteger, formatMoney } from "../../format";
 import { flattenPages } from "../../jobs-model";
-import { khoanProvisionalHint } from "../../kpi/khoan-policy";
 import { useForecastOf, useScores, type ScoresView } from "../hooks";
 import { periodLabel } from "../periods";
 import { EntriesList, type EntriesPaging } from "./entries-list";
@@ -26,10 +25,11 @@ const DailyPointsChart = lazy(() =>
 );
 
 /**
- * "Tổng quan" of a scores page (SPEC Phase 3 §5) for one person: the KPI forecast, today / week / period
- * cards, Khoán money (or, when hidden, the Khoán work), daily chart, projects and the ledger. `userId`
- * null = the signed-in user (/production/scores); otherwise that member's "Điểm cá nhân" (PD-052), where
- * money appears only if the API sent it (own, Admin, or settings.moneyPublic).
+ * "Tổng quan" of a scores page (SPEC Phase 3 §5) for one person: the KPI forecast (with "Nếu chốt hôm nay"), today /
+ * week / period cards, "Tiền Khoán tạm tính" (or, when hidden, the Khoán images), daily chart, projects and the ledger.
+ * `userId` null = the signed-in user (/production/scores); otherwise that member's "Điểm cá nhân" (PD-052), where money
+ * appears only if the API sent it (their own, or "Xem tiền Khoán người khác"). PD-066: points are official points;
+ * Khoán is shown as money only — never "điểm Khoán".
  */
 export const ScoresOverview = ({
   userId,
@@ -37,7 +37,6 @@ export const ScoresOverview = ({
   current,
   closeDays,
   today,
-  khoanPolicy,
   onPeriodChange
 }: {
   userId: string | null;
@@ -45,7 +44,6 @@ export const ScoresOverview = ({
   current: string;
   closeDays: KpiCloseDays;
   today: string;
-  khoanPolicy: KhoanPayPolicy;
   onPeriodChange: (period: string) => void;
 }) => {
   const range = kpiPeriodRange(period, closeDays);
@@ -104,7 +102,6 @@ export const ScoresOverview = ({
           period={period}
           isCurrent={period === current}
           today={today}
-          khoanPolicy={khoanPolicy}
           self={userId === null}
         />
       )}
@@ -112,13 +109,16 @@ export const ScoresOverview = ({
   );
 };
 
+/** The Khoán work of a card as money (or images while the money is hidden) — never as points (PD-066). */
 const KhoanLine = ({ totals }: { totals: ScoreTotalsView }) =>
-  totals.pointsKhoan > 0 || totals.qtyKhoan > 0 ? (
+  totals.qtyKhoan !== 0 || (totals.moneyKhoanProvisional ?? 0) !== 0 ? (
     <span className="tabular-nums">
-      {`+\u00a0${formatCredit(totals.pointsKhoan)}\u00a0Khoán · ${formatInteger(totals.qtyKhoan)}\u00a0tấm`}
+      {totals.moneyKhoanProvisional === null
+        ? `Khoán ${formatInteger(totals.qtyKhoan)}\u00a0tấm`
+        : `Khoán ${formatMoney(totals.moneyKhoanProvisional)} · ${formatInteger(totals.qtyKhoan)}\u00a0tấm`}
     </span>
   ) : (
-    <span>Chưa có điểm Khoán</span>
+    <span>Không có task Khoán</span>
   );
 
 const ScoresContent = ({
@@ -128,7 +128,6 @@ const ScoresContent = ({
   period,
   isCurrent,
   today,
-  khoanPolicy,
   self
 }: {
   data: ScoresView;
@@ -137,14 +136,14 @@ const ScoresContent = ({
   period: string;
   isCurrent: boolean;
   today: string;
-  khoanPolicy: KhoanPayPolicy;
   self: boolean;
 }) => {
   const { cards, summary } = data;
+  // Official points per project; a project worked only on Khoán shifts shows its images (money is per person).
   const projects = summary.byProject
-    .filter((row) => row.qty !== 0 || row.pointsOfficial !== 0 || row.pointsKhoan !== 0)
-    .sort((a, b) => b.pointsOfficial + b.pointsKhoan - (a.pointsOfficial + a.pointsKhoan));
-  const projectMax = Math.max(1, ...projects.map((row) => row.pointsOfficial + row.pointsKhoan));
+    .filter((row) => row.qty !== 0 || row.pointsOfficial !== 0)
+    .sort((a, b) => b.pointsOfficial - a.pointsOfficial || b.qty - a.qty);
+  const projectMax = Math.max(1, ...projects.map((row) => row.pointsOfficial));
   const money = summary.moneyKhoanProvisional;
 
   return (
@@ -179,21 +178,25 @@ const ScoresContent = ({
           <KhoanLine totals={summary} />
         </StatCard>
         {money === null ? (
-          // Someone else's money stays private (PD-052): their Khoán work, without the amount.
+          // Someone else's money stays private (PD-052, PD-066): their Khoán images, without the amount.
           <StatCard
             label="Khoán trong kỳ"
             icon={Coins}
-            value={formatCredit(summary.pointsKhoan)}
-            unit="điểm"
+            value={formatInteger(summary.qtyKhoan)}
+            unit="tấm"
           >
-            <span className="tabular-nums">{formatInteger(summary.qtyKhoan)}&nbsp;tấm</span>
-            <span>Tiền Khoán chỉ chính chủ và Quản trị xem được.</span>
+            <span>Tiền Khoán chỉ chính chủ và người có quyền xem mới thấy.</span>
           </StatCard>
         ) : (
-          <StatCard label="Tiền Khoán tạm tính" icon={Coins} value={formatMoney(money)}>
+          <StatCard
+            label={isCurrent ? "Tiền Khoán tạm tính" : `Tiền Khoán đã làm · ${periodLabel(period)}`}
+            icon={Coins}
+            value={formatMoney(money)}
+          >
+            <span className="tabular-nums">{formatInteger(summary.qtyKhoan)}&nbsp;tấm Khoán</span>
             <span>
-              {money > 0
-                ? khoanProvisionalHint(khoanPolicy)
+              {money !== 0
+                ? "Khi chốt: thiếu KPI thì bù từ Khoán, phần còn lại trả tiền."
                 : "Chưa có task Khoán có giá trong kỳ."}
             </span>
           </StatCard>
@@ -203,7 +206,7 @@ const ScoresContent = ({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <Panel
           title="Điểm theo ngày"
-          description={`${periodLabel(period)} · tổng ${formatCredit(summary.pointsOfficial + summary.pointsKhoan)} điểm`}
+          description={`${periodLabel(period)} · tổng ${formatCredit(summary.pointsOfficial)} điểm chính thức`}
           bodyClassName="px-3 pt-3 pb-2 sm:px-4"
         >
           <Suspense fallback={<Skeleton className="h-64 w-full" />}>
@@ -216,15 +219,20 @@ const ScoresContent = ({
           ) : (
             <ul className="flex max-h-64 flex-col gap-2.5 overflow-y-auto">
               {projects.map((row) => {
-                const total = row.pointsOfficial + row.pointsKhoan;
+                const khoanOnly = row.pointsOfficial === 0 && row.pointsKhoan !== 0;
                 return (
                   <li key={row.projectId} className="flex flex-col gap-1">
                     <span className="flex items-baseline justify-between gap-2 text-[13px]">
                       <span className="truncate font-mono text-xs font-semibold">
                         {row.projectCode}
                       </span>
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {formatCredit(total)}
+                      <span
+                        className={cn(
+                          "shrink-0 tabular-nums",
+                          khoanOnly ? "text-xs text-foreground-muted" : "font-medium"
+                        )}
+                      >
+                        {khoanOnly ? "Khoán" : formatCredit(row.pointsOfficial)}
                       </span>
                     </span>
                     <span
@@ -235,14 +243,10 @@ const ScoresContent = ({
                         className="h-full bg-brand"
                         style={{ width: `${(row.pointsOfficial / projectMax) * 100}%` }}
                       />
-                      <span
-                        className="h-full bg-[color-mix(in_oklab,var(--brand)_42%,white)]"
-                        style={{ width: `${(row.pointsKhoan / projectMax) * 100}%` }}
-                      />
                     </span>
                     <span className="text-[11px] text-foreground-muted tabular-nums">
                       {formatInteger(row.qty)} tấm
-                      {row.pointsKhoan > 0 ? ` · ${formatCredit(row.pointsKhoan)} Khoán` : ""}
+                      {row.pointsKhoan !== 0 && !khoanOnly ? " · có task Khoán" : ""}
                     </span>
                   </li>
                 );
@@ -254,9 +258,9 @@ const ScoresContent = ({
 
       <Panel
         title="Lịch sử ghi điểm"
-        description="Mỗi task ghi một dòng điểm khi Done (task Checking: điểm QC); sửa số tấm sau khi xong hoặc xoá task thì thêm dòng điều chỉnh."
+        description="Mỗi task ghi một dòng khi Done (task Checking: điểm QC) — ca chính thức tính điểm, ca Khoán tính tiền; sửa số tấm sau khi xong hoặc xoá task thì thêm dòng điều chỉnh."
       >
-        <EntriesList entries={entries} paging={paging} self={self} showMoney={money !== null} />
+        <EntriesList entries={entries} paging={paging} self={self} />
       </Panel>
     </>
   );

@@ -64,6 +64,18 @@ export const useImportKpiTargets = () => {
   });
 };
 
+/**
+ * PD-066: who must have a KPI for `period` (null = the current one) and has none — ADMIN (the KPI page and the
+ * settlement page). A settlement of that period is refused (409 KPI_TARGETS_MISSING) until the list is empty.
+ */
+export const useKpiTargetsMissing = (period: string | null, enabled = true) =>
+  useQuery({
+    queryKey: kpiKeys.missing(period),
+    queryFn: ({ signal }) => kpiApi.missingTargets(period ?? undefined, signal),
+    retry: retryUnlessClientError,
+    enabled
+  });
+
 export const useApplyDefaultKpi = () => {
   const invalidate = useInvalidateKpi();
   return useMutation({

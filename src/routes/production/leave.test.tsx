@@ -141,6 +141,9 @@ const setup = ({
 };
 
 beforeEach(() => {
+  // The fixtures are written for Friday 16 October 2026 (the calendar mock says so too): only Date is faked.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-16T03:00:00Z"));
   vi.mocked(downloadLeaveExport).mockReset();
   vi.mocked(toast.success).mockReset();
   vi.mocked(toast.error).mockReset();
@@ -148,6 +151,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 

@@ -4,6 +4,7 @@ import type { KpiReport } from "@/contracts/production-scores";
 
 import {
   attainment,
+  figuresOfRow,
   kpiReportHref,
   reportKeys,
   reportRowsFor,
@@ -21,10 +22,13 @@ const user = (id: string, name: string) => ({
 const figures = (target: number | null, total: number) => ({
   target,
   pointsOfficial: total,
+  shortfall: target === null ? 0 : Math.max(0, Math.round((target - total) * 100) / 100),
   khoanPointsConverted: 0,
   totalPoints: total,
   percent: target ? Math.round((total / target) * 10000) / 100 : null,
   difference: target === null ? null : total - target,
+  khoanMoneyEarned: null,
+  khoanMoneyPaid: null,
   khoanMoney: null
 });
 
@@ -166,6 +170,28 @@ describe("totalsFor", () => {
     expect(totals.org?.totalPoints).toBe(2271.72);
     expect(totalsFor(report, "MONTH", "2026-06")).toEqual({ teams: [], org: null });
     expect(totalSummary(totals.org!)).toBe("2 người · đạt 0/1");
+  });
+});
+
+describe("figuresOfRow (PD-066)", () => {
+  it("carries the shortfall, the points topped up from Khoán and the money earned / paid", () => {
+    const row = {
+      ...report.rows[0]!,
+      shortfall: 50,
+      khoanPointsConverted: 50,
+      totalPoints: 2400,
+      khoanMoneyEarned: 1_000_000,
+      khoanMoneyPaid: 750_000,
+      khoanMoney: 750_000
+    };
+    expect(figuresOfRow(row)).toMatchObject({
+      shortfall: 50,
+      khoanPointsConverted: 50,
+      khoanMoneyEarned: 1_000_000,
+      khoanMoneyPaid: 750_000
+    });
+    expect(Object.keys(figuresOfRow(row))).not.toContain("khoanMoney");
+    expect(reportRowsFor(report, "MONTH", "2026-05")[0]?.figures.shortfall).toBe(128.28);
   });
 });
 

@@ -8,6 +8,7 @@ import {
   forecastToneInfo,
   formatPercent,
   formatSignedCredit,
+  kpiMissing,
   progressWidth,
   toneFamily
 } from "./forecast";
@@ -72,6 +73,14 @@ describe("forecastSentence", () => {
     expect(forecastSentence({ ...base, tone: "NO_TARGET", target: null, remaining: null })).toMatch(
       /chưa có chỉ tiêu/
     );
+  });
+
+  it("PD-066: someone who must have a KPI and has none is told to ask Quản trị", () => {
+    const missing = { ...base, tone: "NO_TARGET" as const, target: null, remaining: null, kpiRequired: true };
+    expect(forecastSentence(missing)).toBe("Chưa có KPI kỳ này — liên hệ Quản trị.");
+    expect(kpiMissing({ kpiRequired: true, targetBase: null })).toBe(true);
+    expect(kpiMissing({ kpiRequired: true, targetBase: 2600 })).toBe(false);
+    expect(kpiMissing({ kpiRequired: false, targetBase: null })).toBe(false);
   });
 });
 

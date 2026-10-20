@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { JobFiltersBar } from "@/features/production/components/jobs/job-filters";
 import { JobFormDialog } from "@/features/production/components/jobs/job-form-dialog";
 import { JobsExportMenu } from "@/features/production/components/jobs/jobs-export-menu";
+import {
+  JobProjectSelect,
+  JobProjectSidebar,
+  ShowProjectsButton
+} from "@/features/production/components/jobs/job-project-sidebar";
 import { JobsEmpty, JobsList } from "@/features/production/components/jobs/jobs-list";
 import { WorkEntryDialog } from "@/features/production/components/jobs/work-entry-dialog";
 import { fieldsFor } from "@/features/production/custom-fields";
@@ -20,7 +25,14 @@ import {
   useProductionMe,
   useTags
 } from "@/features/production/hooks";
-import { useJobs } from "@/features/production/jobs-hooks";
+import { useSessionContext } from "@/features/auth/hooks";
+import {
+  monthCounts,
+  monthDefaultDays,
+  readSidebarHidden,
+  writeSidebarHidden
+} from "@/features/production/job-list-model";
+import { useJobFacets, useJobs } from "@/features/production/jobs-hooks";
 import { sanitizeListFilters } from "@/features/production/list-filters";
 import {
   activeFilterCount,
@@ -34,6 +46,7 @@ import {
 } from "@/features/production/jobs-model";
 import { useProductionPeople } from "@/features/production/people";
 import { touchTargets } from "@/features/production/ui";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 /**
  * /production/jobs — jobs (one per Gói công việc of a project, PD-035) with their work lines, filters in the URL.
@@ -83,11 +96,22 @@ const JobsForbidden = ({ canEnter }: { canEnter: boolean }) => {
 
 const JobsPage = () => {
   const me = useProductionMe();
+  const userId = useSessionContext().user.id;
   const { jobScopes } = useProductionAccess();
   const navigate = useNavigate();
+  const breakpoint = useBreakpoint();
+  const phone = breakpoint === "mobile";
   const [params, setParams] = useSearchParams();
-  const [creating, setCreating] = useState(false);
+  // "Tạo job": from the header (no month) or from a month group of the list (PD-067).
+  const [creating, setCreating] = useState<{ month: string | null } | null>(null);
   const [entering, setEntering] = useState(false);
+  // PD-067 project sidebar: the user's choice, else shown on desktop and folded on tablets (room for the table).
+  const [sidebarChoice, setSidebarChoice] = useState(() => readSidebarHidden(userId));
+  const sidebarHidden = sidebarChoice ?? breakpoint === "tablet";
+  const setSidebarHidden = (hidden: boolean) => {
+    setSidebarChoice(hidden);
+    writeSidebarHidden(userId, hidden);
+  };
   const canCreateJob = jobScopes.create === "all";
   const canEnter = jobScopes.create !== "none";
   const customFields = useCustomFields();
@@ -121,11 +145,18 @@ const JobsPage = () => {
         }
       : parsed;
   }, [params, customFields.data, jobFields, tags.data, jobStatuses.data]);
-  const query = useMemo(() => jobQueryFromFilters(filters, timeZone), [filters, timeZone]);
+  const facetQuery = useMemo(() => jobQueryFromFilters(filters, timeZone), [filters, timeZone]);
+  // PD-067: the List view groups by month of Ngày nhận, so rows come newest Ngày nhận first (the export follows).
+  const query = useMemo(() => ({ ...facetQuery, sort: "received" }), [facetQuery]);
   // Custom-field filters from a link wait for the field catalog (a stale one would answer 400).
   const ready = Object.keys(filters.custom.fields).length === 0 || !customFields.isPending;
   const jobs = useJobs(query, ready);
+  const facets = useJobFacets(facetQuery, ready);
   const items = useMemo(() => jobs.data?.pages.flatMap((page) => page.items) ?? [], [jobs.data]);
+  const counts = useMemo(() => monthCounts(facets.data), [facets.data]);
+  const total = facets.data
+    ? facets.data.months.reduce((sum, month) => sum + month.count, 0)
+    : null;
   const filtering = activeFilterCount(filters) > 0 || filters.q.trim() !== "";
   // Per-person view ("Mọi nhân viên"): the person whose share the loaded rows carry.
   const totals = jobs.data?.pages[0]?.personTotals ?? null;
@@ -138,6 +169,23 @@ const JobsPage = () => {
     (next: JobFilters) => setParams(jobFiltersToSearch(next), { replace: true }),
     [setParams]
   );
+  const projectList = {
+    projects: facets.data?.projects,
+    isPending: facets.isPending,
+    isError: facets.isError,
+    onRetry: () => void facets.refetch(),
+    selectedId: filters.projectId,
+    onSelect: (projectId: string | null) => setFilters({ ...filters, projectId })
+  };
+  // A new job starts in the list's project when it is an active one, and in the month it was asked from (PD-067).
+  const selectedProject = facets.data?.projects.find(
+    (project) => project.projectId === filters.projectId
+  );
+  const monthDays = creating?.month ? monthDefaultDays(creating.month, todayIn(timeZone)) : null;
+  const createInitial = {
+    projectId: selectedProject?.active ? selectedProject.projectId : null,
+    ...(monthDays ? { receivedDay: monthDays.received, dueDay: monthDays.due } : {})
+  };
 
   return (
     <div className={`flex h-full min-h-0 flex-col ${touchTargets}`}>
@@ -154,7 +202,7 @@ const JobsPage = () => {
             {/* Danh sách job (one row per job) or the work log (one row per line). */}
             <JobsExportMenu query={query} disabled={!jobs.data} />
             {canCreateJob ? (
-              <Button variant="outline" onClick={() => setCreating(true)}>
+              <Button variant="outline" onClick={() => setCreating({ month: null })}>
                 <Plus />
                 <span className="max-sm:sr-only">Tạo job</span>
               </Button>
@@ -174,71 +222,96 @@ const JobsPage = () => {
           today={todayIn(timeZone)}
           fields={jobFields}
           tags={tags.data?.items ?? []}
+          // PD-067: the project is picked in the sidebar (phones: the select above the list).
+          showProject={false}
         />
       </PageHeader>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4 md:overflow-hidden md:px-6">
-        <p className="text-xs text-foreground-muted tabular-nums" aria-live="polite">
-          {person && totals ? (
-            // Over every matching job (the API sums them), not only the loaded rows.
-            <>
-              {formatInteger(totals.jobCount)} job ·{" "}
-              <b className="font-semibold text-foreground">{person.displayName}</b> làm{" "}
-              <b className="font-semibold text-foreground">{formatInteger(totals.qtyAssigned)}</b>{" "}
-              tấm · xong{" "}
-              <b className="font-semibold text-foreground">{formatInteger(totals.qtyDone)}</b> · đã
-              kiểm{" "}
-              <b className="font-semibold text-foreground">{formatInteger(totals.qtyChecked)}</b>
-            </>
-          ) : jobs.data ? (
-            `${items.length}${jobs.hasNextPage ? "+" : ""} job`
-          ) : (
-            " "
-          )}
-          {jobs.isFetching && !jobs.isPending ? " · đang cập nhật…" : ""}
-        </p>
-        <JobsList
-          jobs={items}
-          isPending={jobs.isPending}
-          error={jobs.isError ? jobs.error : null}
-          onRetry={() => void jobs.refetch()}
-          hasNextPage={jobs.hasNextPage}
-          isFetchingNextPage={jobs.isFetchingNextPage}
-          fetchNextPage={() => void jobs.fetchNextPage()}
-          timeZone={timeZone}
-          fields={jobFields}
-          person={person}
-          filtering={filtering}
-          empty={
-            jobScopes.view === "own" && !filtering ? (
-              <EmptyState
-                icon={Briefcase}
-                title="Chưa có job nào của bạn"
-                description="Job hiện ở đây khi bạn có task trong đó."
-                action={
-                  canEnter ? (
-                    <Button size="sm" onClick={() => setEntering(true)}>
-                      <ClipboardPen />
-                      Nhập Task
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <JobsEmpty
-                filtering={filtering}
-                onReset={() => setFilters(emptyJobFilters)}
-                onCreate={canCreateJob ? () => setCreating(true) : undefined}
-              />
-            )
-          }
-        />
+      <div className="flex min-h-0 flex-1">
+        {!phone && !sidebarHidden ? (
+          <JobProjectSidebar {...projectList} onHide={() => setSidebarHidden(true)} />
+        ) : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-3 md:overflow-hidden md:px-5">
+          {phone ? <JobProjectSelect {...projectList} /> : null}
+          <div className="flex min-h-7 items-center gap-2">
+            {!phone && sidebarHidden ? (
+              <ShowProjectsButton onShow={() => setSidebarHidden(false)} />
+            ) : null}
+            <p
+              className="min-w-0 flex-1 text-xs text-foreground-muted tabular-nums"
+              aria-live="polite"
+            >
+              {person && totals ? (
+                // Over every matching job (the API sums them), not only the loaded rows.
+                <>
+                  {formatInteger(totals.jobCount)} job ·{" "}
+                  <b className="font-semibold text-foreground">{person.displayName}</b> làm{" "}
+                  <b className="font-semibold text-foreground">
+                    {formatInteger(totals.qtyAssigned)}
+                  </b>{" "}
+                  tấm · xong{" "}
+                  <b className="font-semibold text-foreground">{formatInteger(totals.qtyDone)}</b> ·
+                  đã kiểm{" "}
+                  <b className="font-semibold text-foreground">
+                    {formatInteger(totals.qtyChecked)}
+                  </b>
+                </>
+              ) : total !== null ? (
+                `${formatInteger(total)} job`
+              ) : jobs.data ? (
+                `${items.length}${jobs.hasNextPage ? "+" : ""} job`
+              ) : (
+                " "
+              )}
+              {jobs.isFetching && !jobs.isPending ? " · đang cập nhật…" : ""}
+            </p>
+          </div>
+          <JobsList
+            jobs={items}
+            isPending={jobs.isPending}
+            error={jobs.isError ? jobs.error : null}
+            onRetry={() => void jobs.refetch()}
+            hasNextPage={jobs.hasNextPage}
+            isFetchingNextPage={jobs.isFetchingNextPage}
+            fetchNextPage={() => void jobs.fetchNextPage()}
+            timeZone={timeZone}
+            fields={jobFields}
+            person={person}
+            filtering={filtering}
+            monthCounts={counts}
+            onCreateJob={canCreateJob ? (month) => setCreating({ month }) : undefined}
+            empty={
+              jobScopes.view === "own" && !filtering ? (
+                <EmptyState
+                  icon={Briefcase}
+                  title="Chưa có job nào của bạn"
+                  description="Job hiện ở đây khi bạn có task trong đó."
+                  action={
+                    canEnter ? (
+                      <Button size="sm" onClick={() => setEntering(true)}>
+                        <ClipboardPen />
+                        Nhập Task
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <JobsEmpty
+                  filtering={filtering}
+                  onReset={() => setFilters(emptyJobFilters)}
+                  onCreate={canCreateJob ? () => setCreating({ month: null }) : undefined}
+                />
+              )
+            }
+          />
+        </div>
       </div>
       {canCreateJob ? (
         <JobFormDialog
-          key={creating ? "open" : "closed"}
-          open={creating}
+          key={creating ? `open-${creating.month ?? "now"}` : "closed"}
+          open={creating !== null}
           job={null}
-          onClose={() => setCreating(false)}
+          initial={createInitial}
+          onClose={() => setCreating(null)}
           onSaved={(job) => void navigate(`/production/jobs/${job.id}`)}
         />
       ) : null}

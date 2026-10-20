@@ -1,15 +1,25 @@
 import { cn } from "cn";
-import { CircleCheck, CircleDashed, Info, TrendingUp, TriangleAlert } from "lucide-react";
+import {
+  CircleCheck,
+  CircleDashed,
+  HandCoins,
+  Info,
+  TrendingUp,
+  TriangleAlert,
+  UserX
+} from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { KpiProgress, UserScoreForecast } from "@/contracts/production-scores";
 
 import { formatCredit, formatNumber } from "../../format";
+import { ifSettledTodaySentence } from "../../kpi/khoan-policy";
 import {
   forecastLabel,
   forecastSentence,
   forecastToneInfo,
   formatPercent,
+  kpiMissing,
   progressWidth,
   type ToneFamily
 } from "../forecast";
@@ -39,11 +49,20 @@ const toneText: Record<ToneFamily, string> = {
 
 /**
  * KPI forecast for one period: tone (API-decided) as colour + icon + words, points vs. target with
- * a progress bar, and the month / quarter / year KPI percentages.
+ * a progress bar, and the month / quarter / year KPI percentages. PD-066: someone who must have a KPI and has
+ * none sees "Chưa có KPI kỳ này — liên hệ Quản trị" (warning); while the period runs, whoever may see the money
+ * gets "Nếu chốt hôm nay: …" (the TOP_UP rule on today's figures).
  */
 export const ForecastPanel = ({ forecast }: { forecast: UserScoreForecast }) => {
-  const info = forecastToneInfo[forecast.tone];
-  const Icon = toneIcons[info.family];
+  const missing = kpiMissing(forecast);
+  const info = missing
+    ? { family: "warning" as const, label: "Chưa có KPI" }
+    : forecastToneInfo[forecast.tone];
+  const Icon = missing ? UserX : toneIcons[info.family];
+  const settleToday =
+    forecast.ifSettledToday && forecast.daysLeft > 0
+      ? ifSettledTodaySentence(forecast.ifSettledToday, forecast.target !== null)
+      : null;
   const prorated =
     forecast.prorateLeave &&
     forecast.leaveDays !== null &&
@@ -71,7 +90,7 @@ export const ForecastPanel = ({ forecast }: { forecast: UserScoreForecast }) => 
           </span>
           <div className="flex min-w-0 flex-col gap-0.5">
             <p className={cn("text-xs font-semibold", toneText[info.family])}>
-              {forecastLabel(forecast)}
+              {missing ? info.label : forecastLabel(forecast)}
             </p>
             <p className="text-[15px] leading-snug font-medium text-foreground" aria-live="polite">
               {forecastSentence(forecast)}
@@ -114,6 +133,13 @@ export const ForecastPanel = ({ forecast }: { forecast: UserScoreForecast }) => 
           )}
         </p>
       </div>
+
+      {settleToday ? (
+        <p className="flex items-start gap-2 rounded-lg bg-surface/80 px-3 py-2 text-[13px] leading-snug shadow-xs ring-1 ring-border/60">
+          <HandCoins className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
+          <span className="min-w-0">{settleToday}</span>
+        </p>
+      ) : null}
 
       <KpiChips forecast={forecast} />
 

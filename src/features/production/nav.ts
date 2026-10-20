@@ -22,7 +22,6 @@ import {
   Tags,
   Target,
   TextCursorInput,
-  Trophy,
   UsersRound,
   Workflow,
   type LucideIcon
@@ -68,13 +67,6 @@ export type ProductionNavEntry = {
  */
 export const REPORTS_MODULE_VISIBLE = false;
 
-/**
- * The ranking ("Xếp hạng", /production/scores/board) is hidden from the UI like "Báo cáo" (owner, 2026-10-16): no
- * menu entry and no links or buttons leading to it (overview, Bảng điểm, Điểm cá nhân); the route still works by URL
- * (for whoever holds "Xem điểm người khác"). Set to true to bring every entry point back.
- */
-export const RANKING_VISIBLE = false;
-
 export const productionNavEntries: readonly ProductionNavEntry[] = [
   { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
   {
@@ -105,19 +97,8 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
     roles: ["STAFF", "QC", "LEADER"]
   },
   { to: "/production/qc", label: "Hàng chờ QC", icon: ShieldCheck, roles: [], feature: "qc_queue" },
+  // Everyone's points are the "Toàn đội" tab of Bảng điểm (PD-069; the old ranking /production/scores/board redirects).
   { to: "/production/scores", label: "Bảng điểm", icon: ChartColumnBig, roles: [], end: true },
-  // "Xếp hạng" is hidden for now (owner, 2026-10-16; see RANKING_VISIBLE): the route still works by URL.
-  ...(RANKING_VISIBLE
-    ? [
-        {
-          to: "/production/scores/board",
-          label: "Xếp hạng",
-          icon: Trophy,
-          roles: [],
-          feature: "view_others_scores"
-        } satisfies ProductionNavEntry
-      ]
-    : []),
   { to: "/production/leave", label: "Lịch nghỉ", icon: CalendarDays, roles: [] },
   // "Báo cáo" is hidden for now (owner, 2026-10-16: hard to use, not needed yet; see REPORTS_MODULE_VISIBLE). The route
   // /production/reports still works by URL; restore this entry to bring the menu item back:
@@ -142,7 +123,7 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
 
 /**
  * Entries for the user's roles and features. Feature entries (PD-065: Hàng chờ QC, Bảng điều khiển, Quản trị số liệu,
- * Xếp hạng while RANKING_VISIBLE, Bất thường, Khách hàng) follow `features` — the caller's list from `/production/me`; while it is unknown,
+ * Bất thường, Khách hàng) follow `features` — the caller's list from `/production/me`; while it is unknown,
  * the default matrix of their roles. "Job" follows the job view scope once known (PD-036).
  */
 export const visibleNavEntries = (
@@ -284,7 +265,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "general",
     label: "Cài đặt chung",
-    description: "Ngày chốt KPI, chính sách tiền Khoán, công khai tiền công, cảnh báo và chat.",
+    description: "Ngày chốt KPI, KPI mặc định, nghỉ phép trừ KPI, cảnh báo và chat.",
     icon: SlidersHorizontal,
     group: "system",
     roles: ["ADMIN"]

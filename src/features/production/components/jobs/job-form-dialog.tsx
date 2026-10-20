@@ -62,11 +62,17 @@ type Errors = Partial<
 export const JobFormDialog = ({
   open,
   job,
+  initial,
   onClose,
   onSaved
 }: {
   open: boolean;
   job: JobDetail | null;
+  /**
+   * A new job's starting values (PD-067: "+ Tạo job" of a month group starts in that month, the list's project if one
+   * is chosen). Days are organization-calendar days ("YYYY-MM-DD"). Ignored when editing.
+   */
+  initial?: { projectId?: string | null; receivedDay?: string; dueDay?: string } | undefined;
   onClose: () => void;
   onSaved?: (job: JobDetail) => void;
 }) => {
@@ -87,9 +93,11 @@ export const JobFormDialog = ({
   const iAmLeader = access.roles.includes("LEADER");
   const canChooseLeader = job ? job.capabilities.canChangeLeader : true;
 
-  const initialReceived = job ? isoToDay(job.receivedAt, timeZone) : today;
-  const initialDue = job ? isoToDay(job.deadline, timeZone) : today;
-  const [projectId, setProjectId] = useState<string | null>(job?.project.id ?? null);
+  const initialReceived = job ? isoToDay(job.receivedAt, timeZone) : (initial?.receivedDay ?? today);
+  const initialDue = job ? isoToDay(job.deadline, timeZone) : (initial?.dueDay ?? initialReceived);
+  const [projectId, setProjectId] = useState<string | null>(
+    job?.project.id ?? initial?.projectId ?? null
+  );
   const [code, setCode] = useState(job?.code ?? "");
   const [leaderId, setLeaderId] = useState<string | null>(
     job ? (job.leader?.id ?? null) : iAmLeader ? session.user.id : null

@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { FilterX, ListFilter } from "lucide-react";
+import { FilterX, ListFilter, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { JobStatusFilter } from "./job-status-filter";
 import { OptionSelect, PersonFilterPicker } from "./pickers";
 
 /**
- * Job list filters (URL state): search, project, manual job statuses (any of them, PD-038), leader, staff member (searchable; their
+ * Job list filters (URL state): search, project, manual job statuses (any of them, PD-038), staff member (searchable; their
  * jobs as assignee, with their numbers — PD-034), deadline range, "có task trễ", archived, tags (any of them) and JOB custom
  * fields. Inline on tablet/desktop (tags and custom fields as chips + "Trường & tag"); a bottom
  * sheet on phones.
@@ -38,11 +38,14 @@ export const JobFiltersBar = ({
   onChange,
   today,
   fields,
-  tags
+  tags,
+  showProject = true
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
+  /** false: the page picks the project elsewhere (PD-067: the job List view's project sidebar / select). */
+  showProject?: boolean;
   /** Active JOB custom fields (filters offered for each). */
   fields: readonly CustomField[];
   tags: readonly Tag[];
@@ -90,7 +93,13 @@ export const JobFiltersBar = ({
               <SheetDescription>Bộ lọc được lưu trên đường dẫn để chia sẻ.</SheetDescription>
             </SheetHeader>
             <div className="flex flex-col gap-4 px-4 py-4">
-              <FilterControls filters={filters} onChange={onChange} today={today} stacked />
+              <FilterControls
+                filters={filters}
+                onChange={onChange}
+                today={today}
+                showProject={showProject}
+                stacked
+              />
               <ListFilterSections
                 fields={fields}
                 tags={tags}
@@ -122,7 +131,12 @@ export const JobFiltersBar = ({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {search}
-      <FilterControls filters={filters} onChange={onChange} today={today} />
+      <FilterControls
+        filters={filters}
+        onChange={onChange}
+        today={today}
+        showProject={showProject}
+      />
       <ListFilterBar
         fields={fields}
         tags={tags}
@@ -166,11 +180,13 @@ const FilterControls = ({
   filters,
   onChange,
   today,
+  showProject,
   stacked = false
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
+  showProject: boolean;
   stacked?: boolean;
 }) => {
   const projects = useProductionProjects();
@@ -179,23 +195,25 @@ const FilterControls = ({
   const width = stacked ? "w-full" : "w-40";
   return (
     <>
-      <Labeled label="Dự án" stacked={stacked}>
-        <OptionSelect
-          options={(projects.data?.items ?? []).map((project) => ({
-            id: project.id,
-            label: project.code,
-            // The client helps Account find "my client's job" among project codes.
-            hint: project.active ? project.clientName : "lưu trữ"
-          }))}
-          value={filters.projectId}
-          onChange={(projectId) => set({ projectId })}
-          placeholder="Dự án"
-          noneLabel="Mọi dự án"
-          searchPlaceholder="Tìm dự án…"
-          aria-label="Lọc theo dự án"
-          className={width}
-        />
-      </Labeled>
+      {showProject ? (
+        <Labeled label="Dự án" stacked={stacked}>
+          <OptionSelect
+            options={(projects.data?.items ?? []).map((project) => ({
+              id: project.id,
+              label: project.code,
+              // The client helps Account find "my client's job" among project codes.
+              hint: project.active ? project.clientName : "lưu trữ"
+            }))}
+            value={filters.projectId}
+            onChange={(projectId) => set({ projectId })}
+            placeholder="Dự án"
+            noneLabel="Mọi dự án"
+            searchPlaceholder="Tìm dự án…"
+            aria-label="Lọc theo dự án"
+            className={width}
+          />
+        </Labeled>
+      ) : null}
       <Labeled label="Trạng thái (khớp bất kỳ)" stacked={stacked}>
         <JobStatusFilter
           value={filters.jobStatusIds}
@@ -204,23 +222,27 @@ const FilterControls = ({
           className={width}
         />
       </Labeled>
-      <Labeled label="Leader" stacked={stacked}>
-        <OptionSelect
-          options={[
-            // Jobs without a leader (PD-035): every Leader leads them.
-            { id: noLeaderFilter, label: "Chưa có leader" },
-            ...people
-              .withRole("LEADER")
-              .map((person) => ({ id: person.id, label: person.displayName }))
-          ]}
-          value={filters.leaderId}
-          onChange={(leaderId) => set({ leaderId })}
-          placeholder="Leader"
-          noneLabel="Mọi Leader"
-          aria-label="Lọc theo Leader"
-          className={width}
-        />
-      </Labeled>
+      {/* No "Leader" picker any more (owner, 2026-10-20). A ?leader= link ("Job tôi phụ trách", member admin, the
+          leader_removed notification) still narrows the list: shown as a chip that removes it. */}
+      {filters.leaderId ? (
+        <Labeled label="Leader" stacked={stacked}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => set({ leaderId: null })}
+            aria-label="Bỏ lọc theo Leader"
+            className={cn("justify-between gap-1.5", stacked && "w-full")}
+          >
+            <span className="truncate">
+              Leader:{" "}
+              {filters.leaderId === noLeaderFilter
+                ? "Chưa có leader"
+                : (people.nameOf(filters.leaderId) ?? "…")}
+            </span>
+            <X />
+          </Button>
+        </Labeled>
+      ) : null}
       <Labeled label="Nhân viên (xem phần việc)" stacked={stacked}>
         <PersonFilterPicker
           // Anyone who can be given a task (PD-034): the list becomes their jobs and their numbers.

@@ -92,6 +92,54 @@ const securityHeaders: Record<string, string> = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
 };
 
+/** Hashed build files never change under their name: cached for a year at the edge and in browsers. */
+const immutableAsset = "public, max-age=31536000, immutable";
+
+/**
+ * The stable build behind Cloudflare (owner, 2026-10-20: "click sidebar đôi khi không ăn"). sirv answered every hashed
+ * file under /assets with `Cache-Control: no-cache`, so Cloudflare revalidated each of the ~140 chunks of a page with
+ * this machine on every load; in those bursts some origin requests stalled 5–20 s and a click waiting for its lazy
+ * route chunk looked dead. /assets now says "immutable" (200 / 304, never an HTML fallback), so the edge and the
+ * browser keep them; index.html stays no-cache, so a deploy is still noticed (update notice). Node's 5 s keep-alive
+ * also raced Cloudflare reusing idle origin connections: they now stay open longer than the proxy keeps them.
+ */
+const previewCaching = (): Plugin => ({
+  name: "nesso:preview-caching",
+  configurePreviewServer(server) {
+    const http = server.httpServer;
+    if (http && "keepAliveTimeout" in http) {
+      http.keepAliveTimeout = 905_000;
+      http.headersTimeout = 910_000;
+    }
+    server.middlewares.use((req, res, next) => {
+      if (!req.url?.startsWith("/assets/")) {
+        next();
+        return;
+      }
+      const writeHead = res.writeHead.bind(res) as (...args: unknown[]) => typeof res;
+      res.writeHead = (statusCode: number, ...rest: unknown[]) => {
+        const headers = rest.find(
+          (item): item is Record<string, unknown> =>
+            typeof item === "object" && item !== null && !Array.isArray(item)
+        );
+        const typeKey = headers
+          ? Object.keys(headers).find((key) => key.toLowerCase() === "content-type")
+          : undefined;
+        const typeValue = headers && typeKey ? headers[typeKey] : res.getHeader("content-type");
+        const type = typeof typeValue === "string" ? typeValue : "";
+        if ((statusCode === 200 || statusCode === 304) && !type.includes("text/html")) {
+          for (const key of Object.keys(headers ?? {})) {
+            if (key.toLowerCase() === "cache-control") delete headers?.[key];
+          }
+          res.setHeader("Cache-Control", immutableAsset);
+        }
+        return writeHead(statusCode, ...rest);
+      };
+      next();
+    });
+  }
+});
+
 /** Images may render inline; every other stored file is a download and can never run as a page (SEC-INF-03). */
 const inlineImageType = /^image\/(png|jpe?g|gif|webp|avif)(;|$)/i;
 
@@ -103,7 +151,7 @@ export default defineConfig(({ mode }) => {
   const storageTarget = env.DEV_STORAGE_TARGET || "http://127.0.0.1:56321";
 
   return {
-    plugins: [react(), tailwindcss(), noChunkCycles()],
+    plugins: [react(), tailwindcss(), noChunkCycles(), previewCaching()],
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url))

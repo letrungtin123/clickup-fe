@@ -169,9 +169,13 @@ export const swapRowsAndColumns = (zones: Zones): Zones => ({
 
 // Roles -------------------------------------------------------------------------------------------
 
+/**
+ * Measures offered in the builder. PD-066: Khoán is money only — the points equivalent of Khoán work ("points_khoan")
+ * is no longer offered (a saved report that already uses it still runs).
+ */
 export const measuresForRole = (isAdmin: boolean) =>
   (Object.keys(reportMeasureInfo) as ReportMeasure[]).filter(
-    (measure) => isAdmin || !reportMeasureInfo[measure].adminOnly
+    (measure) => measure !== "points_khoan" && (isAdmin || !reportMeasureInfo[measure].adminOnly)
   );
 
 /**

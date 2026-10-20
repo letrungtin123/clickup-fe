@@ -54,7 +54,6 @@ import {
 } from "@/features/production/feature-permissions";
 import {
   useProductionAccess,
-  useProductionMe,
   useProductionSettings,
   useUpdateSettings
 } from "@/features/production/hooks";
@@ -168,7 +167,6 @@ const PermissionsPage = () => {
 
   // --- Photo Retouch job & feature permissions ---------------------------------------------------
   const production = useProductionAccess();
-  const me = useProductionMe();
   // A production ADMIN (or the superadmin) reads the matrix; only the superadmin edits it (PD-050).
   const retouchAdmin = production.isAdmin || hasFullAuthority;
   const retouchEditor = useCanEditProductionConfig();
@@ -212,8 +210,7 @@ const PermissionsPage = () => {
         : defaultFeaturePermissions
     );
 
-  const moneyPublic = me.data?.settings.moneyPublic;
-  const featureRows = useMemo(() => retouchFeatureRows({ moneyPublic }), [moneyPublic]);
+  const featureRows = useMemo(() => retouchFeatureRows(), []);
   const rules = useMemo(() => retouchFixedRules(), []);
 
   // --- Save --------------------------------------------------------------------------------------

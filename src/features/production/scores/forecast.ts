@@ -22,6 +22,13 @@ export const forecastToneInfo: Record<ForecastTone, { family: ToneFamily; label:
 
 export const toneFamily = (tone: ForecastTone): ToneFamily => forecastToneInfo[tone].family;
 
+/** PD-066: KPI is mandatory — the warning shown to someone who must have a KPI for the period and has none. */
+export const kpiMissingText = "Chưa có KPI kỳ này — liên hệ Quản trị.";
+
+/** The person must have a KPI for the period (`kpiRequired`) and has none. */
+export const kpiMissing = (forecast: Pick<ScoreForecast, "kpiRequired" | "targetBase">) =>
+  forecast.kpiRequired && forecast.targetBase === null;
+
 /** Headline label; once the period has closed a shortfall reads "Không đạt KPI", not a pace. */
 export const forecastLabel = (forecast: Pick<ScoreForecast, "tone" | "daysLeft">) =>
   forecast.daysLeft <= 0 && (forecast.tone === "AT_RISK" || forecast.tone === "BEHIND")
@@ -44,15 +51,18 @@ export const progressWidth = (percent: number | null | undefined) =>
 type ForecastInput = Pick<
   ScoreForecast,
   "tone" | "remaining" | "daysLeft" | "avgPerDayNeeded" | "percent" | "target"
->;
+> & { kpiRequired?: boolean | undefined };
 
 /**
  * The forecast line: "Còn thiếu {remaining} điểm, còn {daysLeft} ngày, cần {avgPerDayNeeded} điểm/ngày",
- * with the closed-period, met and no-target variants.
+ * with the closed-period, met and no-target variants (PD-066: someone who must have a KPI and has none is told to
+ * ask Quản trị).
  */
 export const forecastSentence = (forecast: ForecastInput): string => {
   if (forecast.tone === "NO_TARGET" || forecast.target === null) {
-    return "Kỳ này chưa có chỉ tiêu KPI. Điểm vẫn được ghi bình thường.";
+    return forecast.kpiRequired
+      ? kpiMissingText
+      : "Kỳ này chưa có chỉ tiêu KPI. Điểm vẫn được ghi bình thường.";
   }
   if (forecast.tone === "MET" || (forecast.remaining !== null && forecast.remaining <= 0)) {
     return `Đã đạt KPI kỳ này (${formatPercent(forecast.percent)}).`;

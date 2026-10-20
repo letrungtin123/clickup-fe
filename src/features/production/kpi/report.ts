@@ -1,4 +1,9 @@
-import type { KpiReport, KpiReportRollup, KpiReportTotal } from "@/contracts/production-scores";
+import type {
+  KpiReport,
+  KpiReportRollup,
+  KpiReportRow,
+  KpiReportTotal
+} from "@/contracts/production-scores";
 
 import { quarterOfPeriod } from "../scores/periods";
 
@@ -9,16 +14,51 @@ export const kpiReportAnchor = "bao-cao-kpi";
 export const kpiReportHref = (period: string) =>
   `/production/settings/kpi-settlement?period=${encodeURIComponent(period)}#${kpiReportAnchor}`;
 
-/** Figures of one row of a KPI table (one person or one period). */
+/**
+ * Figures of one row of a KPI table (one person or one period) — PD-066: KPI, official points, shortfall, points topped
+ * up from Khoán, total, % and the Khoán money earned / paid (null while hidden).
+ */
 export type KpiFigures = {
   target: number | null;
   pointsOfficial: number;
+  shortfall: number;
   khoanPointsConverted: number;
   totalPoints: number;
   percent: number | null;
   difference: number | null;
-  khoanMoney: number | null;
+  khoanMoneyEarned: number | null;
+  khoanMoneyPaid: number | null;
 };
+
+type FiguresSource = Pick<
+  KpiReportRow | KpiReportRollup | KpiReportTotal,
+  | "target"
+  | "pointsOfficial"
+  | "shortfall"
+  | "khoanPointsConverted"
+  | "totalPoints"
+  | "percent"
+  | "difference"
+  | "khoanMoneyEarned"
+  | "khoanMoneyPaid"
+>;
+
+const figuresOf = (source: FiguresSource): KpiFigures => ({
+  target: source.target,
+  pointsOfficial: source.pointsOfficial,
+  shortfall: source.shortfall,
+  khoanPointsConverted: source.khoanPointsConverted,
+  totalPoints: source.totalPoints,
+  percent: source.percent,
+  difference: source.difference,
+  khoanMoneyEarned: source.khoanMoneyEarned,
+  khoanMoneyPaid: source.khoanMoneyPaid
+});
+
+/** The figures of a month row, a quarter / year rollup or a team / organization total. */
+export const figuresOfRow = (row: KpiReportRow): KpiFigures => figuresOf(row);
+export const figuresOfRollup = (rollup: KpiReportRollup): KpiFigures => figuresOf(rollup);
+export const figuresOfTotal = (total: KpiReportTotal): KpiFigures => figuresOf(total);
 
 export type ReportView = "MONTH" | "QUARTER" | "YEAR";
 
@@ -34,11 +74,13 @@ export const reportKeys = (view: ReportView, periods: readonly string[]) => {
 const empty: KpiFigures = {
   target: null,
   pointsOfficial: 0,
+  shortfall: 0,
   khoanPointsConverted: 0,
   totalPoints: 0,
   percent: null,
   difference: null,
-  khoanMoney: null
+  khoanMoneyEarned: null,
+  khoanMoneyPaid: null
 };
 
 /**
@@ -113,17 +155,7 @@ export const reportRowsFor = (report: KpiReport, view: ReportView, key: string) 
         settled: row ? row.settled : null,
         met: row?.met ?? null,
         status: null,
-        figures: row
-          ? {
-              target: row.target,
-              pointsOfficial: row.pointsOfficial,
-              khoanPointsConverted: row.khoanPointsConverted,
-              totalPoints: row.totalPoints,
-              percent: row.percent,
-              difference: row.difference,
-              khoanMoney: row.khoanMoney
-            }
-          : empty
+        figures: row ? figuresOf(row) : empty
       };
     }
     const rollup = report.rollups.find(
@@ -135,24 +167,14 @@ export const reportRowsFor = (report: KpiReport, view: ReportView, key: string) 
       settled: null,
       met: null,
       status: rollup ? statusOfRollup(rollup) : null,
-      figures: rollup
-        ? {
-            target: rollup.target,
-            pointsOfficial: rollup.pointsOfficial,
-            khoanPointsConverted: rollup.khoanPointsConverted,
-            totalPoints: rollup.totalPoints,
-            percent: rollup.percent,
-            difference: rollup.difference,
-            khoanMoney: rollup.khoanMoney
-          }
-        : empty
+      figures: rollup ? figuresOf(rollup) : empty
     };
   });
 
 /**
  * People with a target, how many met the KPI, and the average percent. A month row carries the
- * settlement verdict (`met`: official points ≥ target, PLAN §6) which wins over the percent — Khoán
- * converted to points can lift % đạt to 100 while the KPI is still "Không đạt". Rollups have no
+ * settlement verdict (`met`, PD-066: official + points topped up from Khoán ≥ target) which wins over the percent
+ * (rows of runs before PD-066 could reach 100 % with converted Khoán and still be "Không đạt"). Rollups have no
  * verdict and count 100 % or more.
  */
 export const attainment = (

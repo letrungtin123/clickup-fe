@@ -25,24 +25,14 @@ export const featureLabels: Record<FeaturePermissionKey, string> = {
   clients: "Khách hàng"
 };
 
-/** The public settings a feature's description depends on (Cấu hình → Cài đặt chung). */
-export type FeatureSettings = {
-  /** "Công khai tiền công" (`money_public`); undefined while unknown. */
-  moneyPublic?: boolean | undefined;
-};
-
-const onOff = (value: boolean | undefined) =>
-  value === undefined ? "" : value ? " (đang bật)" : " (đang tắt)";
-
 /** What holding each feature allows (row help of the matrix). */
-export const featureDescriptions = (
-  settings: FeatureSettings = {}
-): Record<FeaturePermissionKey, string> => ({
+export const featureDescriptions = (): Record<FeaturePermissionKey, string> => ({
   qc_queue:
     "Trang Hàng chờ QC: task chờ kiểm mà mình là người QC. Chỉ người có vai trò QC mới được chọn làm QC của task.",
   view_others_scores:
-    "Bảng xếp hạng, Điểm cá nhân và điểm từng task của người khác. Điểm của chính mình luôn xem được.",
-  view_others_money: `Tiền Khoán của người khác (bảng xếp hạng, Điểm cá nhân, chi tiết task, KPI) và tiền mỗi tấm ở Bảng đơn giá. Tiền của chính mình luôn xem được; bật “Công khai tiền công”${onOff(settings.moneyPublic)} thì mọi người đều xem được.`,
+    "Tab Toàn đội ở Bảng điểm (điểm chính thức, KPI, % đạt của mọi người), Điểm cá nhân và điểm từng task của người khác. Điểm của chính mình luôn xem được.",
+  view_others_money:
+    "Tiền Khoán của người khác (Toàn đội, Điểm cá nhân, chi tiết task, KPI, kết quả chốt) và tiền mỗi tấm ở Bảng đơn giá. Tiền của chính mình luôn xem được; ngoài quyền này không ai xem được tiền của người khác.",
   leader_dashboard:
     "Tiến độ, tải việc hôm nay và điểm team. Người không phải Quản trị/Director thấy job mình lead và job chưa có leader.",
   admin_dashboard:

@@ -6,6 +6,7 @@ import {
   DeleteTaskResultSchema,
   JobChatResultSchema,
   JobDetailSchema,
+  JobFacetsSchema,
   JobOptionsSchema,
   JobPageSchema,
   ProductionCommentSchema,
@@ -69,6 +70,9 @@ export const jobsApi = {
     api.get(queryPath("/production/jobs", { ...query, cursor, limit: 50 }), JobPageSchema, {
       signal
     }),
+  /** PD-067: counts per month of "Ngày nhận" and per project for the List view (same filters as `list`). */
+  facets: (query: JobListQuery, signal?: AbortSignal) =>
+    api.get(queryPath("/production/jobs/facets", query), JobFacetsSchema, { signal }),
   get: (jobId: string, signal?: AbortSignal) =>
     api.get(apiPath`/production/jobs/${jobId}`, JobDetailSchema, { signal }),
   create: (input: CreateJobInput) => api.post("/production/jobs", JobDetailSchema, input),

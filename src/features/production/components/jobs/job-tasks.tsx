@@ -125,7 +125,7 @@ const NoQcBadge = ({ className }: { className?: string }) => (
  * The QC of a line (PD-045: its own column right after "Người làm"): the person; "—" on a Checking line (it is the QC's
  * own work); the amber "Chưa gán QC" on a Done line nobody can check; otherwise a muted "Chưa gán".
  */
-const QcValue = ({ task }: { task: ProductionTask }) =>
+export const QcValue = ({ task }: { task: ProductionTask }) =>
   task.process.isQc ? (
     <span className="text-foreground-subtle" title="Task Checking — không có QC">
       —<span className="sr-only">Task Checking — không có QC</span>

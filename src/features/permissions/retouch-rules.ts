@@ -4,12 +4,7 @@ import {
   type FeaturePermissionKey,
   type ProductionRole
 } from "@/contracts/production-catalog";
-import {
-  featureDescriptions,
-  featureLabels,
-  type FeatureSettings
-} from "@/features/production/feature-permissions";
-import { RANKING_VISIBLE } from "@/features/production/nav";
+import { featureDescriptions, featureLabels } from "@/features/production/feature-permissions";
 
 /**
  * Rows of the Photo Retouch matrix on Cài đặt → Vai trò & phân quyền below the job permissions:
@@ -31,29 +26,19 @@ export type RetouchRule = {
 /** Columns of the Photo Retouch matrix, in order (ADMIN first, DIRECTOR last). */
 export const retouchColumns: readonly ProductionRole[] = productionRoleCodes;
 
-/** The public settings of Cấu hình → Cài đặt chung that the rows' help depends on. */
-export type RetouchPublicSettings = FeatureSettings;
-
 export type FeatureRow = {
   feature: FeaturePermissionKey;
   label: string;
   description: string;
 };
 
-/** Added to "Xem điểm người khác" while the ranking is hidden (RANKING_VISIBLE, owner 2026-10-16). */
-export const rankingHiddenNote =
-  "Xếp hạng và Điểm cá nhân của người khác đang ẩn khỏi menu, chỉ mở bằng đường dẫn.";
-
 /** The editable feature rows, in page order (the contract's order). */
-export const retouchFeatureRows = (settings: RetouchPublicSettings = {}): FeatureRow[] => {
-  const descriptions = featureDescriptions(settings);
+export const retouchFeatureRows = (): FeatureRow[] => {
+  const descriptions = featureDescriptions();
   return featurePermissionKeys.map((feature) => ({
     feature,
     label: featureLabels[feature],
-    description:
-      feature === "view_others_scores" && !RANKING_VISIBLE
-        ? `${descriptions[feature]} ${rankingHiddenNote}`
-        : descriptions[feature]
+    description: descriptions[feature]
   }));
 };
 

@@ -14,6 +14,8 @@ const messages: Record<string, string> = {
     "KPI quý phải bắt đầu từ kỳ tháng 1, 4, 7 hoặc 10; KPI năm bắt đầu từ kỳ tháng 1.",
   KPI_TARGET_NOT_FOUND: "KPI này không còn tồn tại. Hãy tải lại.",
   KPI_PERIOD_NOT_STARTED: "Kỳ này chưa bắt đầu, chưa thể chốt KPI.",
+  // PD-066; the server names how many ("Còn N người chưa có KPI kỳ này — set KPI trước khi chốt.").
+  KPI_TARGETS_MISSING: "Còn người chưa có KPI kỳ này — set KPI trước khi chốt.",
   MEMBER_NOT_FOUND: "Không tìm thấy thành viên.",
   LEAVE_NOT_FOUND: "Không tìm thấy đơn nghỉ. Có thể đơn đã bị xóa.",
   LEAVE_OVERLAP: "Bạn đã có đơn nghỉ (đang chờ duyệt hoặc đã duyệt) trùng thời gian này.",
@@ -37,6 +39,7 @@ const serverWorded = new Set([
   "LEAVE_TOO_OLD",
   "LEAVE_TOO_FAR",
   "LEAVE_WINDOW_TOO_LONG",
+  "KPI_TARGETS_MISSING",
   "CUSTOM_FIELD_FILTER_INVALID"
 ]);
 

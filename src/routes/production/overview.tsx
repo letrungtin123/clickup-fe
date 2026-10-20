@@ -13,7 +13,7 @@ import {
   HandCoins,
   Network,
   Paperclip,
-  Trophy,
+  UsersRound,
   type LucideIcon
 } from "lucide-react";
 import { Link } from "@/components/shared/router-link";
@@ -25,12 +25,9 @@ import { ProductionAgenda } from "@/features/production/components/agenda";
 import { RoleBadge } from "@/features/production/components/role-chips";
 import { closeDaySchedule, formatDay, kpiPeriod, todayIn } from "@/features/production/format";
 import { useProductionAccess, useProductionMe, useTeams } from "@/features/production/hooks";
-import { khoanPolicyMeta } from "@/features/production/kpi/khoan-policy";
-import {
-  RANKING_VISIBLE,
-  settingsPageBySlug,
-  visibleSettingsPages
-} from "@/features/production/nav";
+import { topUpRule } from "@/features/production/kpi/khoan-policy";
+import { settingsPageBySlug, visibleSettingsPages } from "@/features/production/nav";
+import { teamScoresPath } from "@/features/production/scores/person-link";
 import { productionRoleDescriptions, sortRoles } from "@/features/production/roles";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -164,19 +161,19 @@ export const ProductionOverviewRoute = () => {
                   `Chốt ${closeDaySchedule(settings.kpiCloseDay)}`
                 )}
               </Rule>
+              {/* PD-066: one rule at the close — "thiếu bao nhiêu bù bấy nhiêu". */}
               <Rule icon={HandCoins} label="Tiền Khoán">
-                {khoanPolicyMeta[settings.khoanPayPolicy].label}
+                <span title={topUpRule}>Thiếu KPI bao nhiêu, bù từ Khoán bấy nhiêu</span>
               </Rule>
               {/* PD-065: others' scores and money follow the caller's features ("Quyền theo tính năng"). */}
               <Rule icon={Eye} label="Bảng điểm">
                 {seesOthersScores ? "Bạn xem được điểm của mọi người" : "Bạn xem điểm của mình"}
               </Rule>
+              {/* PD-066: one's own money always; others' only with "Xem tiền Khoán người khác". */}
               <Rule icon={Coins} label="Tiền công">
-                {settings.moneyPublic
-                  ? "Công khai"
-                  : access.hasFeature("view_others_money")
-                    ? "Bạn xem được tiền Khoán của mọi người"
-                    : "Chỉ chính chủ và người có quyền xem mới thấy"}
+                {access.hasFeature("view_others_money")
+                  ? "Bạn xem được tiền Khoán của mọi người"
+                  : "Bạn xem tiền Khoán của mình"}
               </Rule>
               <Rule icon={Paperclip} label="Tệp trong chat">
                 {settings.chatAttachmentsEnabled ? "Được phép" : "Đang tắt"}
@@ -199,14 +196,14 @@ export const ProductionOverviewRoute = () => {
                 description="Điểm hôm nay, tuần, kỳ; tiền Khoán tạm tính và dự báo KPI."
               />
             </li>
-            {/* "Xếp hạng" is hidden for now (owner, 2026-10-16; RANKING_VISIBLE). */}
-            {RANKING_VISIBLE && seesOthersScores ? (
+            {/* PD-069: everyone's points ("Bảng điểm → Toàn đội") for holders of "Xem điểm người khác". */}
+            {seesOthersScores ? (
               <li>
                 <QuickLink
-                  to="/production/scores/board"
-                  icon={Trophy}
-                  title="Xếp hạng"
-                  description="Xếp hạng điểm chính thức theo kỳ và team."
+                  to={teamScoresPath()}
+                  icon={UsersRound}
+                  title="Điểm toàn đội"
+                  description="Điểm chính thức, KPI và % đạt của mọi người trong kỳ."
                 />
               </li>
             ) : null}

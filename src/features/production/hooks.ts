@@ -658,7 +658,7 @@ export const useUpdateSettings = () => {
     onSuccess: (settings) => {
       client.setQueryData(productionKeys.settings(), settings);
       void client.invalidateQueries({ queryKey: productionKeys.me() });
-      // Provisional KPI figures and forecasts follow the close day, leave proration and the Khoán policy.
+      // Provisional KPI figures and forecasts follow the close day and leave proration.
       void client.invalidateQueries({ queryKey: kpiKeys.all() });
       void client.invalidateQueries({ queryKey: scoreKeys.all() });
     }

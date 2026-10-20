@@ -50,13 +50,11 @@ describe("Photo Retouch feature rows (PD-065)", () => {
     }
   });
 
-  it("others' money mentions “Công khai tiền công” and its state", () => {
-    const money = (moneyPublic?: boolean) =>
-      retouchFeatureRows({ moneyPublic }).find((row) => row.feature === "view_others_money")
-        ?.description ?? "";
-    expect(money(false)).toContain("“Công khai tiền công” (đang tắt)");
-    expect(money(true)).toContain("(đang bật)");
-    expect(money()).not.toContain("đang");
+  it("others' money: one's own always, someone else's only with the feature — no “Công khai tiền công” (PD-066)", () => {
+    const money =
+      retouchFeatureRows().find((row) => row.feature === "view_others_money")?.description ?? "";
+    expect(money).toContain("Tiền của chính mình luôn xem được");
+    expect(money).not.toContain("Công khai tiền công");
   });
 
   it("the default matrix gives Bất thường and Quản trị số liệu to Director only", () => {

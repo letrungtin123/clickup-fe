@@ -24,6 +24,7 @@ import {
   formatCredit,
   formatDay,
   formatKpiPeriod,
+  formatMoney,
   formatNumber
 } from "@/features/production/format";
 import { useProductionMe } from "@/features/production/hooks";
@@ -144,11 +145,14 @@ export const ProductionAgenda = ({
   );
 };
 
-/** "Điểm của tôi": official points today, this week and this KPI period (GET /scores/me cards). */
+/**
+ * "Điểm của tôi": official points today, this week and this KPI period (GET /scores/me cards); PD-066: the Khoán work
+ * of the period as money ("Tiền Khoán tạm tính"), never as points.
+ */
 const MyPointsCard = () => {
   const scores = useMyScores(null);
   const cards = scores.data?.pages[0]?.cards;
-  const khoan = cards?.period.pointsKhoan ?? 0;
+  const khoanMoney = cards?.period.moneyKhoanProvisional ?? 0;
   return (
     <AgendaCard
       title="Điểm của tôi"
@@ -177,7 +181,7 @@ const MyPointsCard = () => {
           </dl>
           <p className="text-xs text-foreground-muted">
             Điểm chính thức · kỳ {formatDay(cards.period.from)} – {formatDay(cards.period.to)}
-            {khoan > 0 ? ` · thêm ${formatCredit(khoan)} điểm Khoán` : ""}
+            {khoanMoney !== 0 ? ` · Tiền Khoán tạm tính ${formatMoney(khoanMoney)}` : ""}
           </p>
         </>
       )}

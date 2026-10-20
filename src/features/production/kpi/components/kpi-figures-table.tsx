@@ -5,26 +5,20 @@ import type { ReactNode } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 import { formatCredit, formatMoney } from "../../format";
-import { formatPercent, formatSignedCredit, progressWidth } from "../../scores/forecast";
-import { rollupStatusInfo, type RollupStatus } from "../report";
+import { formatPercent, progressWidth } from "../../scores/forecast";
+import { rollupStatusInfo, type KpiFigures, type RollupStatus } from "../report";
 
 /**
- * KPI figures (SPEC Phase 6 §4): target, official points, Khoán converted to points, total, % đạt,
- * vượt/thiếu and Khoán money — one row per person (report) or per period (own results). Money only
- * shows when the API sent it (ADMIN or the owner). Table on tablet/desktop, cards on phones.
+ * KPI figures (SPEC Phase 6 §4, PD-066): KPI, official points, shortfall ("Thiếu"), points topped up from Khoán ("Bù từ
+ * Khoán"), total, % đạt and the Khoán money earned / paid — one row per person (report) or per period (own results).
+ * Money only shows when the API sent it (the owner or "Xem tiền Khoán người khác"); Khoán is never shown as points of
+ * its own. Table on tablet/desktop, cards on phones.
  */
 
-export type KpiFiguresRow = {
+export type KpiFiguresRow = KpiFigures & {
   key: string;
   label: ReactNode;
   sublabel?: ReactNode;
-  target: number | null;
-  pointsOfficial: number;
-  khoanPointsConverted: number;
-  totalPoints: number;
-  percent: number | null;
-  difference: number | null;
-  khoanMoney: number | null;
   /** settled = closed by a settlement run; provisional = what a settlement would give now. */
   state?: "settled" | "provisional" | undefined;
   met?: boolean | undefined;
@@ -71,10 +65,19 @@ const StateBadge = ({ row }: { row: KpiFiguresRow }) => {
       </span>
     );
   }
+  const toppedUp =
+    row.khoanPointsConverted > 0 ? (
+      <span className="pl-[1.125rem] text-[11px] leading-tight text-foreground-muted">
+        {row.met ? "có bù từ Khoán" : "đã bù hết Khoán"}
+      </span>
+    ) : null;
   return row.met ? (
-    <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-success">
-      <CircleCheck className="size-3.5" aria-hidden="true" />
-      Đạt
+    <span className="inline-flex flex-col items-start gap-0.5">
+      <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-success">
+        <CircleCheck className="size-3.5" aria-hidden="true" />
+        Đạt
+      </span>
+      {toppedUp}
     </span>
   ) : (
     <span className="inline-flex flex-col items-start gap-0.5">
@@ -82,19 +85,14 @@ const StateBadge = ({ row }: { row: KpiFiguresRow }) => {
         <CircleX className="size-3.5" aria-hidden="true" />
         Không đạt
       </span>
-      {row.khoanPointsConverted > 0 ? (
-        // % đạt may still reach 100 once Khoán is converted; say why it is "Không đạt".
-        <span className="pl-[1.125rem] text-[11px] leading-tight text-foreground-muted">
-          Khoán quy điểm
-        </span>
-      ) : null}
+      {toppedUp}
     </span>
   );
 };
 
 /**
- * % đạt with its bar. A settled "Không đạt" (official points under target) never shows green even when
- * Khoán converted to points lifts the total to 100 % or more.
+ * % đạt with its bar. A settled "Không đạt" never shows green (rows of runs before PD-066 could reach 100 % with
+ * converted Khoán and still be "Không đạt").
  */
 const Percent = ({ value, met }: { value: number | null; met?: boolean | undefined }) => {
   const tone =
@@ -129,17 +127,15 @@ const Percent = ({ value, met }: { value: number | null; met?: boolean | undefin
   );
 };
 
-const Difference = ({ value }: { value: number | null }) => (
-  <span
-    className={cn(
-      "tabular-nums",
-      value !== null && value > 0 && "text-success",
-      value !== null && value < 0 && "text-danger"
-    )}
-  >
-    {formatSignedCredit(value)}
-  </span>
-);
+/** "Thiếu": red while a shortfall is left; "—" without a KPI. */
+const Shortfall = ({ row }: { row: KpiFiguresRow }) =>
+  row.target === null ? (
+    <span className="text-foreground-subtle">—</span>
+  ) : (
+    <span className={cn("tabular-nums", row.shortfall > 0 && "text-danger")}>
+      {formatCredit(row.shortfall)}
+    </span>
+  );
 
 export const KpiFiguresTable = ({
   rows,
@@ -185,12 +181,17 @@ export const KpiFiguresTable = ({
               <Percent value={row.percent} met={settledMet(row)} />
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs tabular-nums">
-              <Figure label="Chỉ tiêu" value={formatCredit(row.target)} />
+              <Figure label="KPI" value={formatCredit(row.target)} />
               <Figure label="Chính thức" value={formatCredit(row.pointsOfficial)} />
-              <Figure label="Khoán quy điểm" value={formatCredit(row.khoanPointsConverted)} />
+              <Figure label="Thiếu" value={<Shortfall row={row} />} />
+              <Figure label="Bù từ Khoán" value={formatCredit(row.khoanPointsConverted)} />
               <Figure label="Tổng" value={formatCredit(row.totalPoints)} strong />
-              <Figure label="Vượt / thiếu" value={<Difference value={row.difference} />} />
-              {showMoney ? <Figure label="Tiền Khoán" value={formatMoney(row.khoanMoney)} /> : null}
+              {showMoney ? (
+                <>
+                  <Figure label="Khoán đã làm" value={formatMoney(row.khoanMoneyEarned)} />
+                  <Figure label="Khoán nhận" value={formatMoney(row.khoanMoneyPaid)} strong />
+                </>
+              ) : null}
             </dl>
             {showState ? <StateBadge row={row} /> : null}
           </li>
@@ -201,7 +202,7 @@ export const KpiFiguresTable = ({
 
   return (
     <div className="overflow-x-auto overscroll-x-contain">
-      <table className="w-full min-w-[52rem] text-[13px]">
+      <table className={cn("w-full text-[13px]", showMoney ? "min-w-[60rem]" : "min-w-[48rem]")}>
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr className="border-b text-right text-xs text-foreground-muted">
@@ -212,14 +213,17 @@ export const KpiFiguresTable = ({
               {firstColumn}
             </th>
             <th scope="col" className="px-3 py-2.5 font-medium">
-              Chỉ tiêu
+              KPI
             </th>
             <th scope="col" className="px-3 py-2.5 font-medium">
               Chính thức
             </th>
-            {/* Two lines at most ("Khoán quy / điểm"), never three. */}
-            <th scope="col" className="min-w-24 px-3 py-2.5 font-medium">
-              Khoán quy điểm
+            <th scope="col" className="px-3 py-2.5 font-medium">
+              Thiếu
+            </th>
+            {/* Two lines at most ("Bù từ / Khoán"), never three. */}
+            <th scope="col" className="min-w-20 px-3 py-2.5 font-medium">
+              Bù từ Khoán
             </th>
             <th scope="col" className="px-3 py-2.5 font-medium">
               Tổng
@@ -227,13 +231,15 @@ export const KpiFiguresTable = ({
             <th scope="col" className="px-3 py-2.5 font-medium">
               % đạt
             </th>
-            <th scope="col" className="px-3 py-2.5 font-medium">
-              Vượt / thiếu
-            </th>
             {showMoney ? (
-              <th scope="col" className="px-3 py-2.5 font-medium">
-                Tiền Khoán
-              </th>
+              <>
+                <th scope="col" className="min-w-24 px-3 py-2.5 font-medium">
+                  Tiền Khoán đã làm
+                </th>
+                <th scope="col" className="min-w-24 px-3 py-2.5 font-medium">
+                  Tiền Khoán nhận
+                </th>
+              </>
             ) : null}
             {showState ? (
               <th scope="col" className="py-2.5 pr-4 pl-3 text-left font-medium">
@@ -274,16 +280,23 @@ export const KpiFiguresTable = ({
               </th>
               <td className="px-3 py-2.5 text-foreground-muted">{formatCredit(row.target)}</td>
               <td className="px-3 py-2.5">{formatCredit(row.pointsOfficial)}</td>
+              <td className="px-3 py-2.5">
+                <Shortfall row={row} />
+              </td>
               <td className="px-3 py-2.5">{formatCredit(row.khoanPointsConverted)}</td>
               <td className="px-3 py-2.5 font-semibold">{formatCredit(row.totalPoints)}</td>
               <td className="px-3 py-2.5">
                 <Percent value={row.percent} met={settledMet(row)} />
               </td>
-              <td className="px-3 py-2.5">
-                <Difference value={row.difference} />
-              </td>
               {showMoney ? (
-                <td className="px-3 py-2.5 whitespace-nowrap">{formatMoney(row.khoanMoney)}</td>
+                <>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-foreground-muted">
+                    {formatMoney(row.khoanMoneyEarned)}
+                  </td>
+                  <td className="px-3 py-2.5 font-medium whitespace-nowrap">
+                    {formatMoney(row.khoanMoneyPaid)}
+                  </td>
+                </>
               ) : null}
               {showState ? (
                 <td className="py-2.5 pr-4 pl-3 text-left">

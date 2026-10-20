@@ -505,10 +505,14 @@ const PriceInfo = ({
         <Coins className="size-3.5" aria-hidden="true" />
         {price}
       </span>
+      {/* PD-066: an official shift estimates points, a Khoán shift money only. */}
       {earnings.credit !== null ? (
         <span className="text-xs whitespace-nowrap text-foreground-muted tabular-nums">
           ≈ {formatCredit(earnings.credit)} điểm{checking ? " QC" : ""}
-          {earnings.money !== null ? ` · ${formatMoney(earnings.money)}` : ""}
+        </span>
+      ) : earnings.money !== null ? (
+        <span className="text-xs whitespace-nowrap text-foreground-muted tabular-nums">
+          ≈ {formatMoney(earnings.money)}
         </span>
       ) : null}
     </>

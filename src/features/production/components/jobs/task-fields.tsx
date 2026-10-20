@@ -7,10 +7,15 @@ import type { CustomField } from "@/contracts/production-catalog";
 import type { ProductionTask } from "@/contracts/production-jobs";
 
 import { fieldsFor, type CustomValue } from "../../custom-fields";
-import { formatCredit, formatInteger, formatNumber, todayIn } from "../../format";
+import { formatCredit, formatInteger, formatMoney, formatNumber, todayIn } from "../../format";
 import { useCustomFields, useProcesses, useShifts, useTags } from "../../hooks";
 import type { UpdateTaskInput } from "../../jobs-api";
-import { useProductionTask, useQtyRequestMutations, useTaskMutations } from "../../jobs-hooks";
+import {
+  useProductionTask,
+  useQtyRequestMutations,
+  useTaskMutations,
+  useTaskScores
+} from "../../jobs-hooks";
 import {
   dueDayToIso,
   formatDateTime,
@@ -141,6 +146,15 @@ export const TaskFacts = ({
   const done = task.doneAt !== null;
   const deadline = relativeDeadline(task.deadline);
   const credits = myCreditSummary(task);
+  // PD-066: my Khoán rows are money — read from the task's scores (same query as its "Điểm" section).
+  const myScores = useTaskScores(task.id, done && Boolean(credits && credits.khoanQty !== 0));
+  const myKhoanMoney = (() => {
+    const rows = (myScores.data?.items ?? []).filter(
+      (item) => item.user.id === myId && item.payMode === "MONEY_IF_KPI"
+    );
+    if (rows.length === 0 || rows.some((item) => item.money === null)) return null;
+    return rows.reduce((sum, item) => sum + (item.money ?? 0), 0);
+  })();
   const split = subtasksQty(task.subtasks);
   const update = (input: UpdateTaskInput) =>
     mutations.update.mutateAsync({ taskId: task.id, input });
@@ -516,9 +530,13 @@ export const TaskFacts = ({
       ) : null}
 
       {credits ? (
-        <Fact label="Điểm của tôi">
+        <Fact label={credits.khoan ? "Tiền Khoán của tôi" : "Điểm của tôi"}>
           <span className="font-medium text-success tabular-nums" title={credits.detail}>
-            {formatCredit(credits.credits)} điểm{credits.khoan ? " Khoán" : ""}
+            {myKhoanMoney === null
+              ? credits.label
+              : credits.khoan
+                ? `${formatMoney(myKhoanMoney)} · ${formatInteger(credits.khoanQty)} tấm`
+                : `${formatCredit(credits.credits)} điểm + ${formatMoney(myKhoanMoney)}`}
           </span>
         </Fact>
       ) : null}

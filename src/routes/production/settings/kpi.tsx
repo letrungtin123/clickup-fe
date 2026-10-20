@@ -1,6 +1,6 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "cn";
-import { ChevronLeft, ChevronRight, FileUp, Sparkles, Target } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileUp, ListFilter, Sparkles, Target } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -28,7 +28,9 @@ import { KpiCellEditor } from "@/features/production/kpi/components/kpi-cell-edi
 import { KpiDefaultsDialog } from "@/features/production/kpi/components/kpi-defaults-dialog";
 import { KpiGrid, type KpiCellRef } from "@/features/production/kpi/components/kpi-grid";
 import { KpiImportDialog } from "@/features/production/kpi/components/kpi-import-dialog";
-import { useKpiMatrix } from "@/features/production/kpi/hooks";
+import { KpiMissingNotice } from "@/features/production/kpi/components/kpi-missing";
+import { missingPeopleOf } from "@/features/production/kpi/missing";
+import { useKpiMatrix, useKpiTargetsMissing } from "@/features/production/kpi/hooks";
 import {
   coverageFor,
   filterMatrixRows,
@@ -46,7 +48,8 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
  * /production/settings/kpi (ADMIN) — KPI targets (SPEC Phase 3 §5 /admin/kpi): members × the 12
  * monthly periods (+ quarters, year) of a year, cell editor with effective_from history, CSV import
  * and "Áp KPI mặc định theo role". PD-050: only the organization superadmin sets, imports or applies targets; everyone
- * else browses the matrix and a cell opens its version history only.
+ * else browses the matrix and a cell opens its version history only. PD-066: KPI is mandatory — a banner lists who has
+ * no KPI for the current period (the period cannot be settled until they have), with a filter to show only them.
  */
 export const ProductionKpiTargetsRoute = () => {
   const canEdit = useCanEditProductionConfig();
@@ -63,13 +66,20 @@ export const ProductionKpiTargetsRoute = () => {
   const [defaultsOpen, setDefaultsOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const matrix = useKpiMatrix(year);
+  const missing = useKpiTargetsMissing(currentPeriod);
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const missingIds = useMemo(
+    () => new Set((missing.data?.items ?? []).map((item) => item.user.id)),
+    [missing.data]
+  );
+  const filteringMissing = onlyMissing && missingIds.size > 0;
 
   const data = matrix.data;
   const columns = useMemo(() => (data ? matrixColumns(data) : []), [data]);
-  const rows = useMemo(
-    () => (data ? filterMatrixRows(data.rows, { q: term, teamId }) : []),
-    [data, term, teamId]
-  );
+  const rows = useMemo(() => {
+    const found = data ? filterMatrixRows(data.rows, { q: term, teamId }) : [];
+    return filteringMissing ? found.filter((item) => missingIds.has(item.user.id)) : found;
+  }, [data, term, teamId, filteringMissing, missingIds]);
   const names = useMemo(
     () => new Map((data?.rows ?? []).map((row) => [row.user.id, row.user.displayName])),
     [data]
@@ -115,6 +125,33 @@ export const ProductionKpiTargetsRoute = () => {
           ) : undefined
         }
       />
+
+      {missing.data && missing.data.items.length > 0 ? (
+        <KpiMissingNotice
+          period={missing.data.period}
+          people={missingPeopleOf(missing.data)}
+          requiredCount={missing.data.requiredCount}
+          description={
+            canEdit
+              ? "KPI là bắt buộc với mọi thành viên Photo Retouch (trừ Director và Siêu quản trị). Đặt KPI tháng cho những người này (ô kỳ hiện tại, Nhập CSV hoặc Áp KPI mặc định) — chưa đủ thì chưa chốt được kỳ."
+              : "KPI là bắt buộc với mọi thành viên Photo Retouch (trừ Director và Siêu quản trị); Siêu quản trị đặt KPI cho những người này — chưa đủ thì chưa chốt được kỳ."
+          }
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={filteringMissing}
+              onClick={() => {
+                setOnlyMissing(!filteringMissing);
+                if (!filteringMissing) setYear(Number(currentPeriod.slice(0, 4)));
+              }}
+            >
+              <ListFilter />
+              {filteringMissing ? "Hiện tất cả" : "Chỉ hiện những người này"}
+            </Button>
+          }
+        />
+      ) : null}
 
       <SettingsSection bodyClassName="flex min-w-0 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">

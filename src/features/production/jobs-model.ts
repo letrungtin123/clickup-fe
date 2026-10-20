@@ -20,7 +20,7 @@ import type {
 import type { QueryValue } from "@/lib/api/client";
 
 import { formatCustomValue, type CustomValue } from "./custom-fields";
-import { formatInteger, formatMoney, formatNumber } from "./format";
+import { formatCredit, formatInteger, formatMoney, formatNumber } from "./format";
 import {
   activeListFilterCount,
   emptyListFilters,
@@ -327,9 +327,9 @@ export const jobStatusBlockedReason = (
 };
 
 /**
- * Expected credit/money of a task line from the credit rule effective today (PLAN §5: money only for
- * "Khoán" shifts and only when the process has a price; the matrix hides money from people who may
- * not see it).
+ * Expected points / money of a task line from the credit rule effective today (PLAN §5). PD-066: an official (POINTS)
+ * shift earns points; a Khoán shift earns money only — when the process has a money price the caller may see (the
+ * matrix hides it from people without "Xem tiền Khoán người khác"), else nothing is estimated.
  */
 export const expectedEarnings = (
   rule: Pick<CreditRule, "creditPerImage" | "moneyPerImage"> | null,
@@ -337,30 +337,40 @@ export const expectedEarnings = (
   payMode: PayMode | null
 ) => {
   if (!rule || !Number.isFinite(qty) || qty <= 0) return { credit: null, money: null };
-  const credit = Math.round(rule.creditPerImage * qty * 100) / 100;
-  const money =
-    payMode === "MONEY_IF_KPI" && rule.moneyPerImage !== null ? rule.moneyPerImage * qty : null;
-  return { credit, money };
+  if (payMode === "MONEY_IF_KPI") {
+    return { credit: null, money: rule.moneyPerImage !== null ? rule.moneyPerImage * qty : null };
+  }
+  return { credit: Math.round(rule.creditPerImage * qty * 100) / 100, money: null };
 };
 
 /**
- * "Điểm của tôi" on a task (PLAN §7): the caller's ledger rows (adjustments included) summed. `khoan`
- * when every row is a Khoán (MONEY_IF_KPI) row — they count as Khoán points, not official points.
- * `detail` names each role ("Người làm 12,5 điểm · 10 tấm"). Null when nothing was recorded for the
- * caller yet.
+ * "Điểm của tôi" on a task (PLAN §7): the caller's ledger rows (adjustments included). PD-066: official rows count
+ * points (`credits`); Khoán (MONEY_IF_KPI) rows are money, shown as "Khoán · N tấm" here (the amount is in the task's
+ * "Điểm" section) — never "điểm Khoán". `khoan`: every row is Khoán. `label`: "12,50 điểm", "Khoán · 30 tấm" or
+ * "12,50 điểm + Khoán"; `detail` names each role ("Người làm 12,5 điểm · 10 tấm"). Null when nothing was recorded for
+ * the caller yet.
  */
 export const myCreditSummary = (task: Pick<ProductionTask, "myCredits">) => {
   if (task.myCredits.length === 0) return null;
-  const credits = Math.round(task.myCredits.reduce((sum, row) => sum + row.credits, 0) * 100) / 100;
-  const khoan = task.myCredits.every((row) => row.payMode === "MONEY_IF_KPI");
+  const official = task.myCredits.filter((row) => row.payMode !== "MONEY_IF_KPI");
+  const khoanRows = task.myCredits.filter((row) => row.payMode === "MONEY_IF_KPI");
+  const credits = Math.round(official.reduce((sum, row) => sum + row.credits, 0) * 100) / 100;
+  const khoanQty = khoanRows.reduce((sum, row) => sum + row.qty, 0);
+  const khoan = official.length === 0;
   const roleLabel = { WORKER: "Người làm", QC: "QC" } as const;
   const detail = task.myCredits
-    .map(
-      (row) =>
-        `${roleLabel[row.role]} ${formatNumber(row.credits, 2)} điểm${row.payMode === "MONEY_IF_KPI" ? " Khoán" : ""} · ${formatNumber(row.qty, 0)} tấm`
+    .map((row) =>
+      row.payMode === "MONEY_IF_KPI"
+        ? `${roleLabel[row.role]} Khoán · ${formatNumber(row.qty, 0)} tấm`
+        : `${roleLabel[row.role]} ${formatNumber(row.credits, 2)} điểm · ${formatNumber(row.qty, 0)} tấm`
     )
     .join("; ");
-  return { credits, khoan, detail };
+  const label = khoan
+    ? `Khoán · ${formatNumber(khoanQty, 0)} tấm`
+    : khoanRows.length > 0
+      ? `${formatCredit(credits)} điểm + Khoán`
+      : `${formatCredit(credits)} điểm`;
+  return { credits, khoan, khoanQty, label, detail };
 };
 
 // Task lines (mirrors the API's checks for instant feedback) ----------------------------------------------
@@ -511,18 +521,19 @@ export const optionalDetailsSummary = (
     .join(" · ");
 
 /**
- * The unit price badge of a line from today's credit rule: "5,5 điểm/tấm", plus the money of a Khoán shift when the
- * process has one ("5,5 điểm/tấm · 2.000 ₫/tấm"). Null without a rule ("Chưa có đơn giá").
+ * The unit price badge of a line from today's credit rule: "5,5 điểm/tấm" on an official shift. PD-066: a Khoán shift
+ * shows money only — "2.000 ₫/tấm", or "Ca Khoán (tính tiền)" when the price is hidden from the caller or has no
+ * money. Null without a rule ("Chưa có đơn giá").
  */
 export const unitPriceLabel = (
   rule: Pick<CreditRule, "creditPerImage" | "moneyPerImage"> | null,
   payMode: PayMode | null
 ) => {
   if (!rule) return null;
-  const credit = `${formatNumber(rule.creditPerImage, 2)} điểm/tấm`;
-  return payMode === "MONEY_IF_KPI" && rule.moneyPerImage !== null
-    ? `${credit} · ${formatMoney(rule.moneyPerImage)}/tấm`
-    : credit;
+  if (payMode === "MONEY_IF_KPI") {
+    return rule.moneyPerImage !== null ? `${formatMoney(rule.moneyPerImage)}/tấm` : "Ca Khoán (tính tiền)";
+  }
+  return `${formatNumber(rule.creditPerImage, 2)} điểm/tấm`;
 };
 
 /** The optional numbers of a line for the API: Hình lỗi (int) and Giờ OT (one decimal); null when empty. */

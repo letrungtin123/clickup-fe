@@ -9,6 +9,7 @@ import {
   KpiTargetCollectionSchema,
   KpiTargetImportResultSchema,
   KpiTargetMatrixSchema,
+  KpiTargetsMissingSchema,
   type KpiTargetImportRequestSchema,
   type PutKpiTargetsRequestSchema,
   type RunKpiSettlementRequestSchema
@@ -34,6 +35,12 @@ export const kpiApi = {
     api.post("/production/kpi-targets/import", KpiTargetImportResultSchema, input),
   applyDefaults: (period: string) =>
     api.post("/production/kpi-targets/apply-defaults", ApplyDefaultKpiResultSchema, { period }),
+  /** PD-066: who must have a KPI for the period (default: the current one) and has none (ADMIN). */
+  missingTargets: (period: string | undefined, signal?: AbortSignal) =>
+    api.get("/production/kpi-targets/missing", KpiTargetsMissingSchema, {
+      query: { period },
+      signal
+    }),
 
   /** `userId`: only that member's row ("Điểm cá nhân", PD-052). */
   settlements: (period: string | undefined, signal?: AbortSignal, userId?: string) =>

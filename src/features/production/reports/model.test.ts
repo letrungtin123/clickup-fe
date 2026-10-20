@@ -171,6 +171,9 @@ describe("roles", () => {
   it("hides money from non-admins", () => {
     expect(measuresForRole(false)).not.toContain("money_khoan");
     expect(measuresForRole(true)).toContain("money_khoan");
+    // PD-066: Khoán is money only — no "điểm khoán" measure to pick.
+    expect(measuresForRole(true)).not.toContain("points_khoan");
+    expect(measuresForRole(false)).not.toContain("points_khoan");
   });
 
   it("strips money from a config opened by a Leader", () => {

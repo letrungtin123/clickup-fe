@@ -8,12 +8,7 @@ import {
   visibleRows
 } from "./catalog";
 import { splitEmails } from "./emails";
-import {
-  productionNavEntries,
-  RANKING_VISIBLE,
-  visibleNavEntries,
-  visibleSettingsPages
-} from "./nav";
+import { productionNavEntries, visibleNavEntries, visibleSettingsPages } from "./nav";
 import { hasAnyRole, sortRoles, toggleRole } from "./roles";
 
 describe("roles", () => {
@@ -58,8 +53,7 @@ describe("navigation by role", () => {
     expect(paths(["DIRECTOR"])).toEqual(expect.arrayContaining(everyone));
   });
 
-  it("hides Xếp hạng from the menu for everyone (owner, 2026-10-16; the route stays by URL)", () => {
-    expect(RANKING_VISIBLE).toBe(false);
+  it("no Xếp hạng entry: everyone's points are the “Toàn đội” tab of Bảng điểm (PD-069)", () => {
     for (const role of ["STAFF", "QC", "LEADER", "ACCOUNT", "ADMIN", "DIRECTOR"] as const) {
       expect(paths([role])).toContain("/production/scores");
       expect(paths([role])).not.toContain("/production/scores/board");
