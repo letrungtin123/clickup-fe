@@ -849,14 +849,57 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
   return listFiltersToSearch(filters.custom, params, "tag");
 };
 
-/** Every filter counts as one; the job statuses count once, however many are chosen. */
-export const activeFilterCount = (filters: JobFilters) =>
-  [filters.projectId, filters.leaderId, filters.personId, filters.from, filters.to].filter(Boolean)
-    .length +
+/**
+ * Every filter counts as one; the job statuses count once, however many are chosen. `tabLeaderId`: the leader filter
+ * the page shows as its "Tôi quản lý" tab (PD-073, the viewer's own id) — a tab, not a filter, so it does not count.
+ */
+export const activeFilterCount = (filters: JobFilters, tabLeaderId: string | null = null) =>
+  [
+    filters.projectId,
+    filters.leaderId === tabLeaderId ? null : filters.leaderId,
+    filters.personId,
+    filters.from,
+    filters.to
+  ].filter(Boolean).length +
   (filters.jobStatusIds.length > 0 ? 1 : 0) +
   (filters.late ? 1 : 0) +
   (filters.archived ? 1 : 0) +
   activeListFilterCount(filters.custom);
+
+/** "Xóa lọc": every filter goes, the search stays — and so does the "Tôi quản lý" tab (`tabLeaderId`, PD-073). */
+export const clearedJobFilters = (
+  filters: JobFilters,
+  tabLeaderId: string | null = null
+): JobFilters => ({
+  ...emptyJobFilters,
+  q: filters.q,
+  leaderId: tabLeaderId !== null && filters.leaderId === tabLeaderId ? tabLeaderId : null
+});
+
+/**
+ * PD-073 — "Tất cả" / "Tôi quản lý" on the job list (holders of LEADER only): nothing but the `?leader=` filter.
+ * "Tôi quản lý" is `?leader=<my id>` (jobs I lead; jobs without a leader are not among them), "Tất cả" no leader
+ * filter. A link naming another leader or "none" selects neither tab (null): its "Leader: …" chip shows instead.
+ */
+export type JobLeaderTab = "all" | "mine";
+
+/**
+ * A Leader's explicit "Tất cả" in the URL (?leader=all): without any leader param the page lands on "Tôi quản lý"
+ * (owner, 2026-10-20). Parsed as no leader filter (not an id), so the API never sees it.
+ */
+export const allLeadersParam = "all";
+
+export const jobLeaderTabOf = (
+  filters: Pick<JobFilters, "leaderId">,
+  myId: string
+): JobLeaderTab | null =>
+  filters.leaderId === null ? "all" : filters.leaderId === myId ? "mine" : null;
+
+export const withJobLeaderTab = (
+  filters: JobFilters,
+  tab: JobLeaderTab,
+  myId: string
+): JobFilters => ({ ...filters, leaderId: tab === "mine" ? myId : null });
 
 const addDay = (day: string) => {
   const [year, month, date] = day.split("-").map(Number) as [number, number, number];

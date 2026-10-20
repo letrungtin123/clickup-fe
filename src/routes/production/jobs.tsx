@@ -1,5 +1,5 @@
-import { Briefcase, ClipboardPen, Plus, ShieldAlert } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { Briefcase, ClipboardPen, Crown, Plus, ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { RouteFallback } from "@/components/layout/route-fallback";
@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { JobFiltersBar } from "@/features/production/components/jobs/job-filters";
 import { JobFormDialog } from "@/features/production/components/jobs/job-form-dialog";
+import { JobLeaderTabs } from "@/features/production/components/jobs/job-leader-tabs";
 import { JobsExportMenu } from "@/features/production/components/jobs/jobs-export-menu";
 import {
   JobProjectSelect,
@@ -36,12 +37,15 @@ import { useJobFacets, useJobs } from "@/features/production/jobs-hooks";
 import { sanitizeListFilters } from "@/features/production/list-filters";
 import {
   activeFilterCount,
-  emptyJobFilters,
+  allLeadersParam,
+  clearedJobFilters,
   jobFiltersFromSearch,
   jobFiltersToSearch,
+  jobLeaderTabOf,
   jobQueryFromFilters,
   listPersonOf,
   sanitizeJobStatusIds,
+  withJobLeaderTab,
   type JobFilters
 } from "@/features/production/jobs-model";
 import { useProductionPeople } from "@/features/production/people";
@@ -51,7 +55,8 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 /**
  * /production/jobs — jobs (one per Gói công việc of a project, PD-035) with their work lines, filters in the URL.
  * Who sees what is the "view" scope of the job permission matrix (PD-036): "all" every job, "own" the jobs I
- * work on (the API filters), "none" no list. Choosing a staff member turns it into their view (PD-034).
+ * work on (the API filters), "none" no list. Choosing a staff member turns it into their view (PD-034). Holders of
+ * LEADER get the "Tất cả" / "Tôi quản lý" tabs (PD-073): the `?leader=<me>` filter, opened on "Tất cả".
  */
 export const ProductionJobsRoute = () => {
   const me = useProductionMe();
@@ -97,11 +102,28 @@ const JobsForbidden = ({ canEnter }: { canEnter: boolean }) => {
 const JobsPage = () => {
   const me = useProductionMe();
   const userId = useSessionContext().user.id;
-  const { jobScopes } = useProductionAccess();
+  const { jobScopes, roles } = useProductionAccess();
+  // PD-073: the tabs are a Leader's (holding LEADER itself; the superadmin holds every role), never ADMIN alone.
+  const leaderTabs = roles.includes("LEADER");
+  const tabLeaderId = leaderTabs ? userId : null;
   const navigate = useNavigate();
   const breakpoint = useBreakpoint();
   const phone = breakpoint === "mobile";
   const [params, setParams] = useSearchParams();
+  // A Leader lands on "Tôi quản lý" (owner, 2026-10-20): opening the list without any leader filter means ?leader=<me>;
+  // their "Tất cả" is written as ?leader=all so it stays chosen while other filters change.
+  const landsOnMine = leaderTabs && !params.has("leader");
+  useEffect(() => {
+    if (!landsOnMine) return;
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("leader", userId);
+        return next;
+      },
+      { replace: true }
+    );
+  }, [landsOnMine, setParams, userId]);
   // "Tạo job": from the header (no month) or from a month group of the list (PD-067).
   const [creating, setCreating] = useState<{ month: string | null } | null>(null);
   const [entering, setEntering] = useState(false);
@@ -124,7 +146,11 @@ const JobsPage = () => {
     [customFields.data]
   );
   const filters = useMemo(() => {
-    const fromUrl = jobFiltersFromSearch(params);
+    const fromUrl = {
+      ...jobFiltersFromSearch(params),
+      // Until the URL says so (effect above): the first request already asks for the Leader's own jobs.
+      ...(landsOnMine ? { leaderId: userId } : {})
+    };
     // A shared link may name a job status, field / option / tag that no longer exists: drop it (no 400, no
     // "1 trạng thái" filter that matches nothing).
     const parsed = {
@@ -144,7 +170,7 @@ const JobsPage = () => {
           )
         }
       : parsed;
-  }, [params, customFields.data, jobFields, tags.data, jobStatuses.data]);
+  }, [params, landsOnMine, userId, customFields.data, jobFields, tags.data, jobStatuses.data]);
   const facetQuery = useMemo(() => jobQueryFromFilters(filters, timeZone), [filters, timeZone]);
   // PD-067: the List view groups by month of Ngày nhận, so rows come newest Ngày nhận first (the export follows).
   const query = useMemo(() => ({ ...facetQuery, sort: "received" }), [facetQuery]);
@@ -157,7 +183,9 @@ const JobsPage = () => {
   const total = facets.data
     ? facets.data.months.reduce((sum, month) => sum + month.count, 0)
     : null;
-  const filtering = activeFilterCount(filters) > 0 || filters.q.trim() !== "";
+  const filtering = activeFilterCount(filters, tabLeaderId) > 0 || filters.q.trim() !== "";
+  // "Tôi quản lý" ⇔ ?leader=<me>; "Tất cả" ⇔ no leader filter; another leader / "none" (a link): neither, chip shown.
+  const leaderTab = leaderTabs ? jobLeaderTabOf(filters, userId) : null;
   // Per-person view ("Mọi nhân viên"): the person whose share the loaded rows carry.
   const totals = jobs.data?.pages[0]?.personTotals ?? null;
   const person = useMemo(
@@ -166,8 +194,13 @@ const JobsPage = () => {
   );
 
   const setFilters = useCallback(
-    (next: JobFilters) => setParams(jobFiltersToSearch(next), { replace: true }),
-    [setParams]
+    (next: JobFilters) => {
+      const search = jobFiltersToSearch(next);
+      // A Leader's "Tất cả" stays explicit, else the page would land on "Tôi quản lý" again.
+      if (leaderTabs && next.leaderId === null) search.set("leader", allLeadersParam);
+      setParams(search, { replace: true });
+    },
+    [setParams, leaderTabs]
   );
   const projectList = {
     projects: facets.data?.projects,
@@ -216,6 +249,15 @@ const JobsPage = () => {
           </>
         }
       >
+        {leaderTabs ? (
+          <div className="-mx-4 -mt-1 border-b px-4 md:-mx-6 md:px-6">
+            <JobLeaderTabs
+              value={leaderTab}
+              counts={facets.data?.leaderTabs}
+              onChange={(tab) => setFilters(withJobLeaderTab(filters, tab, userId))}
+            />
+          </div>
+        ) : null}
         <JobFiltersBar
           filters={filters}
           onChange={setFilters}
@@ -224,6 +266,7 @@ const JobsPage = () => {
           tags={tags.data?.items ?? []}
           // PD-067: the project is picked in the sidebar (phones: the select above the list).
           showProject={false}
+          tabLeaderId={tabLeaderId}
         />
       </PageHeader>
       <div className="flex min-h-0 flex-1">
@@ -280,7 +323,22 @@ const JobsPage = () => {
             monthCounts={counts}
             onCreateJob={canCreateJob ? (month) => setCreating({ month }) : undefined}
             empty={
-              jobScopes.view === "own" && !filtering ? (
+              leaderTab === "mine" && !filtering ? (
+                <EmptyState
+                  icon={Crown}
+                  title="Bạn chưa quản lý job nào"
+                  description="Job có bạn là Leader hiện ở đây. Job chưa có Leader nằm ở tab Tất cả."
+                  action={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFilters(withJobLeaderTab(filters, "all", userId))}
+                    >
+                      Xem tất cả
+                    </Button>
+                  }
+                />
+              ) : jobScopes.view === "own" && !filtering ? (
                 <EmptyState
                   icon={Briefcase}
                   title="Chưa có job nào của bạn"
@@ -297,7 +355,8 @@ const JobsPage = () => {
               ) : (
                 <JobsEmpty
                   filtering={filtering}
-                  onReset={() => setFilters(emptyJobFilters)}
+                  // The "Tôi quản lý" tab stays (a tab, not a filter).
+                  onReset={() => setFilters({ ...clearedJobFilters(filters, tabLeaderId), q: "" })}
                   onCreate={canCreateJob ? () => setCreating({ month: null }) : undefined}
                 />
               )

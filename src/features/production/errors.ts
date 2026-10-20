@@ -31,6 +31,8 @@ const productionMessages: Record<string, string> = {
     "Chức năng feedback riêng đã bỏ. Dùng trạng thái job “Feedback” và “Chia task” cho các task làm lại.",
   // PD-047: a work task's QC can be changed, never removed (the server words it the same way).
   QC_REQUIRED: "Task phải có QC — chỉ đổi sang QC khác.",
+  // PD-073: every job has a Leader (the server words it for create / clear / an older job without one).
+  JOB_LEADER_REQUIRED: "Chọn Leader cho job.",
   // PD-058: the quantity is optional until Done; an empty one is filled in directly, never through a request.
   TASK_QTY_REQUIRED: "Nhập số lượng trước khi chuyển Done.",
   TASK_QTY_EMPTY: "Task chưa có số lượng — điền trực tiếp vào ô số lượng.",
@@ -118,6 +120,7 @@ const serverWorded = new Set([
   "CHANNEL_NAME_TAKEN",
   "LEADER_INVALID",
   "LEADER_REQUIRED",
+  "JOB_LEADER_REQUIRED",
   "MENTION_INVALID",
   "SOURCE_TASK_INVALID",
   "COMMENT_NOT_FOUND",

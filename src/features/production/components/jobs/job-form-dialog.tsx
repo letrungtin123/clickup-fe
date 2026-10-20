@@ -48,16 +48,23 @@ import { JobStatusSelect } from "./job-status-menu";
 import { OptionSelect, PersonSelect } from "./pickers";
 
 type Errors = Partial<
-  Record<"project" | "code" | "received" | "deadline" | "total" | "link", string>
+  Record<"project" | "code" | "received" | "deadline" | "leader" | "total" | "link", string>
 >;
+
+/** PD-073: the inline error of the Leader field (the API's JOB_LEADER_REQUIRED wording for a new job). */
+export const leaderRequiredError = "Chọn Leader cho job.";
+/** An older job without a leader, opened for editing: the field shows this until one is picked. */
+export const leaderMissingError = "Job chưa có Leader — chọn Leader để lưu.";
 
 /**
  * Create / edit a job (PD-035): Dự án, Gói công việc (the work package typed by the user — the job's code), Ngày nhận
- * and Ngày giao (days in the organization timezone; Ngày giao is the job deadline and the default of its lines), an
- * optional Leader (defaults to me when I am a Leader; without one every Leader leads the job), an optional Tổng tấm
- * (left empty it follows the sum of the lines), drive link, JOB custom fields and tags. The leader of an existing job
- * changes only with the "update: all" permission (capabilities.canChangeLeader, PD-036). Creating also picks the manual
- * "Trạng thái" (PD-038, default the first status); an existing job changes it from its header menu instead.
+ * and Ngày giao (days in the organization timezone; Ngày giao is the job deadline and the default of its lines), the
+ * Leader — required (PD-073; defaults to me when I hold LEADER; an older job without one shows the field's error until one
+ * is picked, nothing pre-selected) — an optional Tổng tấm (left empty it follows the sum of the lines), drive link, JOB
+ * custom fields and tags. The leader of an existing job changes only with the "update: all" permission
+ * (capabilities.canChangeLeader, PD-036); without it the field is read-only and not required (the API agrees).
+ * Creating also picks the manual "Trạng thái" (PD-038, default the first status); an existing job changes it from its
+ * header menu instead.
  */
 export const JobFormDialog = ({
   open,
@@ -110,7 +117,10 @@ export const JobFormDialog = ({
   const [valuesTouched, setValuesTouched] = useState(false);
   const [tagIds, setTagIds] = useState<string[]>(job?.tagIds ?? []);
   const [statusId, setStatusId] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Errors>({});
+  // PD-073: an older job without a leader says so at once (whoever may choose one must, to save).
+  const [errors, setErrors] = useState<Errors>(() =>
+    job && !job.leader && canChooseLeader ? { leader: leaderMissingError } : {}
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -141,6 +151,8 @@ export const JobFormDialog = ({
     if (!received) problems.received = "Chọn ngày nhận.";
     if (!due) problems.deadline = "Chọn ngày giao.";
     else if (received && due < received) problems.deadline = "Ngày giao phải từ ngày nhận trở đi.";
+    // PD-073: every job has a Leader (whoever may choose it).
+    if (canChooseLeader && !leaderId) problems.leader = leaderRequiredError;
     const totalText = total.trim();
     const totalValue = totalText === "" ? null : Number(totalText);
     if (totalValue !== null && (!/^\d+$/.test(totalText) || totalValue > 1_000_000))
@@ -311,24 +323,35 @@ export const JobFormDialog = ({
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor={`${ids}-leader`}>
-                  Leader phụ trách{" "}
-                  <span className="font-normal text-foreground-subtle">(tùy chọn)</span>
-                </FieldLabel>
+              <Field data-invalid={Boolean(errors.leader)}>
+                <FieldLabel htmlFor={`${ids}-leader`}>Leader phụ trách</FieldLabel>
                 <PersonSelect
                   id={`${ids}-leader`}
                   people={leaderChoices}
                   value={leaderId}
-                  onChange={setLeaderId}
-                  noneLabel="Chưa có leader"
+                  onChange={(next) => {
+                    setLeaderId(next);
+                    if (next) {
+                      setErrors((previous) => {
+                        const rest = { ...previous };
+                        delete rest.leader;
+                        return rest;
+                      });
+                    }
+                  }}
+                  placeholder={canChooseLeader ? "Chọn Leader" : "Chưa có leader"}
+                  invalid={Boolean(errors.leader)}
                   disabled={!canChooseLeader || !people.canList}
                 />
-                <FieldDescription className="text-xs">
-                  {job && !canChooseLeader
-                    ? "Bạn không có quyền đổi Leader của job."
-                    : "Chưa có leader: mọi Leader đều quản lý được job."}
-                </FieldDescription>
+                {errors.leader ? (
+                  <FieldError>{errors.leader}</FieldError>
+                ) : (
+                  <FieldDescription className="text-xs">
+                    {job && !canChooseLeader
+                      ? "Bạn không có quyền đổi Leader của job."
+                      : "Mỗi job phải có một Leader phụ trách."}
+                  </FieldDescription>
+                )}
               </Field>
               <Field data-invalid={Boolean(errors.total)}>
                 <FieldLabel htmlFor={`${ids}-total`}>

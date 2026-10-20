@@ -17,7 +17,7 @@ import type { CustomField } from "@/contracts/production-catalog";
 import { noLeaderFilter } from "@/contracts/production-jobs";
 
 import { useProductionProjects } from "../../hooks";
-import { activeFilterCount, emptyJobFilters, type JobFilters } from "../../jobs-model";
+import { activeFilterCount, clearedJobFilters, type JobFilters } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
 import type { Tag } from "../../types";
 import { touchTargets } from "../../ui";
@@ -31,7 +31,8 @@ import { OptionSelect, PersonFilterPicker } from "./pickers";
  * Job list filters (URL state): search, project, manual job statuses (any of them, PD-038), staff member (searchable; their
  * jobs as assignee, with their numbers — PD-034), deadline range, "có task trễ", archived, tags (any of them) and JOB custom
  * fields. Inline on tablet/desktop (tags and custom fields as chips + "Trường & tag"); a bottom
- * sheet on phones.
+ * sheet on phones. PD-073: `tabLeaderId` — the leader filter the page shows as its "Tôi quản lý" tab (the viewer's id,
+ * for Leaders): no "Leader: …" chip for it, not counted, kept by "Xóa lọc".
  */
 export const JobFiltersBar = ({
   filters,
@@ -39,11 +40,14 @@ export const JobFiltersBar = ({
   today,
   fields,
   tags,
-  showProject = true
+  showProject = true,
+  tabLeaderId = null
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
+  /** PD-073: the leader filter shown as the page's "Tôi quản lý" tab (null: no tabs). */
+  tabLeaderId?: string | null;
   /** false: the page picks the project elsewhere (PD-067: the job List view's project sidebar / select). */
   showProject?: boolean;
   /** Active JOB custom fields (filters offered for each). */
@@ -53,7 +57,8 @@ export const JobFiltersBar = ({
   const breakpoint = useBreakpoint();
   const [sheet, setSheet] = useState(false);
   const [term, setTerm] = useState(filters.q);
-  const count = activeFilterCount(filters);
+  const count = activeFilterCount(filters, tabLeaderId);
+  const clear = () => onChange(clearedJobFilters(filters, tabLeaderId));
 
   // Debounce the search box into the URL.
   useEffect(() => {
@@ -98,6 +103,7 @@ export const JobFiltersBar = ({
                 onChange={onChange}
                 today={today}
                 showProject={showProject}
+                tabLeaderId={tabLeaderId}
                 stacked
               />
               <ListFilterSections
@@ -109,12 +115,7 @@ export const JobFiltersBar = ({
               />
             </div>
             <div className="sticky bottom-0 flex gap-2 border-t bg-popover px-4 py-3">
-              <Button
-                variant="ghost"
-                className="flex-1"
-                onClick={() => onChange({ ...emptyJobFilters, q: filters.q })}
-                disabled={count === 0}
-              >
+              <Button variant="ghost" className="flex-1" onClick={clear} disabled={count === 0}>
                 <FilterX />
                 Xóa lọc
               </Button>
@@ -136,6 +137,7 @@ export const JobFiltersBar = ({
         onChange={onChange}
         today={today}
         showProject={showProject}
+        tabLeaderId={tabLeaderId}
       />
       <ListFilterBar
         fields={fields}
@@ -145,11 +147,7 @@ export const JobFiltersBar = ({
         today={today}
       />
       {count > 0 ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onChange({ ...emptyJobFilters, q: filters.q })}
-        >
+        <Button variant="ghost" size="sm" onClick={clear}>
           <FilterX />
           Xóa lọc ({count})
         </Button>
@@ -181,12 +179,14 @@ const FilterControls = ({
   onChange,
   today,
   showProject,
+  tabLeaderId,
   stacked = false
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
   showProject: boolean;
+  tabLeaderId: string | null;
   stacked?: boolean;
 }) => {
   const projects = useProductionProjects();
@@ -223,8 +223,9 @@ const FilterControls = ({
         />
       </Labeled>
       {/* No "Leader" picker any more (owner, 2026-10-20). A ?leader= link ("Job tôi phụ trách", member admin, the
-          leader_removed notification) still narrows the list: shown as a chip that removes it. */}
-      {filters.leaderId ? (
+          leader_removed notification) still narrows the list: shown as a chip that removes it — except a Leader's own id,
+          which is the page's "Tôi quản lý" tab (PD-073). */}
+      {filters.leaderId && filters.leaderId !== tabLeaderId ? (
         <Labeled label="Leader" stacked={stacked}>
           <Button
             variant="outline"

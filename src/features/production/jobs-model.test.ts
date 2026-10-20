@@ -9,6 +9,9 @@ import type {
 
 import {
   activeFilterCount,
+  clearedJobFilters,
+  jobLeaderTabOf,
+  withJobLeaderTab,
   allocation,
   assignedNormalQty,
   boardColumns,
@@ -1306,5 +1309,34 @@ describe("mentions", () => {
       [id(3), "QC C"]
     ]);
     expect(mentionedIds("@NV B làm lại giúp", picked)).toEqual([id(2)]);
+  });
+});
+
+describe("PD-073 — Tất cả / Tôi quản lý on the job list (the ?leader= filter)", () => {
+  const me = "00000000-0000-4000-8000-000000000900";
+  const other = "00000000-0000-4000-8000-000000000009";
+
+  it("Tôi quản lý ⇔ leader = me, Tất cả ⇔ no leader; another leader / none selects neither", () => {
+    expect(jobLeaderTabOf(emptyJobFilters, me)).toBe("all");
+    expect(jobLeaderTabOf({ leaderId: me }, me)).toBe("mine");
+    expect(jobLeaderTabOf({ leaderId: other }, me)).toBeNull();
+    expect(jobLeaderTabOf({ leaderId: "none" }, me)).toBeNull();
+    const mine = withJobLeaderTab({ ...emptyJobFilters, late: true, leaderId: other }, "mine", me);
+    expect(mine).toEqual({ ...emptyJobFilters, late: true, leaderId: me });
+    expect(jobFiltersToSearch(mine).toString()).toBe(`leader=${me}&late=1`);
+    expect(withJobLeaderTab(mine, "all", me)).toEqual({ ...emptyJobFilters, late: true });
+  });
+
+  it("the tab is not a counted filter and survives Xóa lọc; another leader still counts and goes", () => {
+    const mine = { ...emptyJobFilters, q: "batch", leaderId: me, late: true };
+    expect(activeFilterCount(mine, me)).toBe(1);
+    expect(activeFilterCount(mine)).toBe(2);
+    expect(clearedJobFilters(mine, me)).toEqual({ ...emptyJobFilters, q: "batch", leaderId: me });
+    const others = { ...mine, leaderId: other };
+    expect(activeFilterCount(others, me)).toBe(2);
+    expect(clearedJobFilters(others, me)).toEqual({ ...emptyJobFilters, q: "batch" });
+    // Without tabs (not a Leader) every leader filter is a filter.
+    expect(clearedJobFilters(mine)).toEqual({ ...emptyJobFilters, q: "batch" });
+    expect(activeFilterCount(emptyJobFilters, me)).toBe(0);
   });
 });

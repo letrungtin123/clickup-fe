@@ -131,7 +131,10 @@ export const addOrphanNotice = (notices: readonly OrphanNotice[], next: OrphanNo
 export const orphanTitle = (count: number, name: string) =>
   `${count} job vẫn do ${name} dẫn — hãy giao cho Leader khác`;
 
-/** The job list filtered by leader (jobs-model `leader` parameter). */
+/**
+ * The job list filtered by leader (jobs-model `leader` parameter). For a Leader's own id it opens the "Tôi quản lý" tab
+ * (PD-073, "Job tôi phụ trách → Xem tất cả"); anyone else's shows the removable "Leader: …" chip.
+ */
 export const jobsLedByHref = (userId: string) =>
   `/production/jobs?${new URLSearchParams({ leader: userId }).toString()}`;
 
