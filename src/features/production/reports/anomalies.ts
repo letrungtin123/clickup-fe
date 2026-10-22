@@ -19,7 +19,7 @@ export const anomalyDescriptions: Record<AnomalyKind, (threshold: number) => str
   FAST_DONE: () =>
     `Task báo xong trong vòng ${fastDoneMinutes} phút sau khi được giao — có thể bấm nhầm hoặc bấm sớm.`,
   MISSING_CREDIT_RULE: () =>
-    "Điểm được ghi khi dự án × quy trình chưa có đơn giá, nên được 0 điểm. Hãy bổ sung đơn giá."
+    "Điểm được ghi khi Project × quy trình chưa có đơn giá, nên được 0 điểm. Hãy bổ sung đơn giá."
 };
 
 /** Short tab labels (the contract labels are sentences). */

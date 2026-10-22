@@ -132,6 +132,9 @@ export const productionApi = {
     api.post("/production/projects", ProductionProjectCollectionSchema, input),
   updateProject: (id: string, input: Partial<ProjectInput>) =>
     api.patch(apiPath`/production/projects/${id}`, ProductionProjectCollectionSchema, input),
+  /** PD-078: only a Project without any job (else 409 PROJECT_HAS_JOBS); answers the remaining list. */
+  deleteProject: (id: string) =>
+    api.delete(apiPath`/production/projects/${id}`, ProductionProjectCollectionSchema),
 
   processes: (signal?: AbortSignal) =>
     api.get("/production/processes", ProcessCollectionSchema, { signal }),

@@ -59,7 +59,7 @@ describe("admin alerts in the inbox and the bell", () => {
   });
 
   it("opens the jobs that person still leads", () => {
-    expect(notificationTarget(make({}))).toEqual({ kind: "path", path: `/production/jobs?leader=${id(3)}` });
+    expect(notificationTarget(make({}))).toEqual({ kind: "path", path: `/production/jobs?scope=all&leader=${id(3)}` });
     expect(notificationTarget(make({ payload: {} }))).toEqual({ kind: "path", path: "/production/jobs" });
   });
 

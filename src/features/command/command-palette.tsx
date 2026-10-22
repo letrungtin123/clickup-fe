@@ -487,9 +487,12 @@ const PaletteBody = ({ onDone }: { onDone: () => void }) => {
 
         <CommandSeparator />
         <CommandGroup heading="Điều hướng">
-          <CommandItem value="nav trang chủ home" onSelect={() => go("/")}>
-            <House /> Trang chủ
-          </CommandItem>
+          {/* Photo Retouch has no Trang chủ (its "Tổng quan" replaces it, owner 2026-10-21). */}
+          {department === "PHOTO_RETOUCH" ? null : (
+            <CommandItem value="nav trang chủ home" onSelect={() => go("/")}>
+              <House /> Trang chủ
+            </CommandItem>
+          )}
           {myTasksPath ? (
             <CommandItem value="nav việc của tôi my tasks" onSelect={() => go(myTasksPath)}>
               <ListTodo /> Việc của tôi

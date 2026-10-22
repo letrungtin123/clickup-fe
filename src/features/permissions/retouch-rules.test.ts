@@ -25,7 +25,11 @@ describe("Photo Retouch feature rows (PD-065)", () => {
       "Duyệt lịch nghỉ",
       "Khách hàng"
     ]);
-    expect(retouchFixedRules().map((rule) => rule.label)).toEqual(["Cấu hình Photo Retouch"]);
+    expect(retouchFixedRules().map((rule) => rule.label)).toEqual([
+      "Tạo task (Chia task, Nhập Task, subtask)",
+      "Project",
+      "Cấu hình Photo Retouch"
+    ]);
   });
 
   it("has six role columns, Director last", () => {
@@ -70,9 +74,26 @@ describe("Photo Retouch feature rows (PD-065)", () => {
   });
 });
 
+describe("PD-079 fixed rows: task creation and Projects", () => {
+  it("Account creates no task; Project rights by role", () => {
+    const rules = retouchFixedRules();
+    const tasks = rules.find((rule) => rule.id === "tasks")!;
+    expect(tasks.cells.ACCOUNT).toBe(false);
+    expect(tasks.cells.ADMIN).toBe(true);
+    expect(tasks.description).toContain("Account không tạo task");
+    const projects = rules.find((rule) => rule.id === "projects")!;
+    expect(projects.cells.ACCOUNT).toEqual({
+      partial: "Tạo (chọn 1 người phụ trách), sửa / xoá Project mình tạo; không đổi người phụ trách"
+    });
+    expect(projects.cells.QC).toBe(false);
+    expect(projects.cells.STAFF).toBe(false);
+    expect(projects.description).toContain("Siêu quản trị đặt được nhiều người");
+  });
+});
+
 describe("Cấu hình Photo Retouch stays fixed (PD-050)", () => {
   it("is edited by the superadmin only: ADMIN reads every page, ACCOUNT the client page and the workflow, others the workflow", () => {
-    const [settings] = retouchFixedRules();
+    const settings = retouchFixedRules().find((rule) => rule.id === "settings");
     if (!settings) throw new Error("settings rule");
     expect(settings.description).toBe(
       "Cấu hình Photo Retouch: chỉ Siêu quản trị sửa; Quản trị xem mọi trang, Account xem Khách hàng, mọi vai trò xem Trạng thái & luồng chuyển."

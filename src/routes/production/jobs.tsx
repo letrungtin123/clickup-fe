@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { JobFiltersBar } from "@/features/production/components/jobs/job-filters";
 import { JobFormDialog } from "@/features/production/components/jobs/job-form-dialog";
-import { JobLeaderTabs } from "@/features/production/components/jobs/job-leader-tabs";
+import { JobScopeTabs } from "@/features/production/components/jobs/job-scope-tabs";
 import { JobsExportMenu } from "@/features/production/components/jobs/jobs-export-menu";
 import {
   JobProjectSelect,
@@ -41,11 +41,12 @@ import {
   clearedJobFilters,
   jobFiltersFromSearch,
   jobFiltersToSearch,
-  jobLeaderTabOf,
   jobQueryFromFilters,
+  landingJobScope,
   listPersonOf,
   sanitizeJobStatusIds,
-  withJobLeaderTab,
+  scopeTabsShown,
+  withJobScope,
   type JobFilters
 } from "@/features/production/jobs-model";
 import { useProductionPeople } from "@/features/production/people";
@@ -53,18 +54,19 @@ import { touchTargets } from "@/features/production/ui";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 /**
- * /production/jobs — jobs (one per Gói công việc of a project, PD-035) with their work lines, filters in the URL.
+ * /production/jobs — jobs (one per Job Code of a Project, PD-035 / PD-078) with their work lines, filters in the URL.
  * Who sees what is the "view" scope of the job permission matrix (PD-036): "all" every job, "own" the jobs I
  * work on (the API filters), "none" no list. Choosing a staff member turns it into their view (PD-034). Holders of
- * LEADER get the "Tất cả" / "Tôi quản lý" tabs (PD-073): the `?leader=<me>` filter, opened on "Tất cả".
+ * LEADER or ADMIN get the "Tất cả" / "Tôi quản lý" tabs (PD-073, PD-078): `?scope=all|mine`, "Tôi quản lý" = the jobs
+ * of the Projects I own; a Leader lands on "Tôi quản lý", an Admin without LEADER on "Tất cả".
  */
 export const ProductionJobsRoute = () => {
   const me = useProductionMe();
-  const { jobScopes } = useProductionAccess();
+  const { jobScopes, taskCreate } = useProductionAccess();
   // The production layout waits for /production/me; never flash "no permission" before the scopes are known.
   if (!me.data) return <RouteFallback />;
   return jobScopes.view === "none" ? (
-    <JobsForbidden canEnter={jobScopes.create !== "none"} />
+    <JobsForbidden canEnter={taskCreate !== "none"} />
   ) : (
     <JobsPage />
   );
@@ -102,28 +104,35 @@ const JobsForbidden = ({ canEnter }: { canEnter: boolean }) => {
 const JobsPage = () => {
   const me = useProductionMe();
   const userId = useSessionContext().user.id;
-  const { jobScopes, roles } = useProductionAccess();
-  // PD-073: the tabs are a Leader's (holding LEADER itself; the superadmin holds every role), never ADMIN alone.
-  const leaderTabs = roles.includes("LEADER");
-  const tabLeaderId = leaderTabs ? userId : null;
+  const { jobScopes, roles, taskCreate } = useProductionAccess();
+  // PD-078: the tabs are for whoever can own Projects (LEADER or ADMIN; the superadmin holds ADMIN).
+  const scopeTabs = scopeTabsShown(roles);
   const navigate = useNavigate();
   const breakpoint = useBreakpoint();
   const phone = breakpoint === "mobile";
   const [params, setParams] = useSearchParams();
-  // A Leader lands on "Tôi quản lý" (owner, 2026-10-20): opening the list without any leader filter means ?leader=<me>;
-  // their "Tất cả" is written as ?leader=all so it stays chosen while other filters change.
-  const landsOnMine = leaderTabs && !params.has("leader");
+  // Opening the list without ?scope= lands on the role's tab (a Leader: "Tôi quản lý"; an Admin, or a ?leader= link:
+  // "Tất cả"), written into the URL so it stays chosen while other filters change. PD-073's ?leader=all becomes
+  // ?scope=all.
+  const leaderLink = params.get("leader");
+  const landingScope =
+    scopeTabs && !params.has("scope")
+      ? leaderLink === allLeadersParam
+        ? "all"
+        : landingJobScope(roles, leaderLink !== null)
+      : null;
   useEffect(() => {
-    if (!landsOnMine) return;
+    if (!landingScope) return;
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
-        next.set("leader", userId);
+        if (next.get("leader") === allLeadersParam) next.delete("leader");
+        next.set("scope", landingScope);
         return next;
       },
       { replace: true }
     );
-  }, [landsOnMine, setParams, userId]);
+  }, [landingScope, setParams]);
   // "Tạo job": from the header (no month) or from a month group of the list (PD-067).
   const [creating, setCreating] = useState<{ month: string | null } | null>(null);
   const [entering, setEntering] = useState(false);
@@ -135,7 +144,8 @@ const JobsPage = () => {
     writeSidebarHidden(userId, hidden);
   };
   const canCreateJob = jobScopes.create === "all";
-  const canEnter = jobScopes.create !== "none";
+  // PD-079: "Nhập Task" needs a task-creating role — an Account creates Projects and Job Codes only.
+  const canEnter = taskCreate !== "none";
   const customFields = useCustomFields();
   const tags = useTags();
   const jobStatuses = useJobStatuses();
@@ -148,8 +158,10 @@ const JobsPage = () => {
   const filters = useMemo(() => {
     const fromUrl = {
       ...jobFiltersFromSearch(params),
-      // Until the URL says so (effect above): the first request already asks for the Leader's own jobs.
-      ...(landsOnMine ? { leaderId: userId } : {})
+      // Until the URL says so (effect above): the first request already asks for the landing tab.
+      ...(landingScope ? { scope: landingScope } : {}),
+      // Without the tabs there is no scope (a shared ?scope=mine link reads as "Tất cả").
+      ...(scopeTabs ? {} : { scope: null })
     };
     // A shared link may name a job status, field / option / tag that no longer exists: drop it (no 400, no
     // "1 trạng thái" filter that matches nothing).
@@ -170,7 +182,7 @@ const JobsPage = () => {
           )
         }
       : parsed;
-  }, [params, landsOnMine, userId, customFields.data, jobFields, tags.data, jobStatuses.data]);
+  }, [params, landingScope, scopeTabs, customFields.data, jobFields, tags.data, jobStatuses.data]);
   const facetQuery = useMemo(() => jobQueryFromFilters(filters, timeZone), [filters, timeZone]);
   // PD-067: the List view groups by month of Ngày nhận, so rows come newest Ngày nhận first (the export follows).
   const query = useMemo(() => ({ ...facetQuery, sort: "received" }), [facetQuery]);
@@ -183,9 +195,8 @@ const JobsPage = () => {
   const total = facets.data
     ? facets.data.months.reduce((sum, month) => sum + month.count, 0)
     : null;
-  const filtering = activeFilterCount(filters, tabLeaderId) > 0 || filters.q.trim() !== "";
-  // "Tôi quản lý" ⇔ ?leader=<me>; "Tất cả" ⇔ no leader filter; another leader / "none" (a link): neither, chip shown.
-  const leaderTab = leaderTabs ? jobLeaderTabOf(filters, userId) : null;
+  const filtering = activeFilterCount(filters) > 0 || filters.q.trim() !== "";
+  const scope = scopeTabs ? (filters.scope ?? "all") : null;
   // Per-person view ("Mọi nhân viên"): the person whose share the loaded rows carry.
   const totals = jobs.data?.pages[0]?.personTotals ?? null;
   const person = useMemo(
@@ -194,13 +205,8 @@ const JobsPage = () => {
   );
 
   const setFilters = useCallback(
-    (next: JobFilters) => {
-      const search = jobFiltersToSearch(next);
-      // A Leader's "Tất cả" stays explicit, else the page would land on "Tôi quản lý" again.
-      if (leaderTabs && next.leaderId === null) search.set("leader", allLeadersParam);
-      setParams(search, { replace: true });
-    },
-    [setParams, leaderTabs]
+    (next: JobFilters) => setParams(jobFiltersToSearch(next), { replace: true }),
+    [setParams]
   );
   const projectList = {
     projects: facets.data?.projects,
@@ -208,7 +214,8 @@ const JobsPage = () => {
     isError: facets.isError,
     onRetry: () => void facets.refetch(),
     selectedId: filters.projectId,
-    onSelect: (projectId: string | null) => setFilters({ ...filters, projectId })
+    onSelect: (projectId: string | null) => setFilters({ ...filters, projectId }),
+    myId: scopeTabs ? userId : null
   };
   // A new job starts in the list's project when it is an active one, and in the month it was asked from (PD-067).
   const selectedProject = facets.data?.projects.find(
@@ -227,8 +234,8 @@ const JobsPage = () => {
         title="Job"
         description={
           jobScopes.view === "own"
-            ? "Các job có task của bạn — mỗi job là một gói công việc của dự án."
-            : "Mỗi job là một gói công việc của dự án, gồm các task: trạng thái, tiến độ và trễ hạn."
+            ? "Các job có task của bạn — mỗi job là một Job Code của Project."
+            : "Project > Job Code > Task > Subtask: mỗi job là một Job Code của Project, gồm các task — trạng thái, tiến độ và trễ hạn."
         }
         actions={
           <>
@@ -249,12 +256,12 @@ const JobsPage = () => {
           </>
         }
       >
-        {leaderTabs ? (
+        {scope ? (
           <div className="-mx-4 -mt-1 border-b px-4 md:-mx-6 md:px-6">
-            <JobLeaderTabs
-              value={leaderTab}
+            <JobScopeTabs
+              value={scope}
               counts={facets.data?.leaderTabs}
-              onChange={(tab) => setFilters(withJobLeaderTab(filters, tab, userId))}
+              onChange={(next) => setFilters(withJobScope(filters, next))}
             />
           </div>
         ) : null}
@@ -266,7 +273,6 @@ const JobsPage = () => {
           tags={tags.data?.items ?? []}
           // PD-067: the project is picked in the sidebar (phones: the select above the list).
           showProject={false}
-          tabLeaderId={tabLeaderId}
         />
       </PageHeader>
       <div className="flex min-h-0 flex-1">
@@ -323,16 +329,16 @@ const JobsPage = () => {
             monthCounts={counts}
             onCreateJob={canCreateJob ? (month) => setCreating({ month }) : undefined}
             empty={
-              leaderTab === "mine" && !filtering ? (
+              scope === "mine" && !filtering ? (
                 <EmptyState
                   icon={Crown}
-                  title="Bạn chưa quản lý job nào"
-                  description="Job có bạn là Leader hiện ở đây. Job chưa có Leader nằm ở tab Tất cả."
+                  title="Chưa có job trong Project bạn phụ trách"
+                  description="Tab Tôi quản lý gồm mọi Job Code, task và subtask của các Project do bạn phụ trách."
                   action={
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setFilters(withJobLeaderTab(filters, "all", userId))}
+                      onClick={() => setFilters(withJobScope(filters, "all"))}
                     >
                       Xem tất cả
                     </Button>
@@ -355,8 +361,8 @@ const JobsPage = () => {
               ) : (
                 <JobsEmpty
                   filtering={filtering}
-                  // The "Tôi quản lý" tab stays (a tab, not a filter).
-                  onReset={() => setFilters({ ...clearedJobFilters(filters, tabLeaderId), q: "" })}
+                  // The "Tất cả" / "Tôi quản lý" tab stays (a tab, not a filter).
+                  onReset={() => setFilters({ ...clearedJobFilters(filters), q: "" })}
                   onCreate={canCreateJob ? () => setCreating({ month: null }) : undefined}
                 />
               )

@@ -132,11 +132,12 @@ export const orphanTitle = (count: number, name: string) =>
   `${count} job vẫn do ${name} dẫn — hãy giao cho Leader khác`;
 
 /**
- * The job list filtered by leader (jobs-model `leader` parameter). For a Leader's own id it opens the "Tôi quản lý" tab
- * (PD-073, "Job tôi phụ trách → Xem tất cả"); anyone else's shows the removable "Leader: …" chip.
+ * The job list filtered by leader (jobs-model `leader` parameter): the removable "Leader: …" chip — the viewer's own id
+ * too ("Job tôi phụ trách → Xem tất cả"). Opened on the "Tất cả" tab (PD-078: "Tôi quản lý" is the Projects I own, so a
+ * job I lead in someone else's Project is only under "Tất cả").
  */
 export const jobsLedByHref = (userId: string) =>
-  `/production/jobs?${new URLSearchParams({ leader: userId }).toString()}`;
+  `/production/jobs?${new URLSearchParams({ scope: "all", leader: userId }).toString()}`;
 
 const pad = (value: number) => String(value).padStart(2, "0");
 

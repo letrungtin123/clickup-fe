@@ -1,4 +1,4 @@
-import { createBrowserRouter, type RouteObject } from "react-router";
+import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 
 import { AppSplash, AuthGate } from "@/features/auth/components/auth-gate";
 import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
@@ -28,6 +28,8 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /settings/{profile,members,roles}
  *   /production                    production (retouch) overview — production roles only (PD-011)
  *   /production/clients            clients (Account)
+ *   /production/projects           Project list (PD-078: Leader / Admin create and edit, Director / Account read;
+ *                                  /production/settings/projects redirects here)
  *   /production/jobs[/:jobId]      jobs (filters in the URL) / job detail; ?task=<id> opens a task sheet
  *   /production/my-tasks, /qc      my tasks (kanban) / QC queue
  *   /production/tasks/:taskId      shareable task page (notification and e-mail links)
@@ -57,9 +59,6 @@ const productionSettingsPages: Record<string, NonNullable<RouteObject["lazy"]>> 
   }),
   clients: async () => ({
     Component: (await import("@/routes/production/clients")).ProductionClientsSettingsRoute
-  }),
-  projects: async () => ({
-    Component: (await import("@/routes/production/settings/projects")).ProductionProjectsRoute
   }),
   processes: async () => ({
     Component: (await import("@/routes/production/settings/processes")).ProductionProcessesRoute
@@ -260,6 +259,12 @@ export const routes: RouteObject[] = [
                 })
               },
               {
+                path: "projects",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/projects")).ProductionProjectsRoute
+                })
+              },
+              {
                 path: "jobs",
                 lazy: async () => ({
                   Component: (await import("@/routes/production/jobs")).ProductionJobsRoute
@@ -354,6 +359,8 @@ export const routes: RouteObject[] = [
                     })
                   },
                   ...Object.entries(productionSettingsPages).map(([path, lazy]) => ({ path, lazy })),
+                  // PD-078: Project left Cấu hình (its own page).
+                  { path: "projects", element: <Navigate to="/production/projects" replace /> },
                   { path: "*", element: <NotFoundRoute /> }
                 ]
               },

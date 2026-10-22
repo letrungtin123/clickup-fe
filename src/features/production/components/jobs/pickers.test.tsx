@@ -8,7 +8,7 @@ import { OptionSelect, SEARCHABLE_FROM } from "./pickers";
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const projects = Array.from({ length: SEARCHABLE_FROM + 2 }, (_, index) => ({
   id: id(index + 1),
-  label: index === 3 ? "VĐ · Dự án Đặc biệt" : `VD${index + 1} · Dự án mẫu ${index + 1}`
+  label: index === 3 ? "VĐ · Project Đặc biệt" : `VD${index + 1} · Project mẫu ${index + 1}`
 }));
 
 afterEach(cleanup);
@@ -30,25 +30,25 @@ describe("OptionSelect — long lists are searchable (owner 2026-10-15)", () => 
     const onChange = vi.fn();
     render(
       <OptionSelect
-        aria-label="Dự án"
+        aria-label="Project"
         options={projects}
         value={null}
         onChange={onChange}
-        placeholder="Chọn dự án"
-        searchPlaceholder="Tìm dự án…"
+        placeholder="Chọn Project"
+        searchPlaceholder="Tìm Project…"
       />
     );
-    const trigger = screen.getByRole("combobox", { name: "Dự án" });
-    expect(trigger.textContent).toContain("Chọn dự án");
+    const trigger = screen.getByRole("combobox", { name: "Project" });
+    expect(trigger.textContent).toContain("Chọn Project");
     await act(async () => {
       fireEvent.click(trigger);
       await Promise.resolve();
     });
-    const search = await screen.findByPlaceholderText("Tìm dự án…");
+    const search = await screen.findByPlaceholderText("Tìm Project…");
     expect(screen.getAllByRole("option")).toHaveLength(projects.length);
     fireEvent.change(search, { target: { value: "dac biet" } });
     const options = screen.getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual(["VĐ · Dự án Đặc biệt"]);
+    expect(options.map((option) => option.textContent)).toEqual(["VĐ · Project Đặc biệt"]);
     await act(async () => {
       fireEvent.click(options[0]!);
       await Promise.resolve();
@@ -66,7 +66,9 @@ describe("OptionSelect — long lists are searchable (owner 2026-10-15)", () => 
         placeholder="Chọn ca"
       />
     );
-    expect(screen.getByRole("combobox", { name: "Ca" }).textContent).toContain("VD2 · Dự án mẫu 2");
+    expect(screen.getByRole("combobox", { name: "Ca" }).textContent).toContain(
+      "VD2 · Project mẫu 2"
+    );
     expect(screen.queryByPlaceholderText("Tìm…")).toBeNull();
   });
 });

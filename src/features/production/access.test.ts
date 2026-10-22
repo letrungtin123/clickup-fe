@@ -61,6 +61,18 @@ describe("navigation by role", () => {
     expect(productionNavEntries.some((entry) => entry.label === "Xếp hạng")).toBe(false);
   });
 
+  it("PD-078: “Project” is its own entry, just before Job, for Leader, Admin, Director and Account — not Staff / QC", () => {
+    for (const roles of [["LEADER"], ["ADMIN"], ["DIRECTOR"], ["ACCOUNT"], ["STAFF", "LEADER"]] as const) {
+      expect(paths([...roles])).toContain("/production/projects");
+    }
+    for (const roles of [["STAFF"], ["QC"], ["STAFF", "QC"]] as const) {
+      expect(paths([...roles])).not.toContain("/production/projects");
+    }
+    const order = productionNavEntries.map((entry) => entry.to);
+    expect(order.indexOf("/production/projects")).toBe(order.indexOf("/production/jobs") - 1);
+    expect(productionNavEntries.find((entry) => entry.to === "/production/projects")?.label).toBe("Project");
+  });
+
   it("shows jobs, my tasks and the QC queue by role (Phase 2)", () => {
     expect(paths(["STAFF"])).toContain("/production/my-tasks");
     expect(paths(["STAFF"])).not.toContain("/production/jobs");
@@ -82,7 +94,9 @@ describe("navigation by role", () => {
     expect(slugs(["ACCOUNT"])).toEqual(["clients", "workflow"]);
     expect(slugs(["ADMIN"])).toContain("credit-rules");
     expect(slugs(["ADMIN"])).toEqual(expect.arrayContaining(["kpi", "kpi-settlement"]));
-    expect(slugs(["ADMIN"])).toHaveLength(15);
+    // PD-078: "Project" left Cấu hình (its own menu entry).
+    expect(slugs(["ADMIN"])).toHaveLength(14);
+    expect(slugs(["ADMIN"])).not.toContain("projects");
     // "Phân quyền Job" moved to Cài đặt → Vai trò & phân quyền (PD-042).
     expect(slugs(["ADMIN"])).not.toContain("job-permissions");
   });

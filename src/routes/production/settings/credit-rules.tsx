@@ -160,8 +160,8 @@ export const ProductionCreditRulesRoute = () => {
           <SearchField
             value={term}
             onChange={setTerm}
-            placeholder="Tìm mã dự án, tên, khách hàng"
-            label="Tìm dự án"
+            placeholder="Tìm mã Project, tên, khách hàng"
+            label="Tìm Project"
             className="basis-full sm:basis-auto"
           />
           <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
@@ -194,22 +194,22 @@ export const ProductionCreditRulesRoute = () => {
         ) : matrix.data.projects.length === 0 || matrix.data.processes.length === 0 ? (
           <EmptyState
             icon={Coins}
-            title="Chưa có dự án hoặc quy trình"
+            title="Chưa có Project hoặc quy trình"
             description={
               canEdit
-                ? "Tạo dự án và quy trình trước, hoặc nhập CSV với tùy chọn “Tạo mới nếu chưa có” để tạo cùng lúc."
-                : "Bảng đơn giá cần có dự án và quy trình."
+                ? "Tạo Project và quy trình trước, hoặc nhập CSV với tùy chọn “Tạo mới nếu chưa có” để tạo cùng lúc."
+                : "Bảng đơn giá cần có Project và quy trình."
             }
             action={
               <>
                 <Button
                   variant="outline"
                   size="sm"
-                  render={<Link to="/production/settings/projects" />}
+                  render={<Link to="/production/projects" />}
                   nativeButton={false}
                 >
                   <FolderKanban />
-                  Dự án
+                  Project
                 </Button>
                 <Button
                   variant="outline"
@@ -233,7 +233,7 @@ export const ProductionCreditRulesRoute = () => {
           <EmptyState
             size="sm"
             icon={Coins}
-            title="Không có dự án phù hợp"
+            title="Không có Project phù hợp"
             description="Thử từ khóa khác hoặc hiện mục đã lưu trữ."
           />
         ) : (

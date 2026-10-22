@@ -91,6 +91,11 @@ export const useProductionAccess = () => {
        * "Nhập công việc" own or all — all also picks the assignee), update / delete. All "none" until loaded.
        */
       jobScopes: data?.jobPermissions ?? noJobScopes,
+      /**
+       * PD-079: may I create TASKS ("Chia task", "Nhập Task", "Tạo nhanh task") — "own" / "all"; an Account alone creates
+       * Projects and Job Codes only ("none"). "none" until loaded.
+       */
+      taskCreate: data?.taskCreate ?? "none",
       /** Holds any of `required` (ADMIN always). */
       can: (...required: ProductionRole[]) => roles.length > 0 && hasAnyRole(roles, required),
       /** My features (PD-065): Hàng chờ QC, Bảng điều khiển, Quản trị số liệu, Bất thường, Khách hàng, scores, leave. */
@@ -298,8 +303,12 @@ export const useClientMutations = () => {
   };
 };
 
+/**
+ * PD-078 Project writes (Leaders and Admins). The job list's Project sidebar (facets) lists every Project, so it is
+ * refreshed too.
+ */
 export const useProjectMutations = () => {
-  const related = [productionKeys.clients(), productionKeys.creditRules()];
+  const related = [productionKeys.clients(), productionKeys.creditRules(), productionKeys.jobFacets()];
   return {
     create: useCollectionMutation(
       productionKeys.projects(),
@@ -310,6 +319,11 @@ export const useProjectMutations = () => {
       productionKeys.projects(),
       ({ id, input }: { id: string; input: Partial<ProjectInput> }) =>
         productionApi.updateProject(id, input),
+      related
+    ),
+    remove: useCollectionMutation(
+      productionKeys.projects(),
+      (id: string) => productionApi.deleteProject(id),
       related
     )
   };

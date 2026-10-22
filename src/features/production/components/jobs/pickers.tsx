@@ -45,6 +45,7 @@ export const PersonSelect = ({
   id,
   size = "default",
   className,
+  badges,
   "aria-label": label
 }: {
   people: readonly Person[];
@@ -53,6 +54,8 @@ export const PersonSelect = ({
   placeholder?: string;
   /** Adds a "none" choice with this label (e.g. a disabled "Task Checking — không có QC"). */
   noneLabel?: string | undefined;
+  /** A short note shown after some people in the list (PD-079: "phụ trách Project"), by person id. */
+  badges?: ReadonlyMap<string, string> | undefined;
   invalid?: boolean;
   disabled?: boolean;
   id?: string;
@@ -102,6 +105,11 @@ export const PersonSelect = ({
           <SelectItem key={person.id} value={person.id}>
             <UserAvatar user={person} size="xs" />
             <span className="truncate">{person.displayName}</span>
+            {badges?.get(person.id) ? (
+              <span className="ml-auto pl-3 text-[11px] whitespace-nowrap text-foreground-subtle">
+                {badges.get(person.id)}
+              </span>
+            ) : null}
           </SelectItem>
         ))}
       </SelectContent>

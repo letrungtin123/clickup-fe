@@ -152,6 +152,12 @@ export const planChangeInvalidations = (client: QueryClient, change: PendingChan
   } else {
     for (const [key, data] of lists) if (pagesContain(data, change.jobIds)) add(key);
   }
+  // "Tổng quan" (PD-076): any work change may move its counts — marked stale, refreshed while on screen at most once per
+  // LIVE_REFRESH_MS (it sits under the job lists' key but is not paged, so the row matching above never picks it).
+  for (const [key] of client.getQueriesData({ queryKey: productionKeys.overview() })) {
+    add(key, true, false);
+    speculative.push(key);
+  }
   // The "Nhập công việc" job picker shows each job's manual status (PD-038) and lists new jobs.
   if (change.kinds.has("job") && isCached(client, productionKeys.jobOptions(), false)) {
     add(productionKeys.jobOptions(), false);

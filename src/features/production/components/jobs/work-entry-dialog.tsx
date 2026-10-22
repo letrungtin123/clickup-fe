@@ -98,8 +98,9 @@ export const WorkEntryDialog = ({
   const create = useCreateWorkEntry();
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const today = todayIn(timeZone);
-  // "create: all" picks anyone (when the member list is readable); otherwise the row is mine.
-  const canPick = scopes.create === "all" && people.canList;
+  // "create: all" picks anyone (when the member list is readable); otherwise the row is mine. PD-079: the task-creating
+  // scope (ACCOUNT's "create" covers Job Codes only).
+  const canPick = access.taskCreate === "all" && people.canList;
   const qtyRef = useRef<HTMLInputElement | null>(null);
 
   const [draft, setDraft] = useState<WorkEntryDraft>(() =>
@@ -186,7 +187,7 @@ export const WorkEntryDialog = ({
     setSaving(mode);
     create.mutate(payload, {
       onSuccess: (result) => {
-        toast.success(`Đã nhập vào gói ${shortPackage(result.task.jobCode)}`, {
+        toast.success(`Đã nhập vào Job Code ${shortPackage(result.task.jobCode)}`, {
           description: `${result.task.assignee.displayName} · ${result.task.process.name} · ${qtyText(result.task.qtyAssigned)}`,
           // "view: none" has no job page to open.
           ...(scopes.view !== "none"
@@ -243,8 +244,8 @@ export const WorkEntryDialog = ({
           <DialogHeader className="border-b px-4 pt-4 pr-12 pb-3">
             <DialogTitle>Nhập Task</DialogTitle>
             <DialogDescription>
-              Một task (một hàng của file work log), thêm vào một gói công việc đã có của dự án. Gói
-              mới do Leader / Account tạo bằng “Tạo job”.
+              Một task (một hàng của file work log), thêm vào một Job Code đã có của Project. Job
+              Code mới do Leader / Account tạo bằng “Tạo job”.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
@@ -288,11 +289,11 @@ export const WorkEntryDialog = ({
                 )}
               </Field>
               <Field data-invalid={Boolean(shown.project)}>
-                <FieldLabel htmlFor={`${ids}-project`}>Dự án</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-project`}>Project</FieldLabel>
                 <OptionSelect
                   id={`${ids}-project`}
                   options={projectOptions}
-                  searchPlaceholder="Tìm dự án…"
+                  searchPlaceholder="Tìm Project…"
                   value={draft.projectId}
                   onChange={(projectId) => {
                     // A job never crosses projects: another project drops the picked job.
@@ -300,7 +301,7 @@ export const WorkEntryDialog = ({
                     setFormError(null);
                     setJobError(null);
                   }}
-                  placeholder={projects.isPending ? "Đang tải…" : "Chọn dự án"}
+                  placeholder={projects.isPending ? "Đang tải…" : "Chọn Project"}
                   invalid={Boolean(shown.project)}
                 />
                 {shown.project ? <FieldError>{shown.project}</FieldError> : null}
@@ -308,7 +309,7 @@ export const WorkEntryDialog = ({
             </div>
 
             <Field data-invalid={Boolean(shown.job ?? jobError)}>
-              <FieldLabel htmlFor={`${ids}-job`}>Gói công việc</FieldLabel>
+              <FieldLabel htmlFor={`${ids}-job`}>Job Code</FieldLabel>
               <JobOptionPicker
                 id={`${ids}-job`}
                 projectId={draft.projectId}
@@ -325,13 +326,14 @@ export const WorkEntryDialog = ({
                 <FieldError id={`${ids}-job-hint`}>{shown.job ?? jobError}</FieldError>
               ) : draft.job?.jobStatus.isClosed ? (
                 <FieldDescription id={`${ids}-job-hint`} className="text-xs">
-                  Gói đang ở trạng thái “{draft.job.jobStatus.name}” (đã đóng) — vẫn nhập thêm được.
+                  Job Code đang ở trạng thái “{draft.job.jobStatus.name}” (đã đóng) — vẫn nhập thêm
+                  được.
                 </FieldDescription>
               ) : (
                 <FieldDescription id={`${ids}-job-hint`} className="text-xs">
                   {draft.projectId
-                    ? "Chọn job có sẵn của dự án (cả job đã giao khách). Gói mới: nhờ Leader / Account “Tạo job”."
-                    : "Chọn dự án trước để thấy các gói công việc của dự án."}
+                    ? "Chọn job có sẵn của Project (cả job đã giao khách). Job Code mới: nhờ Leader / Account “Tạo job”."
+                    : "Chọn Project trước để thấy các Job Code của Project."}
                 </FieldDescription>
               )}
             </Field>

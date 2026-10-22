@@ -79,7 +79,7 @@ export const JobsExportMenu = ({
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="font-medium">Danh sách job</span>
             <span className="text-xs text-pretty text-foreground-muted">
-              Mỗi job một hàng: gói, tiến độ, người làm, trễ.
+              Mỗi job một hàng: Job Code, tiến độ, người làm, trễ.
             </span>
           </span>
         </DropdownMenuItem>

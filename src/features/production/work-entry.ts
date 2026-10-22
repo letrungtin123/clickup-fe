@@ -163,10 +163,10 @@ export const workEntryProblems = (
     if (!draft.qcId) problems.qc = "Chọn QC.";
     else if (draft.qcId === draft.assigneeId) problems.qc = "QC phải khác người làm.";
   }
-  if (!draft.projectId) problems.project = "Chọn dự án.";
-  if (!draft.job) problems.job = "Chọn gói công việc.";
+  if (!draft.projectId) problems.project = "Chọn Project.";
+  if (!draft.job) problems.job = "Chọn Job Code.";
   else if (draft.job.projectId !== draft.projectId)
-    problems.job = "Gói công việc không thuộc dự án đã chọn.";
+    problems.job = "Job Code không thuộc Project đã chọn.";
   if (!draft.processId) problems.process = "Chọn quy trình.";
   if (!draft.shiftId) problems.shift = "Chọn ca làm việc.";
   if (!draft.receivedDay) problems.receivedDay = "Chọn ngày nhận.";
@@ -258,11 +258,11 @@ export const workEntryPayload = (
 export const workEntryJobError = (code: string): string | null => {
   switch (code) {
     case "JOB_NOT_FOUND":
-      return "Không tìm thấy gói công việc này (có thể đã bị xoá) — chọn lại trong danh sách.";
+      return "Không tìm thấy Job Code này (có thể đã bị xoá) — chọn lại trong danh sách.";
     case "JOB_ARCHIVED":
-      return "Job của gói này đã lưu trữ nên không thêm task được — chọn gói khác hoặc nhờ Leader mở lại.";
+      return "Job của Job Code này đã lưu trữ nên không thêm task được — chọn Job Code khác hoặc nhờ Leader mở lại.";
     case "JOB_PROJECT_MISMATCH":
-      return "Gói công việc không thuộc dự án đã chọn — chọn lại.";
+      return "Job Code không thuộc Project đã chọn — chọn lại.";
     default:
       return null;
   }

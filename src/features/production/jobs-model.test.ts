@@ -10,8 +10,10 @@ import type {
 import {
   activeFilterCount,
   clearedJobFilters,
-  jobLeaderTabOf,
-  withJobLeaderTab,
+  jobScopeFromSearch,
+  landingJobScope,
+  scopeTabsShown,
+  withJobScope,
   allocation,
   assignedNormalQty,
   boardColumns,
@@ -1312,31 +1314,44 @@ describe("mentions", () => {
   });
 });
 
-describe("PD-073 — Tất cả / Tôi quản lý on the job list (the ?leader= filter)", () => {
+describe("PD-078 — Tất cả / Tôi quản lý on the job list (?scope=, the Projects I own)", () => {
   const me = "00000000-0000-4000-8000-000000000900";
   const other = "00000000-0000-4000-8000-000000000009";
+  const search = (text: string) => new URLSearchParams(text);
 
-  it("Tôi quản lý ⇔ leader = me, Tất cả ⇔ no leader; another leader / none selects neither", () => {
-    expect(jobLeaderTabOf(emptyJobFilters, me)).toBe("all");
-    expect(jobLeaderTabOf({ leaderId: me }, me)).toBe("mine");
-    expect(jobLeaderTabOf({ leaderId: other }, me)).toBeNull();
-    expect(jobLeaderTabOf({ leaderId: "none" }, me)).toBeNull();
-    const mine = withJobLeaderTab({ ...emptyJobFilters, late: true, leaderId: other }, "mine", me);
-    expect(mine).toEqual({ ...emptyJobFilters, late: true, leaderId: me });
-    expect(jobFiltersToSearch(mine).toString()).toBe(`leader=${me}&late=1`);
-    expect(withJobLeaderTab(mine, "all", me)).toEqual({ ...emptyJobFilters, late: true });
+  it("the tabs are for holders of LEADER or ADMIN; a Leader lands on Tôi quản lý, an Admin (or a ?leader= link) on Tất cả", () => {
+    expect(scopeTabsShown(["LEADER"])).toBe(true);
+    expect(scopeTabsShown(["ADMIN"])).toBe(true);
+    for (const role of ["ACCOUNT", "QC", "STAFF", "DIRECTOR"] as const) expect(scopeTabsShown([role])).toBe(false);
+    expect(landingJobScope(["LEADER"])).toBe("mine");
+    expect(landingJobScope(["LEADER", "ADMIN"])).toBe("mine");
+    expect(landingJobScope(["ADMIN"])).toBe("all");
+    expect(landingJobScope(["LEADER"], true)).toBe("all");
   });
 
-  it("the tab is not a counted filter and survives Xóa lọc; another leader still counts and goes", () => {
-    const mine = { ...emptyJobFilters, q: "batch", leaderId: me, late: true };
-    expect(activeFilterCount(mine, me)).toBe(1);
-    expect(activeFilterCount(mine)).toBe(2);
-    expect(clearedJobFilters(mine, me)).toEqual({ ...emptyJobFilters, q: "batch", leaderId: me });
-    const others = { ...mine, leaderId: other };
-    expect(activeFilterCount(others, me)).toBe(2);
-    expect(clearedJobFilters(others, me)).toEqual({ ...emptyJobFilters, q: "batch" });
-    // Without tabs (not a Leader) every leader filter is a filter.
-    expect(clearedJobFilters(mine)).toEqual({ ...emptyJobFilters, q: "batch" });
-    expect(activeFilterCount(emptyJobFilters, me)).toBe(0);
+  it("?scope= in the URL (PD-073's ?leader=all reads as Tất cả); the leader filter is its own chip", () => {
+    expect(jobScopeFromSearch(search("scope=mine"))).toBe("mine");
+    expect(jobScopeFromSearch(search("scope=all"))).toBe("all");
+    expect(jobScopeFromSearch(search("scope=team"))).toBeNull();
+    expect(jobScopeFromSearch(search(""))).toBeNull();
+    expect(jobScopeFromSearch(search("leader=all"))).toBe("all");
+    expect(jobFiltersFromSearch(search("leader=all"))).toMatchObject({ leaderId: null, scope: "all" });
+    expect(jobFiltersFromSearch(search(`scope=mine&leader=${other}`))).toMatchObject({ leaderId: other, scope: "mine" });
+    const mine = withJobScope({ ...emptyJobFilters, late: true, leaderId: me }, "mine");
+    expect(jobFiltersToSearch(mine).toString()).toBe(`leader=${me}&scope=mine&late=1`);
+    expect(jobQueryFromFilters(mine, "Asia/Ho_Chi_Minh")).toMatchObject({ scope: "mine", leaderId: me });
+    // "Tất cả" sends no scope at all.
+    expect(jobQueryFromFilters(withJobScope(mine, "all"), "Asia/Ho_Chi_Minh")).not.toHaveProperty("scope", "mine");
+    expect(jobQueryFromFilters(withJobScope(mine, "all"), "Asia/Ho_Chi_Minh").scope).toBeUndefined();
+  });
+
+  it("the tab is not a counted filter and survives Xóa lọc; a ?leader= link — mine too — is a filter (its chip)", () => {
+    const filters = { ...emptyJobFilters, q: "batch", scope: "mine" as const, late: true };
+    expect(activeFilterCount(filters)).toBe(1);
+    expect(clearedJobFilters(filters)).toEqual({ ...emptyJobFilters, q: "batch", scope: "mine" });
+    const linked = { ...filters, leaderId: me };
+    expect(activeFilterCount(linked)).toBe(2);
+    expect(clearedJobFilters(linked)).toEqual({ ...emptyJobFilters, q: "batch", scope: "mine" });
+    expect(activeFilterCount(emptyJobFilters)).toBe(0);
   });
 });

@@ -31,8 +31,8 @@ import { OptionSelect, PersonFilterPicker } from "./pickers";
  * Job list filters (URL state): search, project, manual job statuses (any of them, PD-038), staff member (searchable; their
  * jobs as assignee, with their numbers — PD-034), deadline range, "có task trễ", archived, tags (any of them) and JOB custom
  * fields. Inline on tablet/desktop (tags and custom fields as chips + "Trường & tag"); a bottom
- * sheet on phones. PD-073: `tabLeaderId` — the leader filter the page shows as its "Tôi quản lý" tab (the viewer's id,
- * for Leaders): no "Leader: …" chip for it, not counted, kept by "Xóa lọc".
+ * sheet on phones. A `?leader=` link shows as a removable "Leader: …" chip; the "Tất cả" / "Tôi quản lý" tab (`scope`,
+ * PD-078) is the page's, not a filter here (not counted, kept by "Xóa lọc").
  */
 export const JobFiltersBar = ({
   filters,
@@ -40,14 +40,11 @@ export const JobFiltersBar = ({
   today,
   fields,
   tags,
-  showProject = true,
-  tabLeaderId = null
+  showProject = true
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
-  /** PD-073: the leader filter shown as the page's "Tôi quản lý" tab (null: no tabs). */
-  tabLeaderId?: string | null;
   /** false: the page picks the project elsewhere (PD-067: the job List view's project sidebar / select). */
   showProject?: boolean;
   /** Active JOB custom fields (filters offered for each). */
@@ -57,8 +54,8 @@ export const JobFiltersBar = ({
   const breakpoint = useBreakpoint();
   const [sheet, setSheet] = useState(false);
   const [term, setTerm] = useState(filters.q);
-  const count = activeFilterCount(filters, tabLeaderId);
-  const clear = () => onChange(clearedJobFilters(filters, tabLeaderId));
+  const count = activeFilterCount(filters);
+  const clear = () => onChange(clearedJobFilters(filters));
 
   // Debounce the search box into the URL.
   useEffect(() => {
@@ -103,7 +100,6 @@ export const JobFiltersBar = ({
                 onChange={onChange}
                 today={today}
                 showProject={showProject}
-                tabLeaderId={tabLeaderId}
                 stacked
               />
               <ListFilterSections
@@ -137,7 +133,6 @@ export const JobFiltersBar = ({
         onChange={onChange}
         today={today}
         showProject={showProject}
-        tabLeaderId={tabLeaderId}
       />
       <ListFilterBar
         fields={fields}
@@ -179,14 +174,12 @@ const FilterControls = ({
   onChange,
   today,
   showProject,
-  tabLeaderId,
   stacked = false
 }: {
   filters: JobFilters;
   onChange: (next: JobFilters) => void;
   today: string;
   showProject: boolean;
-  tabLeaderId: string | null;
   stacked?: boolean;
 }) => {
   const projects = useProductionProjects();
@@ -196,20 +189,20 @@ const FilterControls = ({
   return (
     <>
       {showProject ? (
-        <Labeled label="Dự án" stacked={stacked}>
+        <Labeled label="Project" stacked={stacked}>
           <OptionSelect
             options={(projects.data?.items ?? []).map((project) => ({
               id: project.id,
               label: project.code,
               // The client helps Account find "my client's job" among project codes.
-              hint: project.active ? project.clientName : "lưu trữ"
+              hint: project.active ? project.clientName : "ngừng hoạt động"
             }))}
             value={filters.projectId}
             onChange={(projectId) => set({ projectId })}
-            placeholder="Dự án"
-            noneLabel="Mọi dự án"
-            searchPlaceholder="Tìm dự án…"
-            aria-label="Lọc theo dự án"
+            placeholder="Project"
+            noneLabel="Mọi Project"
+            searchPlaceholder="Tìm Project…"
+            aria-label="Lọc theo Project"
             className={width}
           />
         </Labeled>
@@ -223,9 +216,9 @@ const FilterControls = ({
         />
       </Labeled>
       {/* No "Leader" picker any more (owner, 2026-10-20). A ?leader= link ("Job tôi phụ trách", member admin, the
-          leader_removed notification) still narrows the list: shown as a chip that removes it — except a Leader's own id,
-          which is the page's "Tôi quản lý" tab (PD-073). */}
-      {filters.leaderId && filters.leaderId !== tabLeaderId ? (
+          leader_removed notification) still narrows the list: shown as a chip that removes it (PD-078: whoever it names,
+          the viewer included — "Tôi quản lý" is the project tab now). */}
+      {filters.leaderId ? (
         <Labeled label="Leader" stacked={stacked}>
           <Button
             variant="outline"

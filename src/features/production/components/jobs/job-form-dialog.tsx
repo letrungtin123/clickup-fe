@@ -15,7 +15,8 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import type { CustomValues } from "@/contracts/production-catalog";
+import { Link } from "@/components/shared/router-link";
+import { jobsBoundToOwnProjects, type CustomValues } from "@/contracts/production-catalog";
 import { jobCodeMaxLength, type JobDetail } from "@/contracts/production-jobs";
 import { useSessionContext } from "@/features/auth/hooks";
 
@@ -39,6 +40,7 @@ import {
   workLinkProblem
 } from "../../jobs-model";
 import { useProductionPeople } from "../../people";
+import { isProjectOwner, leaderChoicesForProject } from "../../projects";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { CustomFieldsForm } from "../custom-field-input";
 import { DateField } from "../date-field";
@@ -55,9 +57,13 @@ type Errors = Partial<
 export const leaderRequiredError = "Chọn Leader cho job.";
 /** An older job without a leader, opened for editing: the field shows this until one is picked. */
 export const leaderMissingError = "Job chưa có Leader — chọn Leader để lưu.";
+/** PD-078: a Leader without ADMIN / ACCOUNT works only in the Projects they own, as the job's Leader. */
+export const boundLeaderNote = "Leader chỉ tạo job trong Project do mình phụ trách, và là Leader của job đó.";
+export const boundMoveNote = "Job thuộc Project không do bạn phụ trách — không chuyển được sang Project khác.";
+export const noOwnProjectNote = "Bạn chưa phụ trách Project nào đang hoạt động.";
 
 /**
- * Create / edit a job (PD-035): Dự án, Gói công việc (the work package typed by the user — the job's code), Ngày nhận
+ * Create / edit a job (PD-035): Project, Job Code (the work package typed by the user — the job's code), Ngày nhận
  * and Ngày giao (days in the organization timezone; Ngày giao is the job deadline and the default of its lines), the
  * Leader — required (PD-073; defaults to me when I hold LEADER; an older job without one shows the field's error until one
  * is picked, nothing pre-selected) — an optional Tổng tấm (left empty it follows the sum of the lines), drive link, JOB
@@ -65,6 +71,11 @@ export const leaderMissingError = "Job chưa có Leader — chọn Leader để 
  * (capabilities.canChangeLeader, PD-036); without it the field is read-only and not required (the API agrees).
  * Creating also picks the manual "Trạng thái" (PD-038, default the first status); an existing job changes it from its
  * header menu instead.
+ * PD-078 (the API enforces the same): a Leader holding neither ADMIN nor ACCOUNT (`jobsBoundToOwnProjects`) picks only
+ * the Projects they own, is always the new job's Leader (locked), moves a job only between their own Projects and names
+ * only themselves as its Leader. PD-079: an Admin or an Account sees the picked Project's owners holding LEADER first in the
+ * Leader picker ("phụ trách Project"), the first one pre-filled (changeable; a Leader picked by hand stays); a Leader who is
+ * one of several owners creates jobs there led by themselves.
  */
 export const JobFormDialog = ({
   open,
@@ -97,7 +108,12 @@ export const JobFormDialog = ({
   const update = useUpdateJob(job?.id ?? "");
   const timeZone = me.data?.settings.timezone ?? "Asia/Ho_Chi_Minh";
   const today = todayIn(timeZone);
+  const myId = session.user.id;
   const iAmLeader = access.roles.includes("LEADER");
+  // PD-079: an Admin or an Account gets the Project's owners first in the Leader picker, the first one pre-filled.
+  const suggestsOwners = access.roles.includes("ADMIN") || access.roles.includes("ACCOUNT");
+  // PD-078: a Leader without ADMIN / ACCOUNT is bound to the Projects they own.
+  const bound = jobsBoundToOwnProjects(access.roles);
   const canChooseLeader = job ? job.capabilities.canChangeLeader : true;
 
   const initialReceived = job ? isoToDay(job.receivedAt, timeZone) : (initial?.receivedDay ?? today);
@@ -109,6 +125,8 @@ export const JobFormDialog = ({
   const [leaderId, setLeaderId] = useState<string | null>(
     job ? (job.leader?.id ?? null) : iAmLeader ? session.user.id : null
   );
+  // An Admin's Leader follows the picked Project's owner until they choose one themselves (PD-078).
+  const [leaderTouched, setLeaderTouched] = useState(false);
   const [received, setReceived] = useState<string | null>(initialReceived);
   const [due, setDue] = useState<string | null>(initialDue);
   const [total, setTotal] = useState(job?.totalImagesManual ? String(job.totalImages) : "");
@@ -125,18 +143,51 @@ export const JobFormDialog = ({
   const [formError, setFormError] = useState<string | null>(null);
 
   const jobFields = useMemo(() => fieldsFor(fields.data?.items ?? [], "JOB"), [fields.data]);
-  const projectOptions = (projects.data?.items ?? [])
-    .filter((project) => project.active || project.id === job?.project.id)
+  const projectItems = projects.data?.items ?? [];
+  // PD-079: one of the owners.
+  const ownedByMe = (id: string | null | undefined) => {
+    const project = id ? projectItems.find((item) => item.id === id) : undefined;
+    return project !== undefined && isProjectOwner(project, myId);
+  };
+  // PD-078: a bound Leader editing a job of someone else's Project cannot move it (known once the Projects are loaded).
+  const projectLocked = Boolean(job) && bound && Boolean(projects.data) && !ownedByMe(job?.project.id);
+  const projectOptions = projectItems
+    .filter(
+      (project) =>
+        (project.active || project.id === job?.project.id) &&
+        (!bound || isProjectOwner(project, myId) || project.id === job?.project.id)
+    )
     .map((project) => ({
       id: project.id,
       label: `${project.code} · ${project.name}`,
-      hint: project.clientName
+      hint: isProjectOwner(project, myId) ? "bạn phụ trách" : project.clientName
     }));
+  // A starting Project the caller may not use (e.g. the list's Project for a bound Leader) is dropped.
+  const shownProjectId =
+    projects.data && projectId && !projectOptions.some((option) => option.id === projectId) ? null : projectId;
   const leaders = people.withRole("LEADER");
-  const leaderChoices =
-    job?.leader && !leaders.some((person) => person.id === job.leader?.id)
-      ? [job.leader, ...leaders]
-      : leaders;
+  const selectedProject = projectItems.find((project) => project.id === shownProjectId);
+  // The picked Project's owners holding LEADER (an Admin-only owner cannot lead a job), first one suggested.
+  const ownerLeaders = leaderChoicesForProject(selectedProject?.owners ?? [], leaders);
+  const ownerAsLeader = ownerLeaders.suggested;
+  const leaderValue =
+    !job && bound
+      ? myId
+      : !job && suggestsOwners && !leaderTouched && ownerAsLeader
+        ? ownerAsLeader
+        : leaderId;
+  const leaderLocked = !job && bound;
+  const leaderChoices = (() => {
+    if (bound) {
+      // Themselves (and the job's current Leader, shown).
+      const mine = leaders.find((person) => person.id === myId) ?? { id: myId, displayName: session.user.displayName, avatarUrl: null };
+      return job?.leader && job.leader.id !== myId ? [job.leader, mine] : [mine];
+    }
+    // The Project's owners first (PD-079), then every other Leader.
+    const ordered = suggestsOwners ? [...ownerLeaders.ownerLeaders, ...ownerLeaders.others] : leaders;
+    return job?.leader && !leaders.some((person) => person.id === job.leader?.id) ? [job.leader, ...ordered] : ordered;
+  })();
+  const ownerBadges = new Map(ownerLeaders.ownerLeaders.map((person) => [person.id, "phụ trách Project"]));
   const statusChoices = jobStatuses.data?.items ?? [];
   // Untouched: the first status by position, as the API defaults ("Mới nhận").
   const chosenStatusId = statusId ?? statusChoices[0]?.id ?? null;
@@ -146,13 +197,13 @@ export const JobFormDialog = ({
 
   const submit = () => {
     const problems: Errors = {};
-    if (!projectId) problems.project = "Chọn dự án.";
-    if (!code.trim()) problems.code = "Nhập gói công việc.";
+    if (!shownProjectId) problems.project = "Chọn Project.";
+    if (!code.trim()) problems.code = "Nhập Job Code.";
     if (!received) problems.received = "Chọn ngày nhận.";
     if (!due) problems.deadline = "Chọn ngày giao.";
     else if (received && due < received) problems.deadline = "Ngày giao phải từ ngày nhận trở đi.";
     // PD-073: every job has a Leader (whoever may choose it).
-    if (canChooseLeader && !leaderId) problems.leader = leaderRequiredError;
+    if (canChooseLeader && !leaderValue) problems.leader = leaderRequiredError;
     const totalText = total.trim();
     const totalValue = totalText === "" ? null : Number(totalText);
     if (totalValue !== null && (!/^\d+$/.test(totalText) || totalValue > 1_000_000))
@@ -166,7 +217,7 @@ export const JobFormDialog = ({
     if (
       Object.keys(problems).length > 0 ||
       Object.keys(custom).length > 0 ||
-      !projectId ||
+      !shownProjectId ||
       !received ||
       !due
     )
@@ -183,19 +234,19 @@ export const JobFormDialog = ({
       update.mutate(
         {
           ...(code.trim() !== job.code ? { code: code.trim() } : {}),
-          ...(projectId !== job.project.id ? { projectId } : {}),
+          ...(shownProjectId !== job.project.id ? { projectId: shownProjectId } : {}),
           // Days the user did not change keep their stored time.
           ...(received !== initialReceived ? { receivedAt } : {}),
           ...(due !== initialDue ? { deadline } : {}),
           ...(totalChanged ? { totalImages: totalValue } : {}),
           ...((link.trim() || null) !== job.driveLink ? { driveLink: link.trim() || null } : {}),
-          ...(canChooseLeader && leaderId !== (job.leader?.id ?? null) ? { leaderId } : {}),
+          ...(canChooseLeader && leaderValue !== (job.leader?.id ?? null) ? { leaderId: leaderValue } : {}),
           ...(tagIds.join() !== job.tagIds.join() ? { tagIds } : {}),
           ...(valuesTouched ? { customValues: toCustomValuesPayload(jobFields, values) } : {})
         },
         {
           onSuccess: (saved) => {
-            toast.success(`Đã lưu gói ${saved.code}`);
+            toast.success(`Đã lưu Job Code ${saved.code}`);
             onSaved?.(saved);
             onClose();
           },
@@ -205,11 +256,11 @@ export const JobFormDialog = ({
     } else {
       create.mutate(
         {
-          projectId,
+          projectId: shownProjectId,
           code: code.trim(),
           receivedAt,
           deadline,
-          leaderId,
+          leaderId: leaderValue,
           totalImages: totalValue,
           driveLink: link.trim() || null,
           // Catalog not loaded (or failed): the API applies the default status.
@@ -250,26 +301,40 @@ export const JobFormDialog = ({
               {job ? `Sửa job ${job.code}` : "Tạo job"}
             </DialogTitle>
             <DialogDescription>
-              Một job là một gói công việc của dự án (như trong file work log); các task
-              được chia sau.
+              Project › Job Code › Task › Subtask: một job là một Job Code của Project (như trong file
+              work log); các task được chia sau.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
             <Field data-invalid={Boolean(errors.project)}>
-              <FieldLabel htmlFor={`${ids}-project`}>Dự án</FieldLabel>
+              <FieldLabel htmlFor={`${ids}-project`}>Project</FieldLabel>
               <OptionSelect
                 id={`${ids}-project`}
                 options={projectOptions}
-                searchPlaceholder="Tìm dự án…"
-                value={projectId}
+                searchPlaceholder="Tìm Project…"
+                value={shownProjectId}
                 onChange={setProjectId}
-                placeholder="Chọn dự án"
+                placeholder="Chọn Project"
                 invalid={Boolean(errors.project)}
+                disabled={projectLocked}
               />
-              {errors.project ? <FieldError>{errors.project}</FieldError> : null}
+              {errors.project ? (
+                <FieldError>{errors.project}</FieldError>
+              ) : projectLocked ? (
+                <FieldDescription className="text-xs">{boundMoveNote}</FieldDescription>
+              ) : bound && projects.data && projectOptions.length === 0 ? (
+                <FieldDescription className="text-xs">
+                  {noOwnProjectNote}{" "}
+                  <Link to="/production/projects" className="text-brand-text underline-offset-2 hover:underline">
+                    Mở trang Project
+                  </Link>
+                </FieldDescription>
+              ) : bound ? (
+                <FieldDescription className="text-xs">Chỉ các Project do bạn phụ trách.</FieldDescription>
+              ) : null}
             </Field>
             <Field data-invalid={Boolean(errors.code)}>
-              <FieldLabel htmlFor={`${ids}-code`}>Gói công việc</FieldLabel>
+              <FieldLabel htmlFor={`${ids}-code`}>Job Code</FieldLabel>
               <Input
                 id={`${ids}-code`}
                 autoFocus={!job}
@@ -283,7 +348,7 @@ export const JobFormDialog = ({
                 <FieldError>{errors.code}</FieldError>
               ) : (
                 <FieldDescription className="text-xs">
-                  Folder hình, hỏi leader nếu không rõ. Mỗi gói chỉ có một job trong dự án.
+                  Folder hình, hỏi leader nếu không rõ. Mỗi Job Code chỉ có một job trong Project.
                 </FieldDescription>
               )}
             </Field>
@@ -328,9 +393,11 @@ export const JobFormDialog = ({
                 <PersonSelect
                   id={`${ids}-leader`}
                   people={leaderChoices}
-                  value={leaderId}
+                  badges={suggestsOwners ? ownerBadges : undefined}
+                  value={leaderValue}
                   onChange={(next) => {
                     setLeaderId(next);
+                    setLeaderTouched(true);
                     if (next) {
                       setErrors((previous) => {
                         const rest = { ...previous };
@@ -341,7 +408,7 @@ export const JobFormDialog = ({
                   }}
                   placeholder={canChooseLeader ? "Chọn Leader" : "Chưa có leader"}
                   invalid={Boolean(errors.leader)}
-                  disabled={!canChooseLeader || !people.canList}
+                  disabled={!canChooseLeader || leaderLocked || (!people.canList && !bound)}
                 />
                 {errors.leader ? (
                   <FieldError>{errors.leader}</FieldError>
@@ -349,7 +416,13 @@ export const JobFormDialog = ({
                   <FieldDescription className="text-xs">
                     {job && !canChooseLeader
                       ? "Bạn không có quyền đổi Leader của job."
-                      : "Mỗi job phải có một Leader phụ trách."}
+                      : leaderLocked
+                        ? boundLeaderNote
+                        : bound
+                          ? "Leader chỉ đặt được chính mình làm Leader của job."
+                          : !job && suggestsOwners && ownerAsLeader && leaderValue === ownerAsLeader
+                            ? "Mặc định là người phụ trách Project — có thể đổi."
+                            : "Mỗi job phải có một Leader phụ trách."}
                   </FieldDescription>
                 )}
               </Field>

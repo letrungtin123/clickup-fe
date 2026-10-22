@@ -16,18 +16,11 @@ import {
   sourceLine,
   versionAt
 } from "./credit-matrix";
+import { projectFixture } from "./test-fixtures";
 
 // Obviously fake fixtures: the repository is public.
-const project = (id: string, code: string, active = true): ProductionProject => ({
-  id,
-  code,
-  name: `Dự án ${code}`,
-  description: null,
-  clientId: null,
-  clientName: id === "p1" ? "Khách Mẫu" : null,
-  qcBufferHours: 0,
-  active
-});
+const project = (id: string, code: string, active = true): ProductionProject =>
+  projectFixture({ id, code, name: `Project ${code}`, clientName: id === "p1" ? "Khách Mẫu" : null, active });
 const process = (id: string, name: string, active = true): Process => ({
   id,
   name,

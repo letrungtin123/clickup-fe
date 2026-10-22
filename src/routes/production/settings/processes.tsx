@@ -204,7 +204,7 @@ export const ProductionProcessesRoute = () => {
             QC
           </TooltipTrigger>
           <TooltipContent className="max-w-72">
-            Task của người QC: điểm ghi khi task Done, theo đơn giá của quy trình này trong dự án
+            Task của người QC: điểm ghi khi task Done, theo đơn giá của quy trình này trong Project
             (ca Khoán: tính tiền Khoán)
           </TooltipContent>
         </Tooltip>
@@ -251,7 +251,7 @@ export const ProductionProcessesRoute = () => {
       <PageIntro slug="processes" />
       <InfoNote icon={BadgeCheck} tone="brand">
         Quy trình QC (thường là “Checking”) là một task bình thường do người QC làm: điểm QC được
-        ghi khi task Checking chuyển Done, theo đơn giá Checking của dự án; làm trong ca Khoán thì
+        ghi khi task Checking chuyển Done, theo đơn giá Checking của Project; làm trong ca Khoán thì
         tính tiền Khoán. Luôn có đúng một quy trình đang dùng là QC.
       </InfoNote>
       <SettingsSection
@@ -301,7 +301,7 @@ export const ProductionProcessesRoute = () => {
             title="Chưa có quy trình"
             description={
               canEdit
-                ? "Thêm các quy trình retouch (ví dụ Retouch thường, Cắt nền, Kiểm tra) rồi nhập đơn giá theo dự án."
+                ? "Thêm các quy trình retouch (ví dụ Retouch thường, Cắt nền, Kiểm tra) rồi nhập đơn giá theo Project."
                 : undefined
             }
           />

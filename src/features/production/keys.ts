@@ -15,6 +15,7 @@
  *   ["me", "notification-preferences"]                       personal (not production-only)
  *   ["production", "jobs", query]                            job list pages (infinite)
  *   ["production", "jobs", "facets", query]                  job List view counts per month / project (PD-067)
+ *   ["production", "jobs", "overview", query]                "Tổng quan" dashboard (PD-076)
  *   ["production", "job", id] / ["production", "task", id]  job detail / task detail
  *   ["production", "my-tasks", role, includeFinished(, filters)]  my tasks (infinite)
  *   ["production", "qc-queue"(, filters)]                    tasks waiting for my QC
@@ -70,6 +71,14 @@ export const productionKeys = {
     query === undefined
       ? (["production", "jobs", "facets"] as const)
       : (["production", "jobs", "facets", query] as const),
+  /**
+   * "Tổng quan" (PD-076). Under the job lists' prefix too: every write that refreshes the lists refreshes it; other
+   * people's changes refresh it while on screen at most every LIVE_REFRESH_MS (live-sync.ts).
+   */
+  overview: (query?: Record<string, unknown>) =>
+    query === undefined
+      ? (["production", "jobs", "overview"] as const)
+      : (["production", "jobs", "overview", query] as const),
   job: (jobId: string) => ["production", "job", jobId] as const,
   jobAll: () => ["production", "job"] as const,
   task: (taskId: string) => ["production", "task", taskId] as const,

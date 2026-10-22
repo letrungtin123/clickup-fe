@@ -130,7 +130,7 @@ export const CreditGrid = ({
             role="columnheader"
             className="sticky left-0 z-10 flex items-center border-r bg-surface px-3 text-xs font-medium text-foreground-muted"
           >
-            Dự án \ Quy trình
+            Project \ Quy trình
           </div>
           {view.processes.map((process) => (
             <ProcessHeader key={process.id} process={process} />

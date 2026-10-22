@@ -47,6 +47,40 @@ const workflowOnly = { partial: "Chỉ xem Trạng thái & luồng chuyển" };
 /** The rules that stay fixed by role, in page order. */
 export const retouchFixedRules = (): RetouchRule[] => [
   {
+    id: "tasks",
+    label: "Tạo task (Chia task, Nhập Task, subtask)",
+    description:
+      "PD-079: theo quyền Tạo ở trên, trừ Account — Account không tạo task (chỉ Project và Job Code). Người kiêm Leader / Quản trị / QC / Nhân viên giữ quyền của vai trò đó. Người làm luôn tách subtask của task mình.",
+    cells: {
+      ADMIN: true,
+      ACCOUNT: false,
+      LEADER: { partial: "Theo quyền Tạo (mặc định Tất cả); Leader của job tách subtask" },
+      QC: { partial: "Theo quyền Tạo (mặc định Không); subtask của task mình làm" },
+      STAFF: { partial: "Theo quyền Tạo (mặc định Không); subtask của task mình làm" },
+      DIRECTOR: { partial: "Theo quyền Tạo (mặc định Không)" }
+    }
+  },
+  {
+    id: "projects",
+    label: "Project",
+    description:
+      "PD-078 / PD-079: Leader, Quản trị, Account tạo Project. Sửa, xoá (khi chưa có job): người phụ trách, Quản trị, Account đã tạo. Người phụ trách: Siêu quản trị đặt được nhiều người; Quản trị đổi người phụ trách khi Project chỉ có một; Leader, Account không đổi.",
+    cells: {
+      ADMIN: {
+        partial:
+          "Tạo (chọn 1 người phụ trách), sửa / xoá mọi Project; đổi người phụ trách khi Project chỉ có một"
+      },
+      ACCOUNT: {
+        partial:
+          "Tạo (chọn 1 người phụ trách), sửa / xoá Project mình tạo; không đổi người phụ trách"
+      },
+      LEADER: { partial: "Tạo Project của mình; sửa / xoá Project mình phụ trách" },
+      QC: false,
+      STAFF: false,
+      DIRECTOR: { partial: "Chỉ xem trang Project" }
+    }
+  },
+  {
     id: "settings",
     label: "Cấu hình Photo Retouch",
     description:

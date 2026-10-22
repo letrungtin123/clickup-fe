@@ -153,10 +153,10 @@ describe("workEntryProblems", () => {
   });
 
   it("needs a job picked from the project", () => {
-    expect(workEntryProblems(valid({ job: null }), staffContext).job).toBe("Chọn gói công việc.");
-    expect(workEntryProblems(valid({ job: option(2, "Gói khác", id(9)) }), staffContext).job).toBe(
-      "Gói công việc không thuộc dự án đã chọn."
-    );
+    expect(workEntryProblems(valid({ job: null }), staffContext).job).toBe("Chọn Job Code.");
+    expect(
+      workEntryProblems(valid({ job: option(2, "Batch khác", id(9)) }), staffContext).job
+    ).toBe("Job Code không thuộc Project đã chọn.");
   });
 
   it("refuses a Ngày giao before the Ngày nhận, accepts the same day", () => {
@@ -283,7 +283,7 @@ describe("workEntryPayload", () => {
       workEntryPayload(valid({ job: null }), { timeZone: VN, sendAssignee: false })
     ).toBeNull();
     expect(
-      workEntryPayload(valid({ job: option(2, "Gói khác", id(9)) }), {
+      workEntryPayload(valid({ job: option(2, "Batch khác", id(9)) }), {
         timeZone: VN,
         sendAssignee: false
       })
@@ -295,7 +295,7 @@ describe("workEntryJobError", () => {
   it("words the job errors of the API for the package field, nothing for the others", () => {
     expect(workEntryJobError("JOB_NOT_FOUND")).toMatch(/chọn lại/);
     expect(workEntryJobError("JOB_ARCHIVED")).toMatch(/lưu trữ/);
-    expect(workEntryJobError("JOB_PROJECT_MISMATCH")).toMatch(/không thuộc dự án/);
+    expect(workEntryJobError("JOB_PROJECT_MISMATCH")).toMatch(/^Job Code không thuộc Project/);
     expect(workEntryJobError("SHIFT_NOT_FOUND")).toBeNull();
   });
 });
@@ -308,7 +308,7 @@ describe("job picker helpers", () => {
   });
 
   it("lists only the options of the chosen project (never the previous project's answer)", () => {
-    const items = [option(1, "Gói 1"), option(2, "Gói 2", id(9))];
+    const items = [option(1, "Batch 1"), option(2, "Batch 2", id(9))];
     expect(jobOptionsFor(items, id(2)).map((item) => item.id)).toEqual([id(101)]);
     expect(jobOptionsFor(items, null)).toEqual([]);
     expect(jobOptionsFor(undefined, id(2))).toEqual([]);

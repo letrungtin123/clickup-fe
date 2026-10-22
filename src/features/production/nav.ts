@@ -83,6 +83,14 @@ export const productionNavEntries: readonly ProductionNavEntry[] = [
     roles: [],
     feature: "admin_dashboard"
   },
+  // PD-078: Project left Cấu hình — its own page for Leaders and Admins (who create / own them), Director and Account
+  // (read-only). STAFF / QC do not see it.
+  {
+    to: "/production/projects",
+    label: "Project",
+    icon: FolderKanban,
+    roles: ["LEADER", "DIRECTOR", "ACCOUNT"]
+  },
   {
     to: "/production/jobs",
     label: "Job",
@@ -197,17 +205,9 @@ export const settingsPages: readonly SettingsPage[] = [
     roles: ["ADMIN", "ACCOUNT"]
   },
   {
-    slug: "projects",
-    label: "Dự án",
-    description: "Mã dự án, tên và mô tả.",
-    icon: FolderKanban,
-    group: "catalog",
-    roles: ["ADMIN"]
-  },
-  {
     slug: "processes",
     label: "Quy trình",
-    description: "Loại công việc retouch dùng chung cho mọi dự án; một quy trình là QC.",
+    description: "Loại công việc retouch dùng chung cho mọi Project; một quy trình là QC.",
     icon: Workflow,
     group: "catalog",
     roles: ["ADMIN"]
@@ -223,7 +223,7 @@ export const settingsPages: readonly SettingsPage[] = [
   {
     slug: "credit-rules",
     label: "Bảng đơn giá",
-    description: "Điểm và tiền mỗi tấm theo dự án × quy trình, có lịch sử phiên bản.",
+    description: "Điểm và tiền mỗi tấm theo Project × quy trình, có lịch sử phiên bản.",
     icon: Coins,
     group: "catalog",
     roles: ["ADMIN"]

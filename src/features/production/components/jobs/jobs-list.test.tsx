@@ -374,7 +374,7 @@ describe("JobsList — month groups (PD-067)", () => {
 });
 
 describe("JobsList — columns (PD-067, ClickUp order)", () => {
-  it("Tên · Người làm · Ngày nhận · Ngày giao · Ca · Trạng thái · QC · Dự án · Công đoạn · Số lượng · Điểm · Tiến độ · Người tạo · Ghi chú · Tag", () => {
+  it("Tên · Người làm · Ngày nhận · Ngày giao · Ca · Trạng thái · QC · Project · Công đoạn · Số lượng · Điểm · Tiến độ · Người tạo · Ghi chú · Tag", () => {
     breakpoint.current = "desktop";
     renderList([job()]);
     expect(headers()).toEqual([
@@ -385,7 +385,7 @@ describe("JobsList — columns (PD-067, ClickUp order)", () => {
       "Ca",
       "Trạng thái",
       "QC",
-      "Dự án",
+      "Project",
       "Công đoạn",
       "Số lượng",
       "Điểm",
@@ -403,7 +403,7 @@ describe("JobsList — columns (PD-067, ClickUp order)", () => {
     const row = screen.getByRole("row", { name: "JOB-1" });
     expect(within(cellOf(row, "Tên")).getByText("AXP ·")).toBeTruthy();
     expect(within(cellOf(row, "Tên")).getByRole("link", { name: "JOB-1" })).toBeTruthy();
-    expect(cellOf(row, "Dự án").textContent).toBe("AXP");
+    expect(cellOf(row, "Project").textContent).toBe("AXP");
     expect(within(cellOf(row, "Người tạo")).getByText("Người Tạo Thử")).toBeTruthy();
     const qty = cellOf(row, "Số lượng");
     expect(qty.textContent).toContain("120");

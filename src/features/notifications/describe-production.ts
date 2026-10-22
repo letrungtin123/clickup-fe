@@ -401,7 +401,7 @@ export const productionPath = (notification: Notification) => {
   if (notification.type === "production.leader_removed") {
     // The jobs list filtered to the jobs this person still leads.
     const userId = str(notification.payload.userId);
-    return userId ? `/production/jobs?leader=${encodeURIComponent(userId)}` : "/production/jobs";
+    return userId ? `/production/jobs?scope=all&leader=${encodeURIComponent(userId)}` : "/production/jobs";
   }
   return null;
 };

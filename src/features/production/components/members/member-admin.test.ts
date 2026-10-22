@@ -148,7 +148,7 @@ describe("orphaned jobs", () => {
 
   it("words the warning and links the job list by leader", () => {
     expect(orphanTitle(2, "Khoa Lê")).toBe("2 job vẫn do Khoa Lê dẫn — hãy giao cho Leader khác");
-    expect(jobsLedByHref("4b1c")).toBe("/production/jobs?leader=4b1c");
+    expect(jobsLedByHref("4b1c")).toBe("/production/jobs?scope=all&leader=4b1c");
   });
 
   it("formats deadlines in the organization timezone", () => {

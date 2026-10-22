@@ -175,7 +175,7 @@ const Details = ({
       return (
         <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
           <Metric
-            label="Dự án × quy trình"
+            label="Project × quy trình"
             value={`${item.projectCode} × ${item.processName ?? "—"}`}
           />
           <Metric label="Vai trò" value={item.role === "QC" ? "QC" : "Người làm"} />

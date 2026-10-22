@@ -7,7 +7,7 @@ import type {
   ProductionStatus
 } from "@/contracts/production-catalog";
 import { jobStatusLimit } from "@/contracts/production-catalog";
-import { noLeaderFilter } from "@/contracts/production-jobs";
+import { noLeaderFilter, type JobListScope } from "@/contracts/production-jobs";
 import type {
   JobPage,
   JobSummary,
@@ -781,7 +781,16 @@ export type JobFilters = {
    * and no longer a filter (the old `status` parameter is ignored).
    */
   jobStatusIds: string[];
+  /**
+   * The job's Leader from a link ("Job tôi phụ trách → Xem tất cả", member admin, `production.leader_removed`), shown as a
+   * removable "Leader: …" chip; `none` = jobs without a leader.
+   */
   leaderId: string | null;
+  /**
+   * PD-078 tab "Tất cả" / "Tôi quản lý" (`?scope=`, holders of LEADER or ADMIN): "mine" = the jobs of the projects I own.
+   * null = not in the URL (the page applies its landing tab, `landingJobScope`).
+   */
+  scope: JobListScope | null;
   /** "Mọi nhân viên": the assignee or QC of at least one task of the job. */
   personId: string | null;
   /** Tags (any of them, `tag` repeated in the URL) and JOB custom-field filters (`cf.<key>`). */
@@ -798,6 +807,7 @@ export const emptyJobFilters: JobFilters = {
   projectId: null,
   jobStatusIds: [],
   leaderId: null,
+  scope: null,
   personId: null,
   custom: emptyListFilters,
   from: null,
@@ -826,6 +836,7 @@ export const jobFiltersFromSearch = (params: URLSearchParams): JobFilters => {
     ].slice(0, jobStatusLimit),
     // "none" = jobs without a leader ("Chưa có leader", PD-035).
     leaderId: params.get("leader") === noLeaderFilter ? noLeaderFilter : id("leader"),
+    scope: jobScopeFromSearch(params),
     personId: id("person"),
     custom: listFiltersFromSearch(params, "tag"),
     from: day("from"),
@@ -841,6 +852,7 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
   if (filters.projectId) params.set("project", filters.projectId);
   for (const id of filters.jobStatusIds) params.append("jobStatus", id);
   if (filters.leaderId) params.set("leader", filters.leaderId);
+  if (filters.scope) params.set("scope", filters.scope);
   if (filters.personId) params.set("person", filters.personId);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
@@ -850,56 +862,51 @@ export const jobFiltersToSearch = (filters: JobFilters) => {
 };
 
 /**
- * Every filter counts as one; the job statuses count once, however many are chosen. `tabLeaderId`: the leader filter
- * the page shows as its "Tôi quản lý" tab (PD-073, the viewer's own id) — a tab, not a filter, so it does not count.
+ * Every filter counts as one; the job statuses count once, however many are chosen. The "Tất cả" / "Tôi quản lý" tab
+ * (`scope`, PD-078) is a tab, not a filter: it never counts. A `?leader=` link is a filter (its chip).
  */
-export const activeFilterCount = (filters: JobFilters, tabLeaderId: string | null = null) =>
-  [
-    filters.projectId,
-    filters.leaderId === tabLeaderId ? null : filters.leaderId,
-    filters.personId,
-    filters.from,
-    filters.to
-  ].filter(Boolean).length +
+export const activeFilterCount = (filters: JobFilters) =>
+  [filters.projectId, filters.leaderId, filters.personId, filters.from, filters.to].filter(Boolean).length +
   (filters.jobStatusIds.length > 0 ? 1 : 0) +
   (filters.late ? 1 : 0) +
   (filters.archived ? 1 : 0) +
   activeListFilterCount(filters.custom);
 
-/** "Xóa lọc": every filter goes, the search stays — and so does the "Tôi quản lý" tab (`tabLeaderId`, PD-073). */
-export const clearedJobFilters = (
-  filters: JobFilters,
-  tabLeaderId: string | null = null
-): JobFilters => ({
+/** "Xóa lọc": every filter goes, the search stays — and so does the "Tất cả" / "Tôi quản lý" tab (PD-078). */
+export const clearedJobFilters = (filters: JobFilters): JobFilters => ({
   ...emptyJobFilters,
   q: filters.q,
-  leaderId: tabLeaderId !== null && filters.leaderId === tabLeaderId ? tabLeaderId : null
+  scope: filters.scope
 });
 
 /**
- * PD-073 — "Tất cả" / "Tôi quản lý" on the job list (holders of LEADER only): nothing but the `?leader=` filter.
- * "Tôi quản lý" is `?leader=<my id>` (jobs I lead; jobs without a leader are not among them), "Tất cả" no leader
- * filter. A link naming another leader or "none" selects neither tab (null): its "Leader: …" chip shows instead.
+ * PD-078 — "Tất cả" / "Tôi quản lý" on the Job list and Tổng quan (`?scope=all|mine`). "Tôi quản lý" = every Job Code /
+ * task / subtask of the projects I own ("Người phụ trách"), strictly — a job I lead in someone else's project is not in
+ * it. Shown to holders of LEADER or ADMIN (both can own projects; the superadmin holds ADMIN).
  */
-export type JobLeaderTab = "all" | "mine";
+export const scopeTabsShown = (roles: readonly ProductionRole[]) => roles.includes("LEADER") || roles.includes("ADMIN");
 
 /**
- * A Leader's explicit "Tất cả" in the URL (?leader=all): without any leader param the page lands on "Tôi quản lý"
- * (owner, 2026-10-20). Parsed as no leader filter (not an id), so the API never sees it.
+ * PD-073 links wrote a Leader's "Tất cả" as `?leader=all`: read as `scope=all` (and never sent to the API as a leader).
  */
 export const allLeadersParam = "all";
 
-export const jobLeaderTabOf = (
-  filters: Pick<JobFilters, "leaderId">,
-  myId: string
-): JobLeaderTab | null =>
-  filters.leaderId === null ? "all" : filters.leaderId === myId ? "mine" : null;
+/** The tab the URL names (`?scope=`; the older `?leader=all` = "all"); null when it names none. */
+export const jobScopeFromSearch = (params: URLSearchParams): JobListScope | null => {
+  const scope = params.get("scope");
+  if (scope === "mine" || scope === "all") return scope;
+  return params.get("leader") === allLeadersParam ? "all" : null;
+};
 
-export const withJobLeaderTab = (
-  filters: JobFilters,
-  tab: JobLeaderTab,
-  myId: string
-): JobFilters => ({ ...filters, leaderId: tab === "mine" ? myId : null });
+/**
+ * The tab a page opens on when the URL names none: "Tôi quản lý" for holders of LEADER (owner, 2026-10-20), "Tất cả" for
+ * an Admin without LEADER (and for a `?leader=` link — "Job tôi phụ trách", member admin — so its chip filters every
+ * project).
+ */
+export const landingJobScope = (roles: readonly ProductionRole[], hasLeaderLink = false): JobListScope =>
+  roles.includes("LEADER") && !hasLeaderLink ? "mine" : "all";
+
+export const withJobScope = (filters: JobFilters, scope: JobListScope): JobFilters => ({ ...filters, scope });
 
 const addDay = (day: string) => {
   const [year, month, date] = day.split("-").map(Number) as [number, number, number];
@@ -922,6 +929,8 @@ export const jobQueryFromFilters = (
   // Repeated (`jobStatusId=a&jobStatusId=b`); sorted so the same choice shares one cache entry.
   jobStatusId: filters.jobStatusIds.length > 0 ? [...filters.jobStatusIds].sort() : undefined,
   leaderId: filters.leaderId ?? undefined,
+  // PD-078: only "Tôi quản lý" narrows the list ("Tất cả" sends nothing, so it shares the old cache entries).
+  scope: filters.scope === "mine" ? "mine" : undefined,
   personId: filters.personId ?? undefined,
   deadlineFrom: filters.from
     ? (zonedToIso(filters.from, "00:00", timeZone) ?? undefined)
@@ -1123,13 +1132,13 @@ const jobChanges = (from: Record<string, unknown>, to: Record<string, unknown>, 
   for (const key of Object.keys(to)) {
     switch (key) {
       case "code":
-        parts.push(`gói công việc ${str(from.code) ?? "—"} → ${str(to.code) ?? "—"}`);
+        parts.push(`Job Code ${str(from.code) ?? "—"} → ${str(to.code) ?? "—"}`);
         break;
       case "name":
         parts.push(`tên job ${quoted(from.name)} → ${quoted(to.name)}`);
         break;
       case "projectId":
-        parts.push(`dự án ${str(from.projectCode) ?? "khác"} → ${str(to.projectCode) ?? "khác"}`);
+        parts.push(`Project ${str(from.projectCode) ?? "khác"} → ${str(to.projectCode) ?? "khác"}`);
         break;
       case "receivedAt":
         parts.push(

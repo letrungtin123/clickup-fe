@@ -213,7 +213,7 @@ const ScoresContent = ({
             <DailyPointsChart days={summary.byDay} today={today} />
           </Suspense>
         </Panel>
-        <Panel title="Theo dự án" bodyClassName="px-4 py-3">
+        <Panel title="Theo Project" bodyClassName="px-4 py-3">
           {projects.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-foreground-muted">Chưa có dữ liệu.</p>
           ) : (

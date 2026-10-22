@@ -168,12 +168,25 @@ describe("RetouchMatrix (PD-065) — Quyền theo tính năng", () => {
 });
 
 describe("RetouchMatrix — who edits (PD-050)", () => {
+  it("PD-079: the Account “Tạo” cell means Job Codes (no “Của mình”)", () => {
+    renderMatrix();
+    const cell = screen.getByRole("combobox", { name: "Tạo job / task — Account" });
+    expect(cell.textContent).toContain("Job Code");
+    expect(screen.getByRole("combobox", { name: "Tạo job / task — Leader" }).textContent).toContain("Tất cả");
+  });
+
   it("is read-only without edit rights, and explains when the matrix is not readable", () => {
     const onFeature = vi.fn();
     const { unmount } = renderMatrix({ editable: false, onFeature });
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
-    // Only the superadmin edits: 4 job rows × 5 roles (ADMIN is fixed) + 8 features × 6 roles.
-    expect(screen.getAllByTitle("Chỉ Siêu quản trị sửa được")).toHaveLength(4 * 5 + 8 * 6);
+    // Only the superadmin edits: 4 job rows × 5 roles (ADMIN is fixed) + 8 features × 6 roles; the ACCOUNT "Tạo" cell
+    // also says it creates Job Codes only (PD-079).
+    expect(screen.getAllByTitle("Chỉ Siêu quản trị sửa được")).toHaveLength(4 * 5 - 1 + 8 * 6);
+    expect(
+      screen.getByTitle(
+        "Chỉ Siêu quản trị sửa được — Account tạo Project và Job Code, không tạo task (Chia task, Nhập Task, subtask)."
+      ).textContent
+    ).toContain("Job Code");
     const anomalies = checkbox("Bất thường — Director");
     expect(anomalies.hasAttribute("data-disabled")).toBe(true);
     fireEvent.click(anomalies);

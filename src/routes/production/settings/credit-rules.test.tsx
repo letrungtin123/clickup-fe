@@ -14,6 +14,7 @@ import type {
 } from "@/contracts/production-catalog";
 import { SessionValueContext } from "@/features/auth/session-context";
 import { productionApi } from "@/features/production/api";
+import { projectFixture } from "@/features/production/test-fixtures";
 import { CreditCellEditor } from "@/features/production/components/credit/credit-cell-editor";
 import { configReadOnlyMessage } from "@/features/production/config-access";
 import type { SessionContext } from "@/lib/api/schemas";
@@ -42,16 +43,7 @@ const me = {
   settings: { timezone: "Asia/Ho_Chi_Minh" }
 } as unknown as ProductionMe;
 
-const project: ProductionProject = {
-  id: id(1),
-  code: "ABC",
-  name: "Dự án Thử",
-  description: null,
-  clientId: null,
-  clientName: null,
-  qcBufferHours: 0,
-  active: true
-};
+const project: ProductionProject = projectFixture({ id: id(1), code: "ABC", name: "Dự án Thử" });
 const process: Process = {
   id: id(2),
   name: "Retouch thường",
@@ -120,6 +112,21 @@ describe("Cấu hình → Bảng đơn giá (PD-050)", () => {
     expect(screen.getByRole("button", { name: /Tạo phiên bản mới từ ngày/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Xuất CSV" })).toBeTruthy();
     expect(screen.getByText("Phím mũi tên để di chuyển, Enter để sửa.")).toBeTruthy();
+  });
+
+  it("with nothing to price, links to the Project page on its own route (PD-078)", async () => {
+    vi.spyOn(productionApi, "creditMatrix").mockResolvedValue({
+      at: "2026-02-01",
+      projects: [],
+      processes: [process],
+      rules: []
+    } satisfies CreditMatrix);
+    wrap(<ProductionCreditRulesRoute />, true);
+    expect(await screen.findByText("Chưa có Project hoặc quy trình")).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: "Tìm Project" })).toBeTruthy();
+    expect(screen.getByText("Project").closest("a")?.getAttribute("data-to")).toBe(
+      "/production/projects"
+    );
   });
 
   it("a cell opens its history only for read-only viewers (no price form, edit or delete)", async () => {

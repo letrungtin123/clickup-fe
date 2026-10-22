@@ -43,6 +43,7 @@ const me = {
   isAdmin: false,
   teamId: null,
   jobPermissions: { view: "all", create: "all", update: "all", delete: "none" },
+  taskCreate: "all",
   features: [],
   settings: { timezone: TZ }
 } as unknown as ProductionMe;
@@ -109,9 +110,12 @@ const facets: JobFacets = {
     { month: "2026-10", count: 21 },
     { month: "2026-09", count: 9 }
   ],
+  // PD-078: every Project (0 included), the viewer's own (AXP) crowned, inactive ones folded.
   projects: [
-    { projectId: id(2), code: "AXP", name: "Axon", active: true, count: 18 },
-    { projectId: id(3), code: "BRX", name: "Brix", active: true, count: 12 }
+    { projectId: id(2), code: "AXP", name: "Axon", active: true, count: 18, ownerId: id(900), ownerIds: [id(900)] },
+    { projectId: id(3), code: "BRX", name: "Brix", active: true, count: 12, ownerId: id(901), ownerIds: [id(901)] },
+    { projectId: id(4), code: "CAT", name: "Cát", active: true, count: 0, ownerId: null, ownerIds: [] },
+    { projectId: id(5), code: "DRX", name: "Drix", active: false, count: 0, ownerId: null, ownerIds: [] }
   ],
   leaderTabs: { all: 30, mine: 12 }
 };
@@ -151,7 +155,7 @@ beforeEach(() => {
   vi.spyOn(productionApi, "tags").mockResolvedValue({ items: [] });
   vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: [] });
   vi.spyOn(productionApi, "members").mockResolvedValue({ items: [] });
-  vi.spyOn(productionApi, "projects").mockResolvedValue({ items: [] });
+  vi.spyOn(productionApi, "projects").mockResolvedValue({ items: [], canCreate: true, ownerPick: "self" });
   vi.spyOn(productionApi, "workflow").mockResolvedValue({ statuses: [], transitions: [] });
   list = vi.spyOn(jobsApi, "list").mockResolvedValue(page);
   facetCalls = vi.spyOn(jobsApi, "facets").mockResolvedValue(facets);
@@ -163,6 +167,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
   window.sessionStorage.clear();
+});
+
+describe("/production/jobs — PD-079: an Account creates Job Codes, no task", () => {
+  it("an Account gets “Tạo job” but no “Nhập Task”; a Leader gets both", async () => {
+    breakpoint.current = "desktop";
+    vi.spyOn(productionApi, "me").mockResolvedValue({ ...me, roles: ["ACCOUNT"], taskCreate: "none" } as unknown as ProductionMe);
+    facetCalls.mockResolvedValue({ ...facets, leaderTabs: null });
+    renderRoute();
+    await screen.findByRole("row", { name: "JOB-1" });
+    expect(screen.getAllByRole("button", { name: /Tạo job/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Nhập Task/ })).toBeNull();
+    cleanup();
+    vi.spyOn(productionApi, "me").mockResolvedValue(me);
+    renderRoute();
+    await screen.findByRole("row", { name: "JOB-1" });
+    expect(screen.getByRole("button", { name: /Nhập Task/ })).toBeTruthy();
+  });
 });
 
 describe("/production/jobs — List view (PD-067)", () => {
@@ -186,25 +207,32 @@ describe("/production/jobs — List view (PD-067)", () => {
     renderRoute(`/production/jobs?leader=${id(9)}`);
     await screen.findByRole("row", { name: "JOB-1" });
     expect(list.mock.calls.at(-1)![0]).toMatchObject({ leaderId: id(9) });
-    // PD-073: someone else's leader filter selects neither tab of a Leader; the chip says what it is.
-    expect(
-      screen.getAllByRole("tab").filter((tab) => tab.getAttribute("aria-selected") === "true")
-    ).toHaveLength(0);
+    // PD-078: a ?leader= link opens a Leader's list on "Tất cả" (every Project); the chip says what it filters.
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe(`?leader=${id(9)}&scope=all`));
+    expect(screen.getByRole("tab", { name: /^Tất cả/ }).getAttribute("aria-selected")).toBe("true");
+    expect(list.mock.calls.find(([query]) => query.leaderId === id(9))![0].scope).toBeUndefined();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Bỏ lọc theo Leader" }));
       await Promise.resolve();
     });
-    expect(screen.getByTestId("location").textContent).toBe("?leader=all");
+    expect(screen.getByTestId("location").textContent).toBe("?scope=all");
     expect(screen.queryByRole("button", { name: "Bỏ lọc theo Leader" })).toBeNull();
   });
 
   it("the project sidebar lists the facets' projects with counts; a click filters through ?project=", async () => {
     breakpoint.current = "desktop";
+    // PD-073's ?leader=all reads as "Tất cả" and becomes ?scope=all.
     renderRoute("/production/jobs?leader=all");
-    const sidebar = await screen.findByRole("complementary", { name: "Dự án" });
+    const sidebar = await screen.findByRole("complementary", { name: "Project" });
     await waitFor(() => expect(within(sidebar).getByRole("button", { name: /^BRX/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?scope=all"));
     expect(within(sidebar).getByRole("button", { name: /^Tất cả/ }).textContent).toBe("Tất cả30");
     expect(within(sidebar).getByRole("button", { name: /^AXP/ }).textContent).toContain("18");
+    // PD-078: every Project, also without jobs; mine crowned; the inactive ones folded.
+    expect(within(sidebar).getByRole("button", { name: /^CAT/ }).textContent).toContain("0");
+    expect(within(within(sidebar).getByRole("button", { name: /^AXP/ })).getByLabelText("Bạn phụ trách")).toBeTruthy();
+    expect(within(sidebar).queryByRole("button", { name: /^DRX/ })).toBeNull();
+    expect(within(sidebar).getByRole("button", { name: /Ngừng hoạt động \(1\)/ })).toBeTruthy();
     // The total of every matching job and the month counts come from the facets.
     expect(screen.getByText("30 job")).toBeTruthy();
     expect(screen.getByTitle("21 job").textContent).toBe("21");
@@ -213,8 +241,8 @@ describe("/production/jobs — List view (PD-067)", () => {
       fireEvent.click(within(sidebar).getByRole("button", { name: /^BRX/ }));
       await Promise.resolve();
     });
-    // A Leader's explicit "Tất cả" (?leader=all) stays while other filters change.
-    expect(screen.getByTestId("location").textContent).toBe(`?project=${id(3)}&leader=all`);
+    // A Leader's explicit "Tất cả" (?scope=all) stays while other filters change.
+    expect(screen.getByTestId("location").textContent).toBe(`?project=${id(3)}&scope=all`);
     await waitFor(() =>
       expect(list.mock.calls.some(([query]) => query.projectId === id(3))).toBe(true)
     );
@@ -222,64 +250,66 @@ describe("/production/jobs — List view (PD-067)", () => {
       "true"
     );
     // The project control left the filter bar (the sidebar owns it).
-    expect(screen.queryByRole("combobox", { name: "Lọc theo dự án" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Lọc theo Project" })).toBeNull();
   });
 
   it("the sidebar folds away (remembered) and comes back", async () => {
     breakpoint.current = "desktop";
     renderRoute();
-    const sidebar = await screen.findByRole("complementary", { name: "Dự án" });
-    fireEvent.click(within(sidebar).getByRole("button", { name: "Ẩn danh sách dự án" }));
-    expect(screen.queryByRole("complementary", { name: "Dự án" })).toBeNull();
+    const sidebar = await screen.findByRole("complementary", { name: "Project" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Ẩn danh sách Project" }));
+    expect(screen.queryByRole("complementary", { name: "Project" })).toBeNull();
     cleanup();
     renderRoute();
     await screen.findByRole("row", { name: "JOB-1" });
-    expect(screen.queryByRole("complementary", { name: "Dự án" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Dự án" }));
-    expect(screen.getByRole("complementary", { name: "Dự án" })).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Project" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+    expect(screen.getByRole("complementary", { name: "Project" })).toBeTruthy();
   });
 
   it("tablets start with the sidebar folded (room for the table) until the user opens it", async () => {
     breakpoint.current = "tablet";
     renderRoute();
     await screen.findByRole("row", { name: "JOB-1" });
-    expect(screen.queryByRole("complementary", { name: "Dự án" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Dự án" }));
-    expect(screen.getByRole("complementary", { name: "Dự án" })).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Project" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+    expect(screen.getByRole("complementary", { name: "Project" })).toBeTruthy();
   });
 
   it("phones: no sidebar, a project select above the grouped cards", async () => {
     breakpoint.current = "mobile";
     renderRoute();
     await screen.findByRole("article", { name: "JOB-1" });
-    expect(screen.queryByRole("complementary", { name: "Dự án" })).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Lọc job theo dự án" })).toBeTruthy();
+    expect(screen.queryByRole("complementary", { name: "Project" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Lọc job theo Project" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Tháng 10 · 2026/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Tháng 9 · 2026/ })).toBeTruthy();
   });
 });
 
-describe("/production/jobs — Tất cả / Tôi quản lý for Leaders (PD-073)", () => {
+describe("/production/jobs — Tất cả / Tôi quản lý = the Projects I own (PD-073, PD-078)", () => {
   const myId = id(900);
   const tab = (name: RegExp) => screen.getByRole("tab", { name });
   const selected = (element: HTMLElement) => element.getAttribute("aria-selected") === "true";
+  const location = () => screen.getByTestId("location").textContent;
 
-  it("Leaders get both tabs with their counts and land on Tôi quản lý (owner, 2026-10-20)", async () => {
+  it("Leaders get both tabs with their counts and land on Tôi quản lý (?scope=mine)", async () => {
     breakpoint.current = "desktop";
     renderRoute();
     await screen.findByRole("row", { name: "JOB-1" });
-    expect(screen.getByRole("tablist", { name: "Phạm vi job" })).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "Phạm vi" })).toBeTruthy();
     await waitFor(() => expect(tab(/^Tất cả/).textContent).toBe("Tất cả 30"));
     expect(tab(/^Tôi quản lý/).textContent).toBe("Tôi quản lý 12");
     expect(selected(tab(/^Tôi quản lý/))).toBe(true);
     expect(selected(tab(/^Tất cả/))).toBe(false);
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe(`?leader=${myId}`));
-    // The very first requests already ask for the Leader's own jobs (no "all" round trip first).
-    expect(list.mock.calls[0]![0].leaderId).toBe(myId);
-    expect(facetCalls.mock.calls[0]![0].leaderId).toBe(myId);
+    await waitFor(() => expect(location()).toBe("?scope=mine"));
+    // The very first requests already ask for my Projects' jobs (no "all" round trip first), not for a Leader.
+    expect(list.mock.calls[0]![0]).toMatchObject({ scope: "mine" });
+    expect(list.mock.calls[0]![0].leaderId).toBeUndefined();
+    expect(facetCalls.mock.calls[0]![0]).toMatchObject({ scope: "mine" });
   });
 
-  it("Tất cả is kept as ?leader=all, so it stays chosen while other filters change", async () => {
+  it("Tất cả is kept as ?scope=all, so it stays chosen while other filters change", async () => {
     breakpoint.current = "desktop";
     renderRoute();
     await screen.findByRole("row", { name: "JOB-1" });
@@ -287,87 +317,85 @@ describe("/production/jobs — Tất cả / Tôi quản lý for Leaders (PD-073)
       fireEvent.click(tab(/^Tất cả/));
       await Promise.resolve();
     });
-    expect(screen.getByTestId("location").textContent).toBe("?leader=all");
-    await waitFor(() =>
-      expect(list.mock.calls.at(-1)![0]).not.toHaveProperty("leaderId", myId)
-    );
-    expect(list.mock.calls.at(-1)![0].leaderId).toBeUndefined();
+    expect(location()).toBe("?scope=all");
+    await waitFor(() => expect(list.mock.calls.at(-1)![0].scope).toBeUndefined());
     expect(selected(tab(/^Tất cả/))).toBe(true);
     fireEvent.click(screen.getByRole("switch", { name: /Có task trễ/ }));
-    expect(screen.getByTestId("location").textContent).toBe("?late=1&leader=all");
+    expect(location()).toBe("?scope=all&late=1");
     expect(selected(tab(/^Tất cả/))).toBe(true);
   });
 
-  it("Tôi quản lý is ?leader=<me>: no chip, not a counted filter; Tất cả takes it away", async () => {
+  it("Tôi quản lý is a tab, not a filter: no chip, not counted, kept by Xóa lọc; the facets follow it", async () => {
     breakpoint.current = "desktop";
-    renderRoute("/production/jobs?leader=all");
+    renderRoute("/production/jobs?scope=all&late=1");
     await screen.findByRole("row", { name: "JOB-1" });
     await act(async () => {
       fireEvent.click(tab(/^Tôi quản lý/));
       await Promise.resolve();
     });
-    expect(screen.getByTestId("location").textContent).toBe(`?leader=${myId}`);
-    await waitFor(() =>
-      expect(list.mock.calls.some(([query]) => query.leaderId === myId)).toBe(true)
-    );
-    // The facets (months, projects) follow the tab: it is a filter.
-    await waitFor(() =>
-      expect(facetCalls.mock.calls.some(([query]) => query.leaderId === myId)).toBe(true)
-    );
-    expect(selected(tab(/^Tôi quản lý/))).toBe(true);
-    expect(screen.queryByRole("button", { name: "Bỏ lọc theo Leader" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Xóa lọc/ })).toBeNull();
-    await act(async () => {
-      fireEvent.click(tab(/^Tất cả/));
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId("location").textContent).toBe("?leader=all");
-  });
-
-  it("a ?leader=<me> link (Job tôi phụ trách → Xem tất cả) opens on Tôi quản lý; Xóa lọc keeps the tab", async () => {
-    breakpoint.current = "desktop";
-    renderRoute(`/production/jobs?leader=${myId}&late=1`);
-    await screen.findByRole("row", { name: "JOB-1" });
-    expect(selected(tab(/^Tôi quản lý/))).toBe(true);
+    expect(location()).toBe("?scope=mine&late=1");
+    await waitFor(() => expect(facetCalls.mock.calls.some(([query]) => query.scope === "mine")).toBe(true));
     expect(screen.queryByRole("button", { name: "Bỏ lọc theo Leader" })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Xóa lọc (1)" }));
       await Promise.resolve();
     });
-    expect(screen.getByTestId("location").textContent).toBe(`?leader=${myId}`);
+    expect(location()).toBe("?scope=mine");
+  });
+
+  it("a ?leader=<me> link (Job tôi phụ trách → Xem tất cả) is a chip on Tất cả; Xóa lọc drops it, keeps the tab", async () => {
+    breakpoint.current = "desktop";
+    renderRoute(`/production/jobs?scope=all&leader=${myId}`);
+    await screen.findByRole("row", { name: "JOB-1" });
+    expect(selected(tab(/^Tất cả/))).toBe(true);
+    expect(list.mock.calls[0]![0]).toMatchObject({ leaderId: myId });
+    expect(screen.getByRole("button", { name: "Bỏ lọc theo Leader" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Xóa lọc (1)" }));
+      await Promise.resolve();
+    });
+    expect(location()).toBe("?scope=all");
   });
 
   it("an empty Tôi quản lý says so and offers Tất cả", async () => {
     breakpoint.current = "desktop";
     list.mockResolvedValue({ ...page, items: [] });
-    renderRoute(`/production/jobs?leader=${myId}`);
-    expect(await screen.findByText("Bạn chưa quản lý job nào")).toBeTruthy();
+    renderRoute("/production/jobs?scope=mine");
+    expect(await screen.findByText("Chưa có job trong Project bạn phụ trách")).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Xem tất cả" }));
       await Promise.resolve();
     });
-    expect(screen.getByTestId("location").textContent).toBe("?leader=all");
+    expect(location()).toBe("?scope=all");
   });
 
   it("phones get the tabs too", async () => {
     breakpoint.current = "mobile";
     renderRoute();
     await screen.findByRole("article", { name: "JOB-1" });
-    expect(screen.getByRole("tablist", { name: "Phạm vi job" })).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "Phạm vi" })).toBeTruthy();
     expect(tab(/^Tôi quản lý/)).toBeTruthy();
   });
 
-  it("no tabs for anyone not holding LEADER (Admin, Account): the page as before, ?leader= stays a chip", async () => {
+  it("an Admin without LEADER gets the tabs and lands on Tất cả", async () => {
     breakpoint.current = "desktop";
-    for (const roles of [["ADMIN"], ["ACCOUNT"]]) {
-      vi.spyOn(productionApi, "me").mockResolvedValue({ ...me, roles } as unknown as ProductionMe);
-      facetCalls.mockResolvedValue({ ...facets, leaderTabs: null });
-      renderRoute(`/production/jobs?leader=${myId}`);
-      await screen.findByRole("row", { name: "JOB-1" });
-      expect(screen.queryByRole("tablist", { name: "Phạm vi job" })).toBeNull();
-      expect(screen.queryByRole("tab")).toBeNull();
-      expect(screen.getByRole("button", { name: "Bỏ lọc theo Leader" })).toBeTruthy();
-      cleanup();
-    }
+    vi.spyOn(productionApi, "me").mockResolvedValue({ ...me, roles: ["ADMIN"] } as unknown as ProductionMe);
+    renderRoute();
+    await screen.findByRole("row", { name: "JOB-1" });
+    await waitFor(() => expect(location()).toBe("?scope=all"));
+    expect(selected(tab(/^Tất cả/))).toBe(true);
+    expect(list.mock.calls[0]![0].scope).toBeUndefined();
+  });
+
+  it("no tabs for anyone holding neither LEADER nor ADMIN (Account): ?scope= ignored, ?leader= stays a chip", async () => {
+    breakpoint.current = "desktop";
+    vi.spyOn(productionApi, "me").mockResolvedValue({ ...me, roles: ["ACCOUNT"] } as unknown as ProductionMe);
+    facetCalls.mockResolvedValue({ ...facets, leaderTabs: null });
+    renderRoute(`/production/jobs?scope=mine&leader=${myId}`);
+    await screen.findByRole("row", { name: "JOB-1" });
+    expect(screen.queryByRole("tablist", { name: "Phạm vi" })).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("button", { name: "Bỏ lọc theo Leader" })).toBeTruthy();
+    expect(list.mock.calls[0]![0].scope).toBeUndefined();
   });
 });

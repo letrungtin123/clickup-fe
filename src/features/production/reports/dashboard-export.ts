@@ -106,7 +106,7 @@ export const adminDashboardCsv = (data: AdminDashboard, timeZone: string) => {
     cards.lateJobs.title,
     `${cards.lateJobs.jobCount} job · ${cards.lateJobs.taskCount} task trễ`,
     [
-      csvLine(["Gói công việc", "Dự án", "Leader", "Ngày giao", "Số task trễ", "Trễ từ"]),
+      csvLine(["Job Code", "Project", "Leader", "Ngày giao", "Số task trễ", "Trễ từ"]),
       ...cards.lateJobs.items.map((item) =>
         csvLine([
           item.job.code,

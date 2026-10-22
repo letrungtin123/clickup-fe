@@ -74,7 +74,7 @@ const renderPicker = (props: Partial<Parameters<typeof JobOptionPicker>[0]> = {}
 
 const openPicker = async () => {
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: /^Gói công việc/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Job Code/ }));
     await Promise.resolve();
   });
 };
@@ -84,13 +84,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("JobOptionPicker (Nhập công việc → Gói công việc, PD-038)", () => {
+describe("JobOptionPicker (Nhập công việc → Job Code, PD-038, PD-078)", () => {
   it("is disabled until a project is chosen", () => {
     const options = vi.spyOn(jobsApi, "jobOptions");
     renderPicker({ projectId: null });
-    const trigger = screen.getByRole("button", { name: "Gói công việc" });
+    const trigger = screen.getByRole("button", { name: "Job Code" });
     expect((trigger as HTMLButtonElement).disabled).toBe(true);
-    expect(trigger.textContent).toContain("Chọn dự án trước");
+    expect(trigger.textContent).toContain("Chọn Project trước");
     expect(options).not.toHaveBeenCalled();
   });
 
@@ -106,7 +106,7 @@ describe("JobOptionPicker (Nhập công việc → Gói công việc, PD-038)", 
     const first = await screen.findByRole("option", { name: /Batch A\/Folder 01/ });
     expect(first.textContent).toContain("Đang làm");
     expect(first.textContent).toContain("Giao 20/10");
-    expect(screen.getByText("Còn nhiều gói khác — gõ để tìm thêm.")).toBeTruthy();
+    expect(screen.getByText("Còn nhiều Job Code khác — gõ để tìm thêm.")).toBeTruthy();
     expect(options.mock.calls[0]?.[0]).toMatchObject({ projectId: PROJECT, statusIds: [] });
 
     // Status chips: "Tất cả" is on by default; picking a status asks the server for it only.
@@ -134,7 +134,7 @@ describe("JobOptionPicker (Nhập công việc → Gói công việc, PD-038)", 
       .mockResolvedValue({ items: [option(1, "Batch A/Folder 01")], truncated: false });
     renderPicker();
     await openPicker();
-    fireEvent.change(await screen.findByRole("combobox", { name: "Tìm gói công việc" }), {
+    fireEvent.change(await screen.findByRole("combobox", { name: "Tìm Job Code" }), {
       target: { value: "folder 01" }
     });
     await waitFor(() =>
@@ -149,7 +149,7 @@ describe("JobOptionPicker (Nhập công việc → Gói công việc, PD-038)", 
     vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: STATUSES });
     vi.spyOn(jobsApi, "jobOptions").mockResolvedValue({ items: [], truncated: false });
     renderPicker({ value: option(1, "Batch A/Folder 01") });
-    const trigger = screen.getByRole("button", { name: "Gói công việc: Batch A/Folder 01" });
+    const trigger = screen.getByRole("button", { name: "Job Code: Batch A/Folder 01" });
     expect(trigger.textContent).toContain("Batch A/Folder 01");
     expect(trigger.textContent).toContain("Đang làm");
   });

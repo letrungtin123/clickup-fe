@@ -22,6 +22,8 @@ import {
 import { RoleBadge } from "@/features/production/components/role-chips";
 import { featureGranted } from "@/features/production/feature-permissions";
 import {
+  accountCreateNote,
+  accountCreateScopeLabels,
   jobScopeItems,
   jobScopeLabels,
   jobScopeMeaning,
@@ -166,13 +168,24 @@ export const RetouchMatrix = ({
                       changed={saved !== null && saved[role][action] !== value[role][action]}
                       disabled={disabled}
                       onChange={(scope) => onScope(role, action, scope)}
+                      // PD-079: ACCOUNT's "Tạo" is Job Codes only (no "Của mình": that would be tasks).
+                      accountCreate={role === "ACCOUNT" && action === "create"}
                     />
                   </td>
                 ) : (
                   <ScopeTextCell
                     key={role}
                     scope={value[role][action]}
-                    lockReason={readOnlyReason}
+                    lockReason={
+                      role === "ACCOUNT" && action === "create"
+                        ? `${readOnlyReason} — ${accountCreateNote}`
+                        : readOnlyReason
+                    }
+                    labels={
+                      role === "ACCOUNT" && action === "create"
+                        ? accountCreateScopeLabels
+                        : undefined
+                    }
                   />
                 )
               )}
@@ -307,11 +320,14 @@ const ScopeDot = ({ scope }: { scope: JobPermissionScope }) => (
 const ScopeTextCell = ({
   scope,
   locked = false,
-  lockReason
+  lockReason,
+  labels = jobScopeLabels
 }: {
   scope: JobPermissionScope;
   locked?: boolean;
   lockReason: string;
+  /** PD-079: the ACCOUNT "Tạo" cell names "Job Code". */
+  labels?: Record<JobPermissionScope, string> | undefined;
 }) => (
   <td className="border-b px-1.5 py-1 align-middle">
     <span
@@ -319,7 +335,7 @@ const ScopeTextCell = ({
       className="flex h-10 items-center justify-center gap-1.5 text-[13px] text-foreground-muted"
     >
       <ScopeDot scope={scope} />
-      {jobScopeLabels[scope]}
+      {labels[scope]}
       {locked ? (
         <Lock className="size-3 shrink-0 text-foreground-subtle" aria-label={fixedRuleHint} />
       ) : null}
@@ -332,42 +348,51 @@ const ScopeSelect = ({
   value,
   changed,
   disabled,
-  onChange
+  onChange,
+  accountCreate = false
 }: {
   label: string;
   value: JobPermissionScope;
   changed: boolean;
   disabled: boolean;
   onChange: (scope: JobPermissionScope) => void;
-}) => (
-  <Select
-    items={jobScopeItems}
-    value={value}
-    disabled={disabled}
-    onValueChange={(next: JobPermissionScope | null) => {
-      if (next) onChange(next);
-    }}
-  >
-    <SelectTrigger
-      aria-label={label}
-      data-changed={changed || undefined}
-      className={cn(
-        "w-full text-[13px]",
-        changed && "border-brand/60 bg-brand-soft/60 dark:bg-brand-soft/60"
-      )}
+  /** PD-079: the ACCOUNT "Tạo" cell — Không / Job Code (an older "Của mình" is still shown, creating nothing). */
+  accountCreate?: boolean;
+}) => {
+  const labels = accountCreate ? accountCreateScopeLabels : jobScopeLabels;
+  const items = jobScopeItems
+    .filter((item) => !accountCreate || item.value !== "own" || value === "own")
+    .map((item) => ({ value: item.value, label: labels[item.value] }));
+  return (
+    <Select
+      items={items}
+      value={value}
+      disabled={disabled}
+      onValueChange={(next: JobPermissionScope | null) => {
+        if (next) onChange(next);
+      }}
     >
-      <SelectValue>
-        <ScopeDot scope={value} />
-        <span className="truncate">{jobScopeLabels[value]}</span>
-      </SelectValue>
-    </SelectTrigger>
-    <SelectContent>
-      {jobScopeItems.map((item) => (
-        <SelectItem key={item.value} value={item.value}>
-          <ScopeDot scope={item.value} />
-          {item.label}
-        </SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
-);
+      <SelectTrigger
+        aria-label={label}
+        data-changed={changed || undefined}
+        className={cn(
+          "w-full text-[13px]",
+          changed && "border-brand/60 bg-brand-soft/60 dark:bg-brand-soft/60"
+        )}
+      >
+        <SelectValue>
+          <ScopeDot scope={value} />
+          <span className="truncate">{labels[value]}</span>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            <ScopeDot scope={item.value} />
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+};

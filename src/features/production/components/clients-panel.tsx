@@ -149,7 +149,7 @@ export const ClientsPanel = () => {
           >
             <div className="hidden grid-cols-(--client-cols) gap-4 border-b px-4 py-2.5 text-xs font-medium text-foreground-muted md:grid">
               <span>Khách hàng</span>
-              <span className="text-right">Dự án</span>
+              <span className="text-right">Project</span>
               <span>Tag</span>
               {columns.map((field) => (
                 <span key={field.id} className="truncate" title={field.label}>
@@ -175,7 +175,7 @@ export const ClientsPanel = () => {
                 description={
                   items.length === 0 && !filtering
                     ? canEdit
-                      ? "Thêm khách hàng để gắn với dự án và job."
+                      ? "Thêm khách hàng để gắn với Project và job."
                       : undefined
                     : filtering
                       ? "Thử bỏ bớt tag hoặc trường đang lọc."
@@ -364,7 +364,7 @@ const ClientDialog = ({
           <DialogHeader className="border-b px-4 pt-4 pb-3">
             <DialogTitle>{client ? `Sửa ${client.name}` : "Thêm khách hàng"}</DialogTitle>
             <DialogDescription>
-              Thông tin dùng chung cho dự án và job của khách hàng này.
+              Thông tin dùng chung cho Project và job của khách hàng này.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">

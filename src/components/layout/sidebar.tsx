@@ -61,9 +61,10 @@ const homeEntry: NavEntry = { to: "/", label: "Trang chủ", icon: House, end: t
 const inboxEntry: NavEntry = { to: "/inbox", label: "Hộp thư", icon: Inbox };
 
 /**
- * Navigation of the department shown (PD-041): Trang chủ, exactly one "Việc của tôi" following the department (the
- * production kanban for Photo Retouch, the cross-project list for Production) and Hộp thư; plus the Photo Retouch menu
- * (without its own "Việc của tôi") while that department is shown. The rest of the sidebar is shared.
+ * Navigation of the department shown (PD-041): Trang chủ (Production only — Photo Retouch has its "Tổng quan", owner
+ * 2026-10-21), exactly one "Việc của tôi" following the department (the production kanban for Photo Retouch, the
+ * cross-project list for Production) and Hộp thư; plus the Photo Retouch menu (without its own "Việc của tôi") while
+ * that department is shown. The rest of the sidebar is shared.
  */
 const useDepartmentNav = () => {
   const { current, canSwitch } = useDepartment();
@@ -74,7 +75,7 @@ const useDepartmentNav = () => {
       productionNav.map((entry) => entry.to)
     );
     const primary: NavEntry[] = [
-      homeEntry,
+      ...(current === "PHOTO_RETOUCH" ? [] : [homeEntry]),
       ...(myTasks ? [{ to: myTasks, label: "Việc của tôi", icon: ListTodo }] : []),
       inboxEntry
     ];

@@ -10,13 +10,13 @@ const productionMessages: Record<string, string> = {
   MEMBER_NOT_FOUND: "Không tìm thấy thành viên.",
   TEAM_NOT_FOUND: "Không tìm thấy team. Hãy tải lại.",
   CLIENT_NOT_FOUND: "Không tìm thấy khách hàng. Hãy tải lại.",
-  PROJECT_NOT_FOUND: "Không tìm thấy dự án. Hãy tải lại.",
+  PROJECT_NOT_FOUND: "Không tìm thấy Project. Hãy tải lại.",
   PROCESS_NOT_FOUND: "Không tìm thấy quy trình. Hãy tải lại.",
   SHIFT_NOT_FOUND: "Không tìm thấy ca làm. Hãy tải lại.",
   STATUS_NOT_FOUND: "Không tìm thấy trạng thái. Hãy tải lại.",
   FIELD_NOT_FOUND: "Không tìm thấy trường. Hãy tải lại.",
   TAG_NOT_FOUND: "Có tag không còn tồn tại. Hãy tải lại.",
-  CATALOG_NOT_FOUND: "Không tìm thấy dự án hoặc quy trình. Hãy tải lại.",
+  CATALOG_NOT_FOUND: "Không tìm thấy Project hoặc quy trình. Hãy tải lại.",
   TRANSITION_INVALID:
     "Luồng chuyển không hợp lệ: trạng thái đầu và cuối phải khác nhau và còn tồn tại.",
   FIELD_OPTIONS_REQUIRED: "Trường chọn cần ít nhất một lựa chọn.",
@@ -33,6 +33,16 @@ const productionMessages: Record<string, string> = {
   QC_REQUIRED: "Task phải có QC — chỉ đổi sang QC khác.",
   // PD-073: every job has a Leader (the server words it for create / clear / an older job without one).
   JOB_LEADER_REQUIRED: "Chọn Leader cho job.",
+  // PD-078: Project owners and a Leader's own Projects (the server words each case).
+  PROJECT_HAS_JOBS: "Project đã có job — không xoá được (chỉ có thể ngừng hoạt động).",
+  PROJECT_OWNER_REQUIRED: "Chọn người phụ trách cho Project.",
+  PROJECT_OWNER_INVALID: "Người phụ trách phải là Leader hoặc Quản trị Photo Retouch.",
+  PROJECT_OWNER_LOCKED: "Leader tạo Project thì chính Leader đó là người phụ trách.",
+  PROJECT_NOT_OWNED: "Bạn chỉ làm việc với job trong Project do mình phụ trách.",
+  JOB_LEADER_LOCKED: "Leader chỉ đặt được chính mình làm Leader của job.",
+  // PD-079: Accounts create Projects and Job Codes, no task; several owners only by the superadmin.
+  TASK_CREATE_FORBIDDEN: "Account không tạo task — chỉ tạo Project và Job Code.",
+  PROJECT_OWNERS_SUPERADMIN_ONLY: "Chỉ Siêu quản trị đặt được nhiều người phụ trách cho một Project.",
   // PD-058: the quantity is optional until Done; an empty one is filled in directly, never through a request.
   TASK_QTY_REQUIRED: "Nhập số lượng trước khi chuyển Done.",
   TASK_QTY_EMPTY: "Task chưa có số lượng — điền trực tiếp vào ô số lượng.",
@@ -121,6 +131,15 @@ const serverWorded = new Set([
   "LEADER_INVALID",
   "LEADER_REQUIRED",
   "JOB_LEADER_REQUIRED",
+  // PD-078: Project owners and a Leader's own Projects.
+  "PROJECT_HAS_JOBS",
+  "PROJECT_OWNER_REQUIRED",
+  "PROJECT_OWNER_INVALID",
+  "PROJECT_OWNER_LOCKED",
+  "PROJECT_NOT_OWNED",
+  "JOB_LEADER_LOCKED",
+  "TASK_CREATE_FORBIDDEN",
+  "PROJECT_OWNERS_SUPERADMIN_ONLY",
   "MENTION_INVALID",
   "SOURCE_TASK_INVALID",
   "COMMENT_NOT_FOUND",

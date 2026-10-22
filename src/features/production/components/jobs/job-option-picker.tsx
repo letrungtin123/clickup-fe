@@ -40,7 +40,7 @@ export const JobOptionPicker = ({
   invalid,
   disabled,
   className,
-  "aria-label": label = "Gói công việc",
+  "aria-label": label = "Job Code",
   "aria-describedby": describedBy
 }: {
   id?: string;
@@ -120,7 +120,7 @@ export const JobOptionPicker = ({
           </span>
         ) : (
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {projectId ? "Chọn gói công việc" : "Chọn dự án trước"}
+            {projectId ? "Chọn Job Code" : "Chọn Project trước"}
           </span>
         )}
         <ChevronDownIcon
@@ -140,13 +140,13 @@ export const JobOptionPicker = ({
         <Command
           shouldFilter={false}
           loop
-          label="Tìm gói công việc"
+          label="Tìm Job Code"
           value={highlighted}
           onValueChange={setHighlight}
           className="min-h-0 flex-1"
         >
           {/* The first tabbable element: focused when opened with a mouse or the keyboard (not on touch). */}
-          <CommandInput value={term} onValueChange={setTerm} placeholder="Tìm gói công việc…" />
+          <CommandInput value={term} onValueChange={setTerm} placeholder="Tìm Job Code…" />
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <StatusFilter
               statuses={statuses.data?.items ?? []}
@@ -180,13 +180,13 @@ export const JobOptionPicker = ({
                 <p className="text-foreground-muted">Không có job phù hợp</p>
                 {q === "" && statusIds.length === 0 ? (
                   <p className="mt-1 text-xs text-foreground-subtle">
-                    Dự án chưa có gói nào — Leader / Account tạo bằng “Tạo job”.
+                    Project chưa có Job Code nào — Leader / Account tạo bằng “Tạo job”.
                   </p>
                 ) : null}
               </div>
             ) : (
               <CommandList
-                aria-label="Gói công việc của dự án"
+                aria-label="Job Code của Project"
                 aria-busy={stale || undefined}
                 // The surrounding box scrolls (status chips + list), not the list on its own.
                 className={cn(
@@ -222,7 +222,7 @@ export const JobOptionPicker = ({
           </div>
           {options.data?.truncated && !options.isError && !loading && items.length > 0 ? (
             <p className="shrink-0 border-t px-3 py-2 text-xs text-foreground-subtle">
-              Còn nhiều gói khác — gõ để tìm thêm.
+              Còn nhiều Job Code khác — gõ để tìm thêm.
             </p>
           ) : null}
         </Command>

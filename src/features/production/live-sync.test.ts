@@ -245,6 +245,25 @@ describe("planChangeInvalidations", () => {
     ]);
   });
 
+  it("'Tổng quan' (PD-076): any work change marks it stale and refreshes it later while on screen; comments do not", () => {
+    seed();
+    const overview = productionKeys.overview({ from: "2026-10-21", to: "2026-10-21" });
+    client.setQueryData(overview, { stats: { total: 1 } });
+    const plan = planChangeInvalidations(
+      client,
+      change([{ jobId: id(99), taskIds: [id(98)], kind: "tasks" }])
+    );
+    expect(keysOf(plan, true)).not.toContainEqual(overview);
+    expect(keysOf(plan, false)).toContainEqual(overview);
+    expect(plan.speculative).toContainEqual(overview);
+    const comment = planChangeInvalidations(
+      client,
+      change([{ jobId: id(99), taskIds: [id(98)], kind: "comment" }])
+    );
+    expect(comment.speculative).not.toContainEqual(overview);
+    expect(keysOf(comment, false)).not.toContainEqual(overview);
+  });
+
   it("a job hint for a job no list holds refreshes every job list (new job)", () => {
     seed();
     const plan = planChangeInvalidations(client, change([{ jobId: id(42), kind: "job" }]));

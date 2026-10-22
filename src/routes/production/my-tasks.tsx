@@ -114,8 +114,8 @@ export const ProductionMyTasksRoute = () => {
   // PD-068: finished work shows by default on every visit; turning it off lasts for this visit only.
   const [includeFinished, setIncludeFinished] = useState(true);
   const [view, setView] = useState<View>(readView);
-  // "Nhập công việc" (PD-035): a work-log row for myself (or anyone with "create: all").
-  const canEnter = useProductionAccess().jobScopes.create !== "none";
+  // "Nhập công việc" (PD-035): a work-log row for myself (or anyone with "create: all"); PD-079: never through ACCOUNT.
+  const canEnter = useProductionAccess().taskCreate !== "none";
   const [entering, setEntering] = useState(false);
   // TASK tags / custom fields, kept in the URL (?tag=…&cf.<key>=…).
   const listFilters = useUrlListFilters("TASK");
@@ -430,7 +430,7 @@ const TaskSearch = ({
     <SearchField
       value={term}
       onChange={setTerm}
-      placeholder="Tìm mã task, gói, dự án, ghi chú"
+      placeholder="Tìm mã task, Job Code, Project, ghi chú"
       label="Tìm task"
       className={cn(className)}
     />

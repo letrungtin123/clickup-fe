@@ -241,7 +241,7 @@ const ReportBuilder = () => {
           breakpoint === "mobile"
             ? undefined
             : savedReport?.description ||
-              "Kéo chiều và chỉ số vào Hàng, Cột, Giá trị; lọc theo thời gian, dự án, nhân viên… rồi xem dạng bảng hoặc biểu đồ."
+              "Kéo chiều và chỉ số vào Hàng, Cột, Giá trị; lọc theo thời gian, Project, nhân viên… rồi xem dạng bảng hoặc biểu đồ."
         }
         actions={
           <div className={`flex items-center gap-1.5 ${touchTargets}`}>

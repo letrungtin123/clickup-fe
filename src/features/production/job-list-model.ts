@@ -470,6 +470,33 @@ export const filterProjects = (
   );
 };
 
+/**
+ * PD-078 — the sidebar's order: by code, Vietnamese collation (case / accents ignored, "Đ" after "D"), numbers in numeric
+ * order ("B2" before "B10") — the API's order, applied again so the list never depends on it.
+ */
+const projectCodeCollator = new Intl.Collator("vi", { numeric: true, sensitivity: "base" });
+export const compareProjectCodes = (
+  a: Pick<ProjectFacet, "code" | "projectId">,
+  b: Pick<ProjectFacet, "code" | "projectId">
+) =>
+  projectCodeCollator.compare(a.code, b.code) ||
+  (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) ||
+  (a.projectId < b.projectId ? -1 : 1);
+
+/**
+ * PD-078 — every project in the sidebar (both tabs, with or without jobs), sorted: the active ones, then — folded under
+ * "Ngừng hoạt động" — the inactive ones.
+ */
+export const splitProjectFacets = <T extends Pick<ProjectFacet, "code" | "projectId" | "active">>(
+  projects: readonly T[]
+) => {
+  const sorted = [...projects].sort(compareProjectCodes);
+  return {
+    active: sorted.filter((project) => project.active),
+    inactive: sorted.filter((project) => !project.active)
+  };
+};
+
 /** "Tất cả": every matching job whatever its project (each job has exactly one project). */
 export const allProjectsCount = (projects: readonly Pick<ProjectFacet, "count">[]) =>
   projects.reduce((sum, project) => sum + project.count, 0);

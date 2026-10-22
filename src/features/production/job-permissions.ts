@@ -60,10 +60,22 @@ export const jobScopeMeaning: Record<
  * create / delete "Không" — the Leader splits the tasks — but a worker still deletes the subtasks of their own task).
  */
 export const jobScopeNotes: Partial<Record<JobPermissionAction, string>> = {
-  create: "Không: không có “Nhập Task” và “Chia task” (Leader chia task cho người đó).",
+  create:
+    "Không: không có “Nhập Task” và “Chia task” (Leader chia task cho người đó). Account: “Tạo” chỉ cho Job Code — Account không tạo task (PD-079).",
   delete:
     "Subtask của task mình làm: người làm luôn tự xoá được trước khi Done, kể cả khi quyền Xoá là Không."
 };
+
+/**
+ * PD-079: what the "Tạo" cell of ACCOUNT means — Projects and Job Codes only, never tasks ("Tất cả" = tạo Job Code;
+ * "Của mình" would be tasks of their own, so it creates nothing).
+ */
+export const accountCreateScopeLabels: Record<JobPermissionScope, string> = {
+  none: "Không",
+  own: "Không (Của mình)",
+  all: "Job Code"
+};
+export const accountCreateNote = "Account tạo Project và Job Code, không tạo task (Chia task, Nhập Task, subtask).";
 
 export type JobScopeChange = {
   role: JobPermissionRole;

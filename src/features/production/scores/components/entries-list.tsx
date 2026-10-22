@@ -135,7 +135,7 @@ export const EntriesList = ({
                   Task
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
-                  Dự án · Quy trình
+                  Project · Quy trình
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
                   Ca
@@ -223,7 +223,7 @@ const Tags = ({ entry }: { entry: ScoreEntryView }) => (
     {entry.missingRule ? (
       <span
         className="inline-flex items-center gap-0.5 rounded bg-warning-soft px-1 py-px text-[10px] font-semibold text-foreground"
-        title="Chưa có đơn giá cho dự án × quy trình vào ngày đó; điểm ghi 0."
+        title="Chưa có đơn giá cho Project × quy trình vào ngày đó; điểm ghi 0."
       >
         <TriangleAlert className="size-3 text-warning" aria-hidden="true" />
         Chưa có đơn giá

@@ -323,7 +323,7 @@ const columnsFor = (fields: readonly CustomField[]): Column[] => [
     label: "Tên",
     track: "minmax(19rem,2.4fr)",
     min: 19,
-    title: "Gói công việc / task"
+    title: "Job Code / task"
   },
   { id: "people", label: "Người làm", track: "minmax(8.5rem,1fr)", min: 8.5 },
   { id: "received", label: "Ngày nhận", track: "6.25rem", min: 6.25 },
@@ -332,7 +332,7 @@ const columnsFor = (fields: readonly CustomField[]): Column[] => [
   // Fixed: the default names ("Đang giao client") fit, longer ones end in "…".
   { id: "status", label: "Trạng thái", track: "10.5rem", min: 10.5 },
   { id: "qc", label: "QC", track: "minmax(8rem,0.9fr)", min: 8 },
-  { id: "project", label: "Dự án", track: "minmax(7.5rem,0.8fr)", min: 7.5 },
+  { id: "project", label: "Project", track: "minmax(7.5rem,0.8fr)", min: 7.5 },
   {
     id: "process",
     label: "Công đoạn",
@@ -1063,7 +1063,7 @@ export const JobsEmpty = ({
     <EmptyState
       icon={Briefcase}
       title="Chưa có job"
-      description="Mỗi job là một gói công việc của dự án. Tạo job, hoặc “Nhập Task” để thêm task — gói mới tự thành job."
+      description="Mỗi job là một Job Code của Project. Tạo job, hoặc “Nhập Task” để thêm task — Job Code mới tự thành job."
       action={
         onCreate ? (
           <Button size="sm" onClick={onCreate}>

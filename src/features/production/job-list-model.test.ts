@@ -5,6 +5,8 @@ import type { JobDetail, JobSummary, ProductionTask } from "@/contracts/producti
 
 import {
   allProjectsCount,
+  compareProjectCodes,
+  splitProjectFacets,
   buildListRows,
   filterProjects,
   groupJobsByMonth,
@@ -431,8 +433,8 @@ describe("job status from the list (PD-038 rule)", () => {
 
 describe("project sidebar", () => {
   const projects = [
-    { projectId: id(2), code: "AXP", name: "Axon Đẹp", active: true, count: 4 },
-    { projectId: id(3), code: "BRX", name: "Brix", active: false, count: 7 }
+    { projectId: id(2), code: "AXP", name: "Axon Đẹp", active: true, count: 4, ownerId: null, ownerIds: [] },
+    { projectId: id(3), code: "BRX", name: "Brix", active: false, count: 7, ownerId: ME, ownerIds: [ME] }
   ];
 
   it("searches code and name, accents and case ignored, keeping the selected project", () => {
@@ -447,6 +449,21 @@ describe("project sidebar", () => {
 
   it("“Tất cả” counts every project's jobs", () => {
     expect(allProjectsCount(projects)).toBe(11);
+  });
+
+  it("PD-078: every Project, by code in Vietnamese order (numbers in order); the inactive ones apart", () => {
+    const facet = (n: number, code: string, active = true) => ({ projectId: id(n), code, name: code, active, count: 0, ownerId: null, ownerIds: [] });
+    const { active, inactive } = splitProjectFacets([
+      facet(1, "Đ1"),
+      facet(2, "B10"),
+      facet(3, "b2", false),
+      facet(4, "D2"),
+      facet(5, "AXP"),
+      facet(6, "Ă1", false)
+    ]);
+    expect(active.map((project) => project.code)).toEqual(["AXP", "B10", "D2", "Đ1"]);
+    expect(inactive.map((project) => project.code)).toEqual(["Ă1", "b2"]);
+    expect([facet(7, "a"), facet(8, "A")].sort(compareProjectCodes).map((project) => project.code)).toEqual(["A", "a"]);
   });
 });
 

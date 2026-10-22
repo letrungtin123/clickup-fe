@@ -263,7 +263,7 @@ export const CreditImportDialog = ({
                     <span className="flex flex-col gap-0.5">
                       <span className="text-sm font-medium">Tạo mới nếu chưa có</span>
                       <span className="text-xs text-foreground-muted">
-                        Tự tạo dự án (theo mã) và quy trình (theo tên) chưa tồn tại.
+                        Tự tạo Project (theo mã) và quy trình (theo tên) chưa tồn tại.
                       </span>
                     </span>
                   </label>
@@ -379,7 +379,7 @@ const SuccessSummary = ({
       <div className="flex w-full flex-col gap-3 rounded-lg border p-3 text-left">
         {result.createdProjects.length > 0 ? (
           <CreatedList
-            title={`Dự án mới (${result.createdProjects.length})`}
+            title={`Project mới (${result.createdProjects.length})`}
             items={result.createdProjects}
             mono
           />
@@ -391,7 +391,7 @@ const SuccessSummary = ({
           />
         ) : null}
         <p className="text-xs text-foreground-muted">
-          Dự án mới lấy mã làm tên; hãy bổ sung tên và khách hàng trong mục Dự án.
+          Project mới lấy mã làm tên; hãy bổ sung tên và khách hàng trong mục Project.
         </p>
       </div>
     ) : null}

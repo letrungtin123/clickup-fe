@@ -196,7 +196,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="text-[11px] font-medium tracking-[0.04em] text-foreground-subtle uppercase">
-                  Gói công việc
+                  Job Code
                 </span>
                 <h1 className="text-xl leading-tight font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]">
                   {job.code}
@@ -505,7 +505,7 @@ const JobPage = ({ job }: { job: JobDetail }) => {
         open={dialog === "delete"}
         onOpenChange={(open) => !open && !remove.isPending && setDialog(null)}
         title={`Xoá job ${job.code}?`}
-        description={`Job và ${job.tasks.length} task bị ẩn khỏi mọi danh sách nhưng vẫn giữ trong lịch sử. Điểm / tiền đã ghi cho các task được trừ lại bằng dòng điều chỉnh. Gói công việc này có thể được nhập lại sau.`}
+        description={`Job và ${job.tasks.length} task bị ẩn khỏi mọi danh sách nhưng vẫn giữ trong lịch sử. Điểm / tiền đã ghi cho các task được trừ lại bằng dòng điều chỉnh. Job Code này có thể được nhập lại sau.`}
         confirmLabel="Xoá job"
         destructive
         pending={remove.isPending}
