@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ChartColumnBig,
   CircleDot,
+  CircleUserRound,
   ClipboardList,
   Coins,
   Factory,
@@ -68,7 +69,10 @@ export type ProductionNavEntry = {
 export const REPORTS_MODULE_VISIBLE = false;
 
 export const productionNavEntries: readonly ProductionNavEntry[] = [
-  { to: "/production", label: "Tổng quan", icon: Factory, roles: [], end: true },
+  // PD-081: everyone's own tasks and points; Staff / QC land here.
+  { to: "/production/my-overview", label: "Tổng quan của tôi", icon: CircleUserRound, roles: [] },
+  // PD-080: Overview V2 for Leader / Account / Quản trị / Director; Staff and QC land on "Tổng quan của tôi" instead.
+  { to: "/production", label: "Tổng quan", icon: Factory, roles: ["LEADER", "ACCOUNT", "DIRECTOR"], end: true },
   {
     to: "/production/dashboard",
     label: "Bảng điều khiển",

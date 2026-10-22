@@ -16,6 +16,7 @@ import { SessionValueContext } from "@/features/auth/session-context";
 import { productionApi } from "@/features/production/api";
 import { projectFixture } from "@/features/production/test-fixtures";
 import { CreditCellEditor } from "@/features/production/components/credit/credit-cell-editor";
+import { CreditImportDialog } from "@/features/production/components/credit/credit-import-dialog";
 import { configReadOnlyMessage } from "@/features/production/config-access";
 import type { SessionContext } from "@/lib/api/schemas";
 
@@ -75,6 +76,10 @@ const wrap = (node: ReactNode, superadmin: boolean) => {
 };
 
 beforeEach(() => {
+  // FormAlert scrolls itself into view (jsdom has no scrollIntoView).
+  if (!("scrollIntoView" in Element.prototype)) {
+    Object.defineProperty(Element.prototype, "scrollIntoView", { value: () => undefined });
+  }
   vi.spyOn(productionApi, "me").mockResolvedValue(me);
   vi.spyOn(productionApi, "creditMatrix").mockImplementation((day: string) =>
     Promise.resolve({
@@ -169,5 +174,212 @@ describe("Cấu hình → Bảng đơn giá (PD-050)", () => {
       expect(screen.getByRole("button", { name: /^Xóa phiên bản từ/ })).toBeTruthy()
     );
     expect(screen.getByRole("button", { name: /^Sửa phiên bản từ/ })).toBeTruthy();
+  });
+});
+
+describe("Bảng đơn giá — Giờ/tấm, phiên bản và nguồn (PD-080)", () => {
+  const editor = (cellRule: CreditRule | null, canEdit = true) =>
+    wrap(
+      <CreditCellEditor
+        project={project}
+        process={process}
+        rule={cellRule}
+        at="2026-02-01"
+        today="2026-02-01"
+        canEdit={canEdit}
+        onDone={() => undefined}
+      />,
+      canEdit
+    );
+  const hoursField = () => screen.getByRole<HTMLInputElement>("textbox", { name: /^Giờ \/ tấm/ });
+  const mockSave = () =>
+    vi.spyOn(productionApi, "setCreditRule").mockResolvedValue({ items: [rule] });
+
+  it("the cell editor shows the derived hours as a placeholder and saves an empty field as null", async () => {
+    const save = mockSave();
+    editor(rule);
+    // 1,50 credit ÷ 11 ≈ 0,1364 h — derived, so the field itself is empty.
+    expect(hoursField().value).toBe("");
+    expect(hoursField().placeholder).toBe("≈ 0,1364 (credit ÷ 11)");
+    expect(screen.getByText("≈ 0,1364 h")).toBeTruthy();
+    // The placeholder follows the credit being typed.
+    fireEvent.change(screen.getByRole("textbox", { name: "Điểm / tấm" }), {
+      target: { value: "2,2" }
+    });
+    expect(hoursField().placeholder).toBe("≈ 0,2 (credit ÷ 11)");
+    fireEvent.click(screen.getByRole("button", { name: "Lưu đơn giá" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0]?.[0]).toEqual({
+      projectId: project.id,
+      processId: process.id,
+      creditPerImage: 2.2,
+      moneyPerImage: 2000,
+      hoursPerImage: null,
+      effectiveFrom: "2026-02-01"
+    });
+  });
+
+  it("the cell editor saves typed hours (comma decimals) and refuses invalid ones", async () => {
+    const save = mockSave();
+    editor(rule);
+    fireEvent.change(hoursField(), { target: { value: "0,12345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu đơn giá" }));
+    expect(await screen.findByText("Tối đa 4 chữ số thập phân.")).toBeTruthy();
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.change(hoursField(), { target: { value: "0,5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu đơn giá" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0]?.[0]).toMatchObject({ creditPerImage: 1.5, hoursPerImage: 0.5 });
+  });
+
+  it("a price with its own hours starts with them in the field (no ≈)", () => {
+    mockSave();
+    editor({ ...rule, hoursPerImage: 0.25 });
+    expect(hoursField().value).toBe("0,25");
+    expect(screen.getByText("0,25 h")).toBeTruthy();
+  });
+
+  it("the version history shows each version's hours (≈ when derived) and its source file", async () => {
+    vi.spyOn(productionApi, "creditHistory").mockResolvedValue({
+      items: [
+        {
+          ...rule,
+          id: id(4),
+          creditPerImage: 2.2,
+          hoursPerImage: 0.2,
+          source: "VD_Don_Gia_202602",
+          effectiveFrom: "2026-02-01"
+        },
+        { ...rule, effectiveTo: "2026-02-01" }
+      ]
+    });
+    editor(rule, false);
+    const list = await screen.findByRole("list", { name: "Các phiên bản đơn giá" });
+    const rows = Array.from(list.querySelectorAll("li")).map((row) => row.textContent ?? "");
+    expect(rows[0]).toContain("0,2 h");
+    expect(rows[0]).toContain("Nguồn: VD_Don_Gia_202602");
+    expect(rows[1]).toContain("≈ 0,1364 h");
+    expect(rows[1]).not.toContain("Nguồn:");
+  });
+
+  it("shows the named version in force above the grid", async () => {
+    vi.spyOn(productionApi, "creditMatrix").mockImplementation((day: string) =>
+      Promise.resolve({
+        at: day,
+        projects: [project],
+        processes: [process],
+        rules: [rule],
+        version: {
+          effectiveFrom: "2026-01-01",
+          name: "Đơn giá 01/2026",
+          source: "VD_Don_Gia_202601"
+        }
+      } satisfies CreditMatrix)
+    );
+    wrap(<ProductionCreditRulesRoute />, false);
+    expect(
+      await screen.findByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent ===
+            "Phiên bản từ 01/01/2026 · Đơn giá 01/2026 · Nguồn: VD_Don_Gia_202601"
+      )
+    ).toBeTruthy();
+  });
+
+  it("no version label without a named version", async () => {
+    wrap(<ProductionCreditRulesRoute />, false);
+    await screen.findByText("1/1 ô có giá");
+    expect(screen.queryByText(/^Phiên bản từ/)).toBeNull();
+  });
+
+  it("“Hiện giờ/tấm” adds the hours line to every cell (≈ when derived); the cell names them always", async () => {
+    // The grid is virtualized: give its scroll box a size so jsdom renders the rows.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(1000);
+    wrap(<ProductionCreditRulesRoute />, true);
+    await screen.findByText("1/1 ô có giá");
+    const cell = screen.getByRole("button", { name: /^ABC × Retouch thường:/ });
+    expect(cell.getAttribute("aria-label")).toContain("khoảng 0,1364 giờ/tấm (credit ÷ 11)");
+    expect(cell.textContent).not.toContain("h");
+    fireEvent.click(screen.getByRole("switch", { name: "Hiện giờ/tấm" }));
+    await waitFor(() => expect(cell.textContent).toContain("≈ 0,1364 h"));
+    expect(screen.getByText(/dòng 3: giờ\/tấm/)).toBeTruthy();
+  });
+
+  it("the import sends the file name (no extension) as the source and the optional version name", async () => {
+    const importCredits = vi.spyOn(productionApi, "importCredits").mockResolvedValue({
+      ok: true,
+      imported: 1,
+      createdProjects: [],
+      createdProcesses: [],
+      errors: []
+    });
+    wrap(
+      <CreditImportDialog
+        open
+        onOpenChange={() => undefined}
+        today="2026-02-01"
+        onImported={() => undefined}
+      />,
+      true
+    );
+    // The help text documents the optional hours column.
+    expect(screen.getByText(/hours_per_image, gio_tam/)).toBeTruthy();
+    const csv = "project_code,process_name,credit,money,hours\nABC,Retouch thường,1.10,5000,0.1\n";
+    // jsdom's File cannot be read with text(): give it one.
+    const file = Object.assign(new File([csv], "VD_Don_Gia_202602.csv", { type: "text/csv" }), {
+      text: () => Promise.resolve(csv)
+    });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(await screen.findByText("1 dòng dữ liệu · Nguồn: VD_Don_Gia_202602")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: /^Tên phiên bản/ }), {
+      target: { value: "  Đơn giá 02/2026 " }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Nhập 1 dòng" }));
+    await waitFor(() => expect(importCredits).toHaveBeenCalledTimes(1));
+    // The CSV goes as it is: the server reads the hours column.
+    expect(importCredits.mock.calls[0]?.[0]).toEqual({
+      csv,
+      effectiveFrom: "2026-02-01",
+      createMissing: false,
+      source: "VD_Don_Gia_202602",
+      versionName: "Đơn giá 02/2026"
+    });
+    expect(
+      await screen.findByText(
+        /Phiên bản “Đơn giá 02\/2026” — có hiệu lực từ 01\/02\/2026\. Nguồn: VD_Don_Gia_202602\./
+      )
+    ).toBeTruthy();
+  });
+
+  it("pasted content has no source, and an empty version name is not sent", async () => {
+    const importCredits = vi.spyOn(productionApi, "importCredits").mockResolvedValue({
+      ok: true,
+      imported: 1,
+      createdProjects: [],
+      createdProcesses: [],
+      errors: []
+    });
+    wrap(
+      <CreditImportDialog
+        open
+        onOpenChange={() => undefined}
+        today="2026-02-01"
+        onImported={() => undefined}
+      />,
+      true
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /Dán nội dung/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /Nội dung CSV/ }), {
+      target: { value: "project_code,process_name,credit,money\nABC,Retouch thường,1.00,\n" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Nhập 1 dòng" }));
+    await waitFor(() => expect(importCredits).toHaveBeenCalledTimes(1));
+    expect(importCredits.mock.calls[0]?.[0]).toEqual({
+      csv: "project_code,process_name,credit,money\nABC,Retouch thường,1.00,\n",
+      effectiveFrom: "2026-02-01",
+      createMissing: false
+    });
   });
 });

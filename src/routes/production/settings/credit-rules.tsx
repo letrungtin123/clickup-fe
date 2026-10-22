@@ -1,6 +1,14 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "cn";
-import { CalendarPlus, Coins, Download, FileUp, FolderKanban, Workflow } from "lucide-react";
+import {
+  CalendarPlus,
+  Coins,
+  Download,
+  FileSpreadsheet,
+  FileUp,
+  FolderKanban,
+  Workflow
+} from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link } from "@/components/shared/router-link";
 
@@ -15,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
+import type { CreditVersionInfo } from "@/contracts/production-catalog";
 import { CreditCellEditor } from "@/features/production/components/credit/credit-cell-editor";
 import { cellSelector, type CellRef } from "@/features/production/components/credit/cells";
 import { CreditGrid } from "@/features/production/components/credit/credit-grid";
@@ -60,6 +70,8 @@ export const ProductionCreditRulesRoute = () => {
   const [cell, setCell] = useState<CellRef | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
+  /** PD-080: "Giờ/tấm" as a third line in every cell. */
+  const [showHours, setShowHours] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   /** Last opened cell: focus goes back to it after the editor closes (cell is null by then). */
   const lastCell = useRef<CellRef | null>(null);
@@ -165,6 +177,10 @@ export const ProductionCreditRulesRoute = () => {
             className="basis-full sm:basis-auto"
           />
           <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
+            <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-foreground-muted select-none">
+              <Switch size="sm" checked={showHours} onCheckedChange={setShowHours} />
+              Hiện giờ/tấm
+            </label>
             <ArchivedToggle
               checked={showArchived}
               onChange={setShowArchived}
@@ -177,6 +193,7 @@ export const ProductionCreditRulesRoute = () => {
             ) : null}
           </div>
         </div>
+        {matrix.data?.version ? <VersionLabel version={matrix.data.version} /> : null}
 
         {matrix.isPending ? (
           <div className="flex flex-col gap-2 p-4" aria-hidden="true">
@@ -243,6 +260,7 @@ export const ProductionCreditRulesRoute = () => {
             at={at}
             canEdit={canEdit}
             activeCell={cell}
+            showHours={showHours}
             scrollRef={scrollRef}
             onOpenCell={(next) => {
               lastCell.current = next;
@@ -256,7 +274,11 @@ export const ProductionCreditRulesRoute = () => {
               <span aria-hidden="true" className="size-1.5 rounded-full bg-brand" /> Phiên bản bắt
               đầu đúng ngày {formatDay(at)}
             </span>
-            <span>Số trên: điểm/tấm · số dưới: tiền/tấm (— = không có tiền)</span>
+            <span>
+              {showHours
+                ? "Dòng 1: điểm/tấm · dòng 2: tiền/tấm (— = không có tiền) · dòng 3: giờ/tấm (≈ = chưa đặt, tính credit ÷ 11)"
+                : "Số trên: điểm/tấm · số dưới: tiền/tấm (— = không có tiền)"}
+            </span>
             <span className="hidden md:inline">
               {canEdit
                 ? "Phím mũi tên để di chuyển, Enter để sửa."
@@ -273,7 +295,7 @@ export const ProductionCreditRulesRoute = () => {
               <DialogTitle>Đơn giá</DialogTitle>
               <DialogDescription>
                 {canEdit
-                  ? "Đặt điểm và tiền mỗi tấm cho ô đã chọn."
+                  ? "Đặt điểm, tiền và giờ mỗi tấm cho ô đã chọn."
                   : "Lịch sử đơn giá của ô đã chọn."}
               </DialogDescription>
             </DialogHeader>
@@ -338,3 +360,32 @@ export const ProductionCreditRulesRoute = () => {
     </SettingsPage>
   );
 };
+
+/**
+ * PD-080: the named price version in force on the matrix day — "Phiên bản từ dd/MM/yyyy · <tên> · Nguồn: <tệp>" (set by
+ * the import). Long file names wrap instead of widening the page on phones.
+ */
+const VersionLabel = ({ version }: { version: CreditVersionInfo }) => (
+  <p
+    title="Phiên bản đơn giá đang áp dụng ngày đang xem (đặt khi nhập CSV)"
+    className="flex items-start gap-2 border-b bg-muted/40 px-4 py-2 text-xs text-foreground-muted"
+  >
+    <FileSpreadsheet
+      className="mt-px size-3.5 shrink-0 text-foreground-subtle"
+      aria-hidden="true"
+    />
+    <span className="min-w-0 wrap-anywhere">
+      Phiên bản từ{" "}
+      <span className="font-medium text-foreground tabular-nums">
+        {formatDay(version.effectiveFrom)}
+      </span>
+      {version.name ? (
+        <>
+          {" "}
+          · <span className="font-medium text-foreground">{version.name}</span>
+        </>
+      ) : null}
+      {version.source ? <> · Nguồn: {version.source}</> : null}
+    </span>
+  </p>
+);

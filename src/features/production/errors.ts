@@ -43,6 +43,12 @@ const productionMessages: Record<string, string> = {
   // PD-079: Accounts create Projects and Job Codes, no task; several owners only by the superadmin.
   TASK_CREATE_FORBIDDEN: "Account không tạo task — chỉ tạo Project và Job Code.",
   PROJECT_OWNERS_SUPERADMIN_ONLY: "Chỉ Siêu quản trị đặt được nhiều người phụ trách cho một Project.",
+  // PD-080 (Overview V2): the core window of the Overview clocks and who opens the Overview.
+  CORE_WINDOW_INVALID: "Giờ bắt đầu khung lõi phải trước giờ kết thúc.",
+  OVERVIEW_FORBIDDEN:
+    "Tổng quan dành cho Leader, Account, Quản trị và Director — xem “Việc của tôi”.",
+  // PD-080b: only processes priced for the job's Project on the line's Ngày nhận (the server names them).
+  PROCESS_NOT_PRICED: "Quy trình chưa có đơn giá cho Project này — liên hệ Quản trị.",
   // PD-058: the quantity is optional until Done; an empty one is filled in directly, never through a request.
   TASK_QTY_REQUIRED: "Nhập số lượng trước khi chuyển Done.",
   TASK_QTY_EMPTY: "Task chưa có số lượng — điền trực tiếp vào ô số lượng.",
@@ -140,11 +146,17 @@ const serverWorded = new Set([
   "JOB_LEADER_LOCKED",
   "TASK_CREATE_FORBIDDEN",
   "PROJECT_OWNERS_SUPERADMIN_ONLY",
+  // PD-080: the core window (start before end) and the Overview audience.
+  "CORE_WINDOW_INVALID",
+  "OVERVIEW_FORBIDDEN",
+  // PD-080b: "Quy trình “X” chưa có đơn giá cho Project “Y” ngày dd/MM/yyyy …" (one per task line).
+  "PROCESS_NOT_PRICED",
   "MENTION_INVALID",
   "SOURCE_TASK_INVALID",
   "COMMENT_NOT_FOUND",
   "WORKFLOW_INCOMPLETE",
-  // Specific 409s (unique names/codes, single QC process, rules already used for scores).
+  // Specific 409s (unique names/codes, rules already used for scores). QC_PROCESS_EXISTS: older servers only (PD-080b
+  // allows several QC-type processes).
   "PROJECT_CODE_TAKEN",
   "TEAM_NAME_TAKEN",
   "CLIENT_NAME_TAKEN",

@@ -6,14 +6,22 @@ import { toast } from "sonner";
 import { SegmentedControl } from "@/components/shared/radio-controls";
 import { ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { CreditRule, Process, ProductionProject } from "@/contracts/production-catalog";
 import { isApiError } from "@/lib/api/errors";
 
-import { nextFreeVersionDay, versionAt } from "../../credit-matrix";
+import {
+  derivedHours,
+  formatHours,
+  hoursLabel,
+  nextFreeVersionDay,
+  parseHoursInput,
+  ruleHours,
+  versionAt
+} from "../../credit-matrix";
 import { productionErrorMessage } from "../../errors";
 import {
   dayInRange,
@@ -45,6 +53,9 @@ const moneyText = (value: number | null | undefined) =>
   value === null || value === undefined ? "" : new Intl.NumberFormat("vi-VN").format(value);
 const creditText = (value: number | null | undefined) =>
   value === null || value === undefined ? "" : value.toFixed(2).replace(".", ",");
+/** The price's own "Giờ/tấm" (PD-080); empty when it is derived from the credit. */
+const hoursText = (value: number | null | undefined) =>
+  value === null || value === undefined ? "" : formatHours(value).replace(/\./g, "");
 
 /**
  * Editor for one project × process cell: new price with an effective-from day (same day as an
@@ -66,10 +77,13 @@ export const CreditCellEditor = ({
   const [tab, setTab] = useState<"edit" | "history">(canEdit ? "edit" : "history");
   const [credit, setCredit] = useState(creditText(rule?.creditPerImage));
   const [money, setMoney] = useState(moneyText(rule?.moneyPerImage));
+  const [hours, setHours] = useState(hoursText(rule?.hoursPerImage));
   const [effectiveFrom, setEffectiveFrom] = useState(today);
-  const [errors, setErrors] = useState<{ credit?: string | undefined; money?: string | undefined }>(
-    {}
-  );
+  const [errors, setErrors] = useState<{
+    credit?: string | undefined;
+    money?: string | undefined;
+    hours?: string | undefined;
+  }>({});
   const [formError, setFormError] = useState<string | null>(null);
   /**
    * The price in force on that day already priced scores (409 CREDIT_RULE_IN_USE): it cannot be
@@ -80,26 +94,38 @@ export const CreditCellEditor = ({
   const versions = history.data?.items ?? [];
   const sameDay = versions.find((version) => version.effectiveFrom === effectiveFrom) ?? null;
   const covering = sameDay ? null : versionAt(versions, effectiveFrom);
+  // PD-080: an empty "Giờ/tấm" means credit ÷ 11 — the placeholder shows it for the credit being typed.
+  const typedCredit = parseCreditInput(credit);
+  const hoursPlaceholder =
+    typedCredit.ok && typedCredit.value !== null
+      ? `≈ ${formatHours(derivedHours(typedCredit.value))} (credit ÷ 11)`
+      : "≈ credit ÷ 11";
+  const currentHours = ruleHours(rule);
 
   const submit = () => {
     const parsedCredit = parseCreditInput(credit);
     const parsedMoney = parseMoneyInput(money);
+    const parsedHours = parseHoursInput(hours);
     const problems = {
       credit: !parsedCredit.ok
         ? parsedCredit.error
         : parsedCredit.value === null
           ? "Nhập điểm mỗi tấm."
           : undefined,
-      money: parsedMoney.ok ? undefined : parsedMoney.error
+      money: parsedMoney.ok ? undefined : parsedMoney.error,
+      hours: parsedHours.ok ? undefined : parsedHours.error
     };
     setErrors(problems);
-    if (!parsedCredit.ok || parsedCredit.value === null || !parsedMoney.ok) return;
+    if (!parsedCredit.ok || parsedCredit.value === null || !parsedMoney.ok || !parsedHours.ok)
+      return;
     save.mutate(
       {
         projectId: project.id,
         processId: process.id,
         creditPerImage: parsedCredit.value,
         moneyPerImage: parsedMoney.value,
+        // PD-080: always sent — null clears it (credit ÷ 11), so what the form shows is what is saved.
+        hoursPerImage: parsedHours.value,
         effectiveFrom
       },
       {
@@ -145,8 +171,22 @@ export const CreditCellEditor = ({
               <span className="font-medium text-foreground tabular-nums">
                 {formatCredit(rule.creditPerImage)}
               </span>{" "}
-              điểm · <span className="tabular-nums">{formatMoney(rule.moneyPerImage)}</span> (
-              {formatVersionRange(rule.effectiveFrom, rule.effectiveTo).toLocaleLowerCase("vi")})
+              điểm · <span className="tabular-nums">{formatMoney(rule.moneyPerImage)}</span>
+              {currentHours ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <span
+                    className="tabular-nums"
+                    title={
+                      currentHours.derived ? "Giờ/tấm chưa đặt: tính từ credit ÷ 11" : "Giờ/tấm"
+                    }
+                  >
+                    {hoursLabel(currentHours)}
+                  </span>
+                </>
+              ) : null}{" "}
+              ({formatVersionRange(rule.effectiveFrom, rule.effectiveTo).toLocaleLowerCase("vi")})
             </>
           ) : (
             `Chưa có đơn giá áp dụng ngày ${formatDay(at)}.`
@@ -214,6 +254,32 @@ export const CreditCellEditor = ({
                 }}
               />
               {errors.money ? <FieldError className="text-xs">{errors.money}</FieldError> : null}
+            </Field>
+            {/* PD-080 "Giờ/tấm": optional; empty = credit ÷ 11 (the official price file: credit = hours × 11). */}
+            <Field data-invalid={Boolean(errors.hours)} className="col-span-2">
+              <FieldLabel htmlFor={`${ids}-hours`}>
+                Giờ / tấm <span className="font-normal text-foreground-muted">(tùy chọn)</span>
+              </FieldLabel>
+              <Input
+                id={`${ids}-hours`}
+                inputMode="decimal"
+                value={hours}
+                placeholder={hoursPlaceholder}
+                aria-invalid={Boolean(errors.hours)}
+                aria-describedby={`${ids}-hours-hint`}
+                className="text-right tabular-nums"
+                onChange={(event) => {
+                  setHours(event.target.value);
+                  setErrors((current) => ({ ...current, hours: undefined }));
+                }}
+              />
+              {errors.hours ? (
+                <FieldError className="text-xs">{errors.hours}</FieldError>
+              ) : (
+                <FieldDescription id={`${ids}-hours-hint`} className="text-[11px]">
+                  Giờ làm ước tính cho một tấm (sức chứa At risk). Để trống = credit ÷ 11.
+                </FieldDescription>
+              )}
             </Field>
           </div>
           <Field>
@@ -300,6 +366,7 @@ export const CreditCellEditor = ({
               ? (version) => {
                   setCredit(creditText(version.creditPerImage));
                   setMoney(moneyText(version.moneyPerImage));
+                  setHours(hoursText(version.hoursPerImage));
                   setEffectiveFrom(version.effectiveFrom);
                   setTab("edit");
                 }
@@ -413,6 +480,7 @@ const VersionHistory = ({
               </li>
             );
           }
+          const hours = ruleHours(version);
           return (
             <li
               key={version.id}
@@ -432,14 +500,34 @@ const VersionHistory = ({
                       ? "Mới nhất"
                       : "Đã kết thúc"}
                 </span>
+                {/* PD-080: the file this version was imported from. */}
+                {version.source ? (
+                  <span
+                    title={`Nhập từ tệp ${version.source}`}
+                    className="truncate text-[11px] text-foreground-subtle"
+                  >
+                    Nguồn: {version.source}
+                  </span>
+                ) : null}
               </span>
-              <span className="flex flex-col items-end">
+              <span className="flex shrink-0 flex-col items-end">
                 <span className="text-[13px] font-medium tabular-nums">
                   {formatCredit(version.creditPerImage)}
                 </span>
                 <span className="text-[11px] text-foreground-muted tabular-nums">
                   {formatMoney(version.moneyPerImage)}
                 </span>
+                {hours ? (
+                  <span
+                    title={hours.derived ? "Giờ/tấm chưa đặt: tính từ credit ÷ 11" : "Giờ/tấm"}
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      hours.derived ? "text-foreground-subtle" : "text-foreground-muted"
+                    )}
+                  >
+                    {hoursLabel(hours)}
+                  </span>
+                ) : null}
               </span>
               {onUse ? (
                 <Button

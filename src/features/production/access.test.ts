@@ -36,9 +36,19 @@ describe("navigation by role", () => {
     expect(slugs([])).toEqual([]);
   });
 
+  it("PD-080: “Tổng quan” for Leader, Account, Quản trị and Director — not Staff / QC (they land on Việc của tôi)", () => {
+    for (const roles of [["LEADER"], ["ACCOUNT"], ["ADMIN"], ["DIRECTOR"], ["STAFF", "LEADER"], ["QC", "ACCOUNT"]] as const) {
+      expect(paths(roles)).toContain("/production");
+    }
+    for (const roles of [["STAFF"], ["QC"], ["STAFF", "QC"]] as const) {
+      expect(paths(roles)).not.toContain("/production");
+      expect(paths(roles)).toContain("/production/my-tasks");
+    }
+  });
+
   it("shows the union of menus for multi-role users", () => {
-    // Every production member: overview, own scores and the leave calendar.
-    const everyone = ["/production", "/production/scores", "/production/leave"];
+    // Every production member: own scores and the leave calendar (PD-080: Tổng quan not for Staff / QC).
+    const everyone = ["/production/scores", "/production/leave"];
     expect(paths(["STAFF"])).toEqual(expect.arrayContaining(everyone));
     expect(paths(["STAFF"])).not.toContain("/production/clients");
     // PD-049: everyone reaches Cấu hình to read "Trạng thái & luồng chuyển".
@@ -51,6 +61,7 @@ describe("navigation by role", () => {
       expect.arrayContaining([...everyone, "/production/clients", "/production/settings"])
     );
     expect(paths(["DIRECTOR"])).toEqual(expect.arrayContaining(everyone));
+    expect(paths(["ACCOUNT", "QC"])).toContain("/production");
   });
 
   it("no Xếp hạng entry: everyone's points are the “Toàn đội” tab of Bảng điểm (PD-069)", () => {

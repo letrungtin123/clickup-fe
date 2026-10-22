@@ -37,6 +37,14 @@ import { useCreateWorkEntry } from "../../jobs-hooks";
 import { optionalDetailsSummary, qtyOptionalHint, qtyText, WORK_LINK_MAX } from "../../jobs-model";
 import { productionKeys } from "../../keys";
 import { useProductionPeople, type Person } from "../../people";
+import {
+  isUnpriced,
+  noPriceMessage,
+  pricedOptions,
+  projectUnpriced,
+  unpricedHint,
+  usePricedProcesses
+} from "../../priced-processes";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import {
   newWorkEntryDraft,
@@ -135,11 +143,25 @@ export const WorkEntryDialog = ({
       hint: project.clientName
     }));
   const processList = (processes.data?.items ?? []).filter((process) => process.active);
-  const processOptions = processList.map((process) => ({
-    id: process.id,
-    label: process.name,
-    hint: process.isQc ? "QC" : null
-  }));
+  // PD-080b: once a project is picked, only the processes priced for it on the entry's Ngày nhận (none set: today).
+  const priceDay = draft.receivedDay ?? today;
+  const priced = usePricedProcesses(draft.projectId, [priceDay]).on(priceDay);
+  const noPrice = projectUnpriced(priced);
+  const processOptions = pricedOptions(
+    processList.map((process) => ({
+      id: process.id,
+      label: process.name,
+      hint: process.isQc ? "QC" : null
+    })),
+    priced
+  );
+  // A process without a price there (another project or day picked) is cleared, with a hint.
+  const [processHint, setProcessHint] = useState<string | null>(null);
+  if (isUnpriced(draft.processId, priced)) {
+    const name = processList.find((process) => process.id === draft.processId)?.name ?? "Quy trình";
+    setDraft((current) => ({ ...current, processId: null }));
+    setProcessHint(unpricedHint(name, priceDay));
+  }
   const shiftList = (shifts.data?.items ?? []).filter((shift) => shift.active);
   const shift = shiftList.find((item) => item.id === draft.shiftId) ?? null;
   // PD-037: a Checking line is done by QC / Leader (and has no QC of its own); other processes by Staff / Leader.
@@ -345,19 +367,33 @@ export const WorkEntryDialog = ({
                   id={`${ids}-process`}
                   options={processOptions}
                   value={draft.processId}
-                  onChange={(processId) =>
+                  onChange={(processId) => {
+                    if (processId) setProcessHint(null);
                     set({
                       processId,
                       // A Checking task has no QC of its own (PD-037).
                       ...(processList.some((process) => process.id === processId && process.isQc)
                         ? { qcId: null }
                         : {})
-                    })
+                    });
+                  }}
+                  placeholder={
+                    processes.isPending ? "Đang tải…" : noPrice ? "Chưa có đơn giá" : "Chọn quy trình"
                   }
-                  placeholder={processes.isPending ? "Đang tải…" : "Chọn quy trình"}
+                  disabled={noPrice}
                   invalid={Boolean(shown.process)}
                 />
-                {shown.process ? <FieldError>{shown.process}</FieldError> : null}
+                {noPrice ? (
+                  <p role="status" className="text-xs text-warning">
+                    {noPriceMessage}
+                  </p>
+                ) : shown.process ? (
+                  <FieldError>{shown.process}</FieldError>
+                ) : processHint ? (
+                  <p role="status" className="text-xs text-warning">
+                    {processHint}
+                  </p>
+                ) : null}
               </Field>
               {/* PD-047: every work task names its QC (not the worker); a Checking task has none. */}
               <Field data-invalid={Boolean(shown.qc)}>

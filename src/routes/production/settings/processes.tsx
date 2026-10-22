@@ -32,12 +32,12 @@ import {
 } from "@/features/production/hooks";
 
 const nameConflict = "Đã có quy trình cùng tên (không phân biệt hoa thường).";
-const qcConflict = "Chỉ được có một quy trình QC đang dùng. Bỏ QC ở quy trình kia trước.";
 
 /**
- * Retouch processes shared by every project (SPEC Phase 1). Exactly one active process is the QC
- * process (Checking, PD-037): a normal work line done by the QC person, whose points are recorded at
- * its Done at the project's Checking rate (Khoán money on a Khoán shift, PD-066). A process nobody has used
+ * Retouch processes shared by every project (SPEC Phase 1). A QC-type process (Checking, PD-037) is a normal work line
+ * done by the QC person, whose points are recorded at its Done at the project's rate of that process (Khoán money on a
+ * Khoán shift, PD-066). PD-080b: several processes may be QC-type (e.g. "Checking", "Checking Clipping", "Checking
+ * Shoe") — the flag is a plain per-process switch. A process nobody has used
  * yet can be deleted; once tasks, rates or scores refer to it the API answers 409 PROCESS_IN_USE and
  * it can only be archived. PD-050: only the organization superadmin adds, renames, reorders, flags,
  * archives or deletes processes; everyone else reads the list (QC shown as a badge).
@@ -49,8 +49,6 @@ export const ProductionProcessesRoute = () => {
   const reorder = useReorderProcesses();
   const [showArchived, setShowArchived] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [qcSwitch, setQcSwitch] = useState<{ from: Process; to: Process } | null>(null);
-  const [switching, setSwitching] = useState(false);
   const [deleting, setDeleting] = useState<Process | null>(null);
   // Keep the wording while the dialog animates out.
   const [shownDelete, setShownDelete] = useState<Process | null>(null);
@@ -62,7 +60,7 @@ export const ProductionProcessesRoute = () => {
     [items]
   );
   const archived = items.filter((item) => !item.active);
-  const currentQc = active.find((item) => item.isQc) ?? null;
+  const hasQc = active.some((item) => item.isQc);
   const validate = (exceptId: string | null) => (name: string) =>
     hasDuplicateName(items, name, exceptId) ? nameConflict : null;
 
@@ -83,34 +81,17 @@ export const ProductionProcessesRoute = () => {
           return true;
         },
         (error: unknown) => {
-          toastProductionError(error, {
-            conflict: patch.isQc || patch.active ? qcConflict : nameConflict
-          });
+          toastProductionError(error, { conflict: nameConflict });
           return false;
         }
       );
 
   const setQc = (process: Process, isQc: boolean) => {
-    if (isQc && currentQc && currentQc.id !== process.id) {
-      setQcSwitch({ from: currentQc, to: process });
-      return;
-    }
     void update(
       process,
       { isQc },
       isQc ? `${process.name} là quy trình QC` : `${process.name} không còn là quy trình QC`
     );
-  };
-
-  /** Moves the QC flag: the old process first (single-QC index), then the new one. */
-  const confirmSwitch = async () => {
-    if (!qcSwitch) return;
-    setSwitching(true);
-    const cleared = await update(qcSwitch.from, { isQc: false });
-    const set =
-      cleared && (await update(qcSwitch.to, { isQc: true }, `${qcSwitch.to.name} là quy trình QC`));
-    setSwitching(false);
-    if (set || !cleared) setQcSwitch(null);
   };
 
   /** Hard delete: only a process nothing refers to; the 409 message says to archive instead. */
@@ -220,7 +201,7 @@ export const ProductionProcessesRoute = () => {
             {process.active ? (
               <DropdownMenuItem onClick={() => setQc(process, !process.isQc)}>
                 <BadgeCheck />
-                {process.isQc ? "Bỏ đánh dấu QC" : "Đặt làm quy trình QC"}
+                {process.isQc ? "Bỏ đánh dấu QC" : "Đánh dấu là quy trình QC"}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuSeparator />
@@ -340,7 +321,7 @@ export const ProductionProcessesRoute = () => {
             ) : null}
           </>
         )}
-        {!processes.isPending && items.length > 0 && !currentQc ? (
+        {!processes.isPending && items.length > 0 && !hasQc ? (
           <div className="border-t p-3">
             <InfoNote icon={Info} tone="warning">
               {canEdit
@@ -350,16 +331,6 @@ export const ProductionProcessesRoute = () => {
           </div>
         ) : null}
       </SettingsSection>
-
-      <ConfirmDialog
-        open={qcSwitch !== null}
-        onOpenChange={(open) => !open && !switching && setQcSwitch(null)}
-        title={`Chuyển QC sang ${qcSwitch?.to.name ?? ""}?`}
-        description={`Chỉ một quy trình được là QC. ${qcSwitch?.from.name ?? ""} sẽ không còn là quy trình QC; điểm đã ghi không thay đổi.`}
-        confirmLabel="Chuyển QC"
-        pending={switching}
-        onConfirm={() => void confirmSwitch()}
-      />
 
       <ConfirmDialog
         open={deleting !== null}

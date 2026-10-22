@@ -14,6 +14,12 @@ import { toneClass } from "@/lib/colors";
 
 import { formatInteger } from "../../format";
 import { useProcesses } from "../../hooks";
+import {
+  noPriceMessage,
+  pricedOptions,
+  projectUnpriced,
+  useTaskPricedProcesses
+} from "../../priced-processes";
 import { useSubtaskMutations, useTaskMutations } from "../../jobs-hooks";
 import { formatDateTime, qtyOptionalHint } from "../../jobs-model";
 import {
@@ -77,7 +83,13 @@ export const TaskSubtasks = ({
   const done = task.doneAt !== null;
   // The task's own "Công đoạn": the task page title's rule (canEdit, before Done, not archived) and list.
   const rights = taskEditRights(task, { archived });
-  const processOptions = lineProcessOptions(processes.data?.items ?? [], task.process.id);
+  // PD-080b: only processes priced for the job's project on the task's Ngày nhận (the current one stays listed).
+  const priced = useTaskPricedProcesses(task, rights.process);
+  const processOptions = pricedOptions(
+    lineProcessOptions(processes.data?.items ?? [], task.process.id),
+    priced,
+    task.process.id
+  );
   const canCreate = !archived && !done && caps.canCreateSubtask;
   // Without loading each subtask, the task's rights stand for its subtasks (the API checks each one again). Never the
   // task's own canDelete: staff may not delete a task the Leader split, yet they delete their own subtasks before Done
@@ -192,7 +204,7 @@ export const TaskSubtasks = ({
             successMessage={(value) =>
               `Đã đổi công đoạn của #${task.code} sang ${processOptions.find((option) => option.id === value)?.label ?? "công đoạn mới"}`
             }
-            hint={lineProcessHint(count > 0)}
+            hint={projectUnpriced(priced) ? noPriceMessage : lineProcessHint(count > 0)}
           >
             <span
               className="block truncate text-[13px] font-semibold"
@@ -376,6 +388,8 @@ const SubtaskRow = ({
 }) => {
   const processes = useProcesses();
   const mutations = useSubtaskMutations();
+  // PD-080b: a subtask takes its line's Ngày nhận.
+  const priced = useTaskPricedProcesses(line, canManage);
   const max = subtaskQtyMax(line.qtyAssigned, subtask.qtyAssigned);
   const name = `#${subtask.code} · ${subtask.process.name}`;
   const qtyKey = `sub-${subtask.id}-qty`;
@@ -407,9 +421,13 @@ const SubtaskRow = ({
             <OptionSelect
               id={id}
               aria-label={label}
-              options={subtaskProcessOptions(
-                processes.data?.items ?? [],
-                line.process.id,
+              options={pricedOptions(
+                subtaskProcessOptions(
+                  processes.data?.items ?? [],
+                  line.process.id,
+                  subtask.process.id
+                ),
+                priced,
                 subtask.process.id
               )}
               value={value}
@@ -562,7 +580,13 @@ const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: (
   const problems = subtaskDraftProblems(draft, max);
   const shown = showErrors ? problems : {};
   const left = lineQtyLeft(task.qtyAssigned, 0, draft.qty);
-  const options = subtaskProcessOptions(processes.data?.items ?? [], task.process.id);
+  // PD-080b: only processes priced for the job's project on the task's Ngày nhận.
+  const priced = useTaskPricedProcesses(task);
+  const noPrice = projectUnpriced(priced);
+  const options = pricedOptions(
+    subtaskProcessOptions(processes.data?.items ?? [], task.process.id),
+    priced
+  );
   const busy = mutations.create.isPending;
   const set = (patch: Partial<SubtaskDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -635,11 +659,23 @@ const SubtaskCreateForm = ({ task, onClose }: { task: ProductionTask; onClose: (
             options={options}
             value={draft.processId}
             onChange={(processId) => set({ processId })}
-            placeholder={options.length === 0 ? "Không có công đoạn khác" : "Chọn công đoạn"}
+            placeholder={
+              noPrice
+                ? "Chưa có đơn giá"
+                : options.length === 0
+                  ? "Không có công đoạn khác"
+                  : "Chọn công đoạn"
+            }
             invalid={Boolean(shown.process)}
-            disabled={busy}
+            disabled={busy || noPrice}
           />
-          {shown.process ? <FieldError className="text-xs">{shown.process}</FieldError> : null}
+          {noPrice ? (
+            <p role="status" className="text-xs text-warning">
+              {noPriceMessage}
+            </p>
+          ) : shown.process ? (
+            <FieldError className="text-xs">{shown.process}</FieldError>
+          ) : null}
         </Field>
         <Field data-invalid={Boolean(shown.qty)}>
           <FieldLabel htmlFor={`${ids}-qty`}>

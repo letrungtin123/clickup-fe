@@ -137,7 +137,8 @@ const member = (user: ReturnType<typeof person>, roles: string[]) => ({
 const renderWith = (
   me: ReturnType<typeof person>,
   ui: ReactNode,
-  extraMembers: ReturnType<typeof member>[] = []
+  extraMembers: ReturnType<typeof member>[] = [],
+  seed?: (client: QueryClient) => void
 ) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } }
@@ -154,6 +155,7 @@ const renderWith = (
   });
   client.setQueryData(productionKeys.processes(), { items: [RETOUCH, CUTOUT, CHECKING] });
   client.setQueryData(productionKeys.shifts(), { items: [] });
+  seed?.(client);
   const session = {
     user: { id: me.id, displayName: me.displayName, email: "test@example.test", avatarUrl: null },
     productionRoles: ["LEADER"]
@@ -876,5 +878,44 @@ describe("PD-058 — a task without a quantity", () => {
         "Đã tạo subtask Cắt nền cho #3 — chưa có số lượng"
       )
     );
+  });
+});
+
+describe("PD-080b — subtask processes: only the priced ones (the task's Ngày nhận)", () => {
+  const priced = (...processIds: string[]) => (client: QueryClient) =>
+    client.setQueryData(productionKeys.creditMatrix("2026-10-01"), {
+      at: "2026-10-01",
+      projects: [],
+      processes: [],
+      rules: processIds.map((processId, index) => ({
+        id: id(900 + index),
+        projectId: id(70),
+        processId,
+        creditPerImage: 2,
+        moneyPerImage: null,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null
+      }))
+    });
+  const openForm = async (seed: (client: QueryClient) => void) => {
+    const task = line({ capabilities: caps({ canEdit: true, canCreateSubtask: true }) });
+    renderWith(WORKER, <TaskSubtasks task={task} archived={false} timeZone={TZ} />, [], seed);
+    await click(screen.getByRole("button", { name: "Thêm subtask" }));
+    return screen.getByRole("form", { name: "Tạo subtask cho task #3" });
+  };
+
+  it("a priced process is offered", async () => {
+    const form = await openForm(priced(RETOUCH.id, CUTOUT.id));
+    await click(within(form).getByRole("combobox", { name: "Công đoạn" }));
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual(["Cắt nền"]);
+  });
+
+  it("an unpriced one is not; a project without any price shows “Project chưa có đơn giá — liên hệ Quản trị”", async () => {
+    const form = await openForm(priced(RETOUCH.id));
+    expect(within(form).getByRole("combobox", { name: "Công đoạn" }).textContent).toContain("Không có công đoạn khác");
+    cleanup();
+    const empty = await openForm(priced());
+    expect(within(empty).getByText("Project chưa có đơn giá — liên hệ Quản trị")).toBeTruthy();
+    expect(within(empty).getByRole("combobox", { name: "Công đoạn" })).toHaveProperty("disabled", true);
   });
 });

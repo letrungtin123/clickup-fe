@@ -4,12 +4,20 @@ import {
   ArrowRightLeft,
   ArrowUp,
   CircleCheck,
+  CircleCheckBig,
   CircleDot,
+  Hammer,
+  Inbox,
+  LayoutDashboard,
   ListChecks,
   LockKeyhole,
+  MessageSquareReply,
+  PackageCheck,
   Pencil,
   Trash2,
-  TriangleAlert
+  Truck,
+  TriangleAlert,
+  type LucideIcon
 } from "lucide-react";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -28,7 +36,11 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenuCheckboxItem,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -44,9 +56,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  jobStatusKindLabels,
+  jobStatusKinds,
   jobStatusLimit,
   jobStatusNameMaxLength,
-  type JobStatus
+  type JobStatus,
+  type JobStatusKind
 } from "@/contracts/production-catalog";
 import type { ColorToken } from "@/contracts/work";
 import type { JobStatusUpdateInput } from "@/features/production/api";
@@ -87,6 +102,44 @@ const closedHint =
 /** PD-045: `requiresAllChecked`. */
 const checkedHint =
   "Cần mọi task đã check (ví dụ “Đã xong”): chỉ chọn được khi job có ít nhất một task và mọi task đã “Đã check” (task Checking: Done; subtask đi theo task của nó). Trước đó trạng thái hiện mờ trong menu của job, kèm số task còn chưa check.";
+
+/**
+ * PD-080 "Loại (Overview)": the stable meaning of a status for the Overview, whatever its name. Short labels for the
+ * row badge (the contract's `jobStatusKindLabels` in the pickers), an icon and what the kind does.
+ */
+const kindMeta: Record<JobStatusKind, { short: string; icon: LucideIcon; hint: string }> = {
+  NEW: { short: "Mới", icon: Inbox, hint: "pha “Mới” trong Tổng quan." },
+  IN_PROGRESS: {
+    short: "Đang làm",
+    icon: Hammer,
+    hint: "pha “Đang làm” trong Tổng quan (kể cả Chờ QC)."
+  },
+  FEEDBACK: {
+    short: "Feedback",
+    icon: MessageSquareReply,
+    hint: "pha “Feedback” trong Tổng quan (khách gửi feedback, đang làm lại)."
+  },
+  COMPLETE: {
+    short: "Complete",
+    icon: PackageCheck,
+    hint: "xong sản xuất — Account thấy “sẵn sàng giao”, At risk dừng."
+  },
+  DELIVERING: {
+    short: "Đang giao",
+    icon: Truck,
+    hint: "đang giao cho khách — tính là đã giao, không bao giờ “trễ khách”."
+  },
+  DELIVERED: {
+    short: "Đã giao",
+    icon: CircleCheckBig,
+    hint: "đã giao khách — tính là đã giao, không bao giờ “trễ khách”."
+  }
+};
+/** Older answers without a kind count as "Đang làm" (the API default). */
+const kindOf = (status: JobStatus): JobStatusKind => status.kind ?? "IN_PROGRESS";
+const kindItems = jobStatusKinds.map((kind) => ({ value: kind, label: jobStatusKindLabels[kind] }));
+const kindTitle = (kind: JobStatusKind) =>
+  `Loại (Overview): ${jobStatusKindLabels[kind]} — ${kindMeta[kind].hint}`;
 
 /** Copy for the PD-038 codes (the shared production map does not know them yet). */
 const jobStatusMessages: Record<string, string> = {
@@ -166,6 +219,7 @@ export const ProductionJobStatusesRoute = () => {
   const [newColor, setNewColor] = useState<ColorToken | null>(null);
   const [newClosed, setNewClosed] = useState(false);
   const [newRequiresChecked, setNewRequiresChecked] = useState(false);
+  const [newKind, setNewKind] = useState<JobStatusKind>("IN_PROGRESS");
   // The order being saved: the reorder answer is not optimistic, so the rows keep the drop meanwhile.
   const [order, setOrder] = useState<readonly string[] | null>(null);
   const [deleting, setDeleting] = useState<JobStatus | null>(null);
@@ -208,13 +262,20 @@ export const ProductionJobStatusesRoute = () => {
 
   const add = (name: string) =>
     mutations.create
-      .mutateAsync({ name, color, isClosed: newClosed, requiresAllChecked: newRequiresChecked })
+      .mutateAsync({
+        name,
+        color,
+        isClosed: newClosed,
+        requiresAllChecked: newRequiresChecked,
+        kind: newKind
+      })
       .then(
         () => {
           toast.success(`Đã thêm trạng thái ${name}`);
           setNewColor(null);
           setNewClosed(false);
           setNewRequiresChecked(false);
+          setNewKind("IN_PROGRESS");
           return true;
         },
         (error: unknown) => {
@@ -265,10 +326,11 @@ export const ProductionJobStatusesRoute = () => {
             // Spans both lines on narrow lists: the line below is part of the ≥ 40px tap target.
             className="col-start-3 row-span-2 row-start-1 flex min-w-0 items-start self-stretch rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl:row-span-1 @2xl:items-center @2xl:self-center"
           >
-            <span className="flex min-w-0 items-center gap-1.5">
+            <span className="flex w-full min-w-0 items-center gap-1.5">
               <JobStatusChip status={status} />
               {status.requiresAllChecked ? <RequiresCheckedBadge /> : null}
               {index === 0 ? <NewJobBadge /> : null}
+              <KindBadge kind={kindOf(status)} />
             </span>
           </button>
         )}
@@ -325,6 +387,36 @@ export const ProductionJobStatusesRoute = () => {
                   Cần mọi task đã check
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Loại (Overview)</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={kindOf(status)}
+                    onValueChange={(next: JobStatusKind) => {
+                      if (next !== kindOf(status))
+                        save(
+                          status,
+                          { kind: next },
+                          `${status.name}: loại ${jobStatusKindLabels[next]}`
+                        );
+                    }}
+                  >
+                    {jobStatusKinds.map((kind) => {
+                      const Icon = kindMeta[kind].icon;
+                      return (
+                        <DropdownMenuRadioItem
+                          key={kind}
+                          value={kind}
+                          disabled={updatingId === status.id}
+                          title={kindTitle(kind)}
+                        >
+                          <Icon className="text-foreground-subtle" />
+                          {jobStatusKindLabels[kind]}
+                        </DropdownMenuRadioItem>
+                      );
+                    })}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   disabled={index === 0 || mutations.reorder.isPending}
                   onClick={() => move(status, -1)}
@@ -375,6 +467,7 @@ export const ProductionJobStatusesRoute = () => {
         {status.isClosed ? <ClosedBadge /> : null}
         {status.requiresAllChecked ? <RequiresCheckedBadge /> : null}
         {index === 0 ? <NewJobBadge /> : null}
+        <KindBadge kind={kindOf(status)} />
       </span>
       <RowFacts
         status={status}
@@ -438,6 +531,7 @@ export const ProductionJobStatusesRoute = () => {
               onAdd={add}
             >
               <ColorButton color={color} onChange={setNewColor} label="Màu trạng thái mới" />
+              <KindSelect value={newKind} onChange={setNewKind} />
               <ClosedToggle
                 checked={newClosed}
                 onChange={setNewClosed}
@@ -499,6 +593,20 @@ export const ProductionJobStatusesRoute = () => {
           <InfoNote icon={ListChecks}>
             {checkedHint}
             {canEdit ? " Bật / tắt trong menu ⋯ của từng trạng thái." : null}
+          </InfoNote>
+          <InfoNote icon={LayoutDashboard}>
+            <span>
+              <span className="font-medium text-foreground">Loại (Overview)</span> cho Tổng quan
+              biết ý nghĩa cố định của trạng thái, dù tên do Quản trị đặt.{" "}
+              <span className="font-medium text-foreground">Mới · Đang làm · Feedback</span>: các
+              pha hiện trong Tổng quan.{" "}
+              <span className="font-medium text-foreground">Complete</span>: xong sản xuất — Account
+              thấy “sẵn sàng giao”, At risk dừng.{" "}
+              <span className="font-medium text-foreground">Đang giao client · Đã giao khách</span>
+              : đã giao cho khách, không bao giờ tính “trễ khách”. “Sẵn sàng hoàn tất” (mọi task đã
+              check) được tính tự động, không phải một loại.
+              {canEdit ? " Đổi loại trong menu ⋯ của từng trạng thái." : null}
+            </span>
           </InfoNote>
         </div>
       </SettingsSection>
@@ -589,6 +697,71 @@ const RequiresCheckedBadge = () => (
   </span>
 );
 
+/** Icon + short label of a kind (PD-080). */
+const KindLabel = ({ kind }: { kind: JobStatusKind }) => {
+  const Icon = kindMeta[kind].icon;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Icon className="size-3 shrink-0" aria-hidden="true" />
+      {/* The leading space keeps "… Loại: Mới" apart from the chip in the rename button's name. */}
+      <span className="sr-only">{" Loại: "}</span>
+      {kindMeta[kind].short}
+    </span>
+  );
+};
+
+/**
+ * The kind on wide lists (PD-080), right-aligned so the kinds line up like a column; narrow lists say it on the line
+ * below (RowFacts), so the name keeps the room.
+ */
+const KindBadge = ({ kind }: { kind: JobStatusKind }) => (
+  <span
+    title={kindTitle(kind)}
+    className="ml-auto hidden h-5 shrink-0 items-center rounded-md border border-dashed px-1.5 text-[11px] font-medium text-foreground-muted @2xl:inline-flex"
+  >
+    <KindLabel kind={kind} />
+  </span>
+);
+
+/** "Loại (Overview)" of a new status (PD-080); the API defaults to Đang làm. */
+const KindSelect = ({
+  value,
+  onChange
+}: {
+  value: JobStatusKind;
+  onChange: (kind: JobStatusKind) => void;
+}) => (
+  <Select
+    items={kindItems}
+    value={value}
+    onValueChange={(next: JobStatusKind | null) => {
+      if (next) onChange(next);
+    }}
+  >
+    <SelectTrigger
+      aria-label="Loại (Overview) của trạng thái mới"
+      title={kindTitle(value)}
+      className="max-w-44 min-w-0 text-xs"
+    >
+      <SelectValue>
+        <span className="shrink-0 text-foreground-muted">Loại</span>
+        <span className="min-w-0 truncate">{kindMeta[value].short}</span>
+      </SelectValue>
+    </SelectTrigger>
+    <SelectContent className="max-w-[min(20rem,var(--available-width))]">
+      {jobStatusKinds.map((kind) => {
+        const Icon = kindMeta[kind].icon;
+        return (
+          <SelectItem key={kind} value={kind}>
+            <Icon className="text-foreground-subtle" aria-hidden="true" />
+            {jobStatusKindLabels[kind]}
+          </SelectItem>
+        );
+      })}
+    </SelectContent>
+  </Select>
+);
+
 /** "Đóng" as text, where a read-only viewer has no switch (PD-050). */
 const ClosedBadge = () => (
   <span
@@ -640,6 +813,13 @@ const RowFacts = ({
         Job mới ·
       </span>
     ) : null}
+    {/* Narrow lists: the kind here (wide ones show the KindBadge next to the name). */}
+    <span title={kindTitle(kindOf(status))} className="flex shrink-0 items-center gap-1.5 @2xl:hidden">
+      <KindLabel kind={kindOf(status)} />
+      <span aria-hidden="true" className="text-foreground-subtle">
+        ·
+      </span>
+    </span>
     <span
       title="Job đang ở trạng thái này (không tính job đã xoá)"
       className={cn(

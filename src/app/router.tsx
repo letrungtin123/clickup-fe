@@ -26,7 +26,10 @@ import { NotFoundRoute, RouteErrorBoundary } from "@/routes/errors";
  *   /c                             all conversations (mobile chat entry)
  *   /c/:channelId                  channel / DM with ?thread=<rootId> and ?message=<id>
  *   /settings/{profile,members,roles}
- *   /production                    production (retouch) overview — production roles only (PD-011)
+ *   /production                    "Tổng quan" Overview V2 (PD-080: Leader / Account / Quản trị / Director; Staff and QC
+ *                                  are sent to /production/my-tasks); ?from=&to=&scope=&card=&sub=
+ *   /production/at-risk            At risk history (PD-080: superadmin / Director); ?from=&to=
+ *   /production/my-overview        "Tổng quan của tôi" (PD-081: own tasks and points, every member; Staff / QC landing)
  *   /production/clients            clients (Account)
  *   /production/projects           Project list (PD-078: Leader / Admin create and edit, Director / Account read;
  *                                  /production/settings/projects redirects here)
@@ -250,6 +253,18 @@ export const routes: RouteObject[] = [
                 index: true,
                 lazy: async () => ({
                   Component: (await import("@/routes/production/overview")).ProductionOverviewRoute
+                })
+              },
+              {
+                path: "at-risk",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/at-risk")).ProductionAtRiskRoute
+                })
+              },
+              {
+                path: "my-overview",
+                lazy: async () => ({
+                  Component: (await import("@/routes/production/my-overview")).ProductionMyOverviewRoute
                 })
               },
               {

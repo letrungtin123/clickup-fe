@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { Coins, Plus, Trash2, TriangleAlert } from "lucide-react";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
@@ -36,6 +36,7 @@ import {
   useCreditMatrix,
   useCustomFields,
   useProcesses,
+  useProductionAccess,
   useProductionMe,
   useShifts,
   useTags
@@ -60,14 +61,25 @@ import {
   type TaskLineProblemKey
 } from "../../jobs-model";
 import { useProductionPeople, type Person } from "../../people";
+import { leaveLabel, loadLabel, unavailable, useTeamLoad } from "../../team-load";
 import type { Tag } from "../../types";
+import {
+  isUnpriced,
+  noPriceMessage,
+  pricedOptions,
+  projectUnpriced,
+  unpricedHint,
+  usePricedProcesses
+} from "../../priced-processes";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 import { CustomFieldInput } from "../custom-field-input";
 import { DateField } from "../date-field";
 import { FormAlert } from "../settings-kit";
 import { TagPicker } from "../tag-picker";
 import { OptionalDetails } from "./optional-details";
+import { PersonLoadPicker, type PersonLoadInfo } from "./person-load-picker";
 import { OptionSelect, PersonSelect } from "./pickers";
+import { TeamSuggestions } from "./team-suggestions";
 
 /**
  * One work-log row (PD-035). `receivedDay` / `dueDay` default to the job's Ngày nhận / Ngày giao. `values` /
@@ -84,6 +96,8 @@ type Line = TaskLineDraft & {
   note: string;
   values: CustomValues;
   tagIds: string[];
+  /** PD-080b: why the process was cleared (no price on the card's Ngày nhận). */
+  processHint: string | null;
 };
 
 let lineSeq = 0;
@@ -104,6 +118,7 @@ const blankLine = (template?: Partial<Line>): Line => ({
   note: "",
   values: {},
   tagIds: [],
+  processHint: null,
   ...template
 });
 
@@ -151,15 +166,23 @@ const extrasSummary = (
  * Live totals in the footer. With "create: own" (PD-036) every line is mine: the assignee is fixed. Client feedback
  * redo lines are ordinary lines added here too (PD-045: the separate "Giao lại" mode is retired). Not a <form>: Enter
  * in a field never submits.
+ *
+ * PD-080 (team load, for a Leader / Quản trị assigning others): "Gợi ý cho <project>" — 3–5 people, Rảnh first, then
+ * people already on the project, then the lightest; a click puts that person on the first task without a person, else
+ * adds a task for them like "Thêm task" — plus "Xem cả team"; "Nhân viên thực hiện" is searchable and shows each person's
+ * load, people on leave greyed and not selectable. `header`: shown above everything in the body (the Overview's Job Code
+ * picker).
  */
 export const SplitTasksDialog = ({
   open,
   job,
-  onClose
+  onClose,
+  header
 }: {
   open: boolean;
   job: JobDetail;
   onClose: () => void;
+  header?: ReactNode;
 }) => {
   const ids = useId();
   const session = useSessionContext();
@@ -168,6 +191,11 @@ export const SplitTasksDialog = ({
   const today = todayIn(timeZone);
   const myId = session.user.id;
   const ownOnly = job.capabilities.splitOwnOnly;
+  // PD-080: the team's load (GET /production/team-load is for LEADER / ADMIN — the ones who assign others).
+  const access = useProductionAccess();
+  const loadShown = open && !ownOnly && access.can("LEADER");
+  const teamLoad = useTeamLoad(loadShown);
+  const teamMembers = loadShown ? teamLoad.data?.members : undefined;
   const people = useProductionPeople([
     job.leader,
     ...job.tasks.flatMap((task) => [task.assignee, task.qc])
@@ -199,6 +227,19 @@ export const SplitTasksDialog = ({
   const [formError, setFormError] = useState<string | null>(null);
 
   const workers = people.withRole("STAFF", "LEADER");
+  const workerIds = useMemo(() => new Set(workers.map((person) => person.id)), [workers]);
+  const loadInfo = useMemo(() => {
+    const map = new Map<string, PersonLoadInfo>();
+    for (const member of teamMembers ?? []) {
+      map.set(member.user.id, {
+        load: loadLabel(member),
+        leave: member.leave ? leaveLabel(member.leave) : null,
+        unavailable: unavailable(member)
+      });
+    }
+    return map;
+  }, [teamMembers]);
+  const infoOf = teamMembers ? (personId: string) => loadInfo.get(personId) ?? null : undefined;
   const checkers = people.withRole("QC");
   const checkingPeople = people.withRole("QC", "LEADER");
   const myself = people.byId(myId) ?? {
@@ -227,6 +268,24 @@ export const SplitTasksDialog = ({
     [processes.data]
   );
   const ruleIndex = useMemo(() => indexRules(matrix.data?.rules ?? []), [matrix.data]);
+  // PD-080b: each card offers the processes priced for the job's project on its own Ngày nhận (none set: today).
+  const lineDay = (line: Pick<Line, "receivedDay">) => line.receivedDay ?? today;
+  const priced = usePricedProcesses(job.project.id, lines.map(lineDay));
+  // A process that has no price on the card's day (e.g. after changing Ngày nhận) is cleared, with a hint.
+  if (lines.some((line) => isUnpriced(line.processId, priced.on(lineDay(line))))) {
+    const names = new Map((processes.data?.items ?? []).map((process) => [process.id, process.name]));
+    setLines((items) =>
+      items.map((item) =>
+        isUnpriced(item.processId, priced.on(lineDay(item)))
+          ? {
+              ...item,
+              processId: null,
+              processHint: unpricedHint(names.get(item.processId!) ?? "Quy trình", lineDay(item))
+            }
+          : item
+      )
+    );
+  }
   const lineContext = { roles: people.roles, qcProcessIds };
   const problems = lines.map((line) => taskLineProblems(line, lineContext));
   // Required TASK fields are checked on every line (the API refuses the whole split otherwise).
@@ -265,18 +324,19 @@ export const SplitTasksDialog = ({
 
   /**
    * "Thêm task" (owner, 2026-10-16): everything typed in task 1 — process, shift, QC, quantity, dates, link, note,
-   * Hình lỗi, Giờ OT, custom fields and tags — except the person; the new task's Nhân viên thực hiện (Quy trình when
-   * it is fixed to me) takes the focus.
+   * Hình lỗi, Giờ OT, custom fields and tags — except the person (`person`: the one a "Gợi ý" tile names).
    */
-  const addLine = () => {
+  const nextLine = (person: string | null) => {
     const first = lines[0];
-    const line = blankLine(
+    const assignee = ownOnly ? { assigneeId: myId } : person ? { assigneeId: person } : {};
+    return blankLine(
       first
         ? {
-            ...(ownOnly ? { assigneeId: myId } : {}),
+            ...assignee,
             processId: first.processId,
             shiftId: first.shiftId,
-            qcId: first.qcId,
+            // The person is never their own QC.
+            qcId: person !== null && first.qcId === person ? null : first.qcId,
             qty: first.qty,
             receivedDay: first.receivedDay,
             dueDay: first.dueDay,
@@ -287,12 +347,41 @@ export const SplitTasksDialog = ({
             values: { ...first.values },
             tagIds: [...first.tagIds]
           }
-        : { ...defaultDates, ...(ownOnly ? { assigneeId: myId } : {}) }
+        : { ...defaultDates, ...assignee }
     );
-    flushSync(() => setLines((items) => [...items, line]));
-    const field = document.getElementById(`${ids}-${line.key}-${ownOnly ? "process" : "assignee"}`);
+  };
+
+  /** Focuses one field of a task card and brings the card into view. */
+  const focusField = (key: string, name: "assignee" | "process") => {
+    const field = document.getElementById(`${ids}-${key}-${name}`);
     field?.focus({ preventScroll: true });
     field?.closest("li")?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  };
+
+  /** "Thêm task": the new task's Nhân viên thực hiện (Quy trình when it is fixed to me) takes the focus. */
+  const addLine = () => {
+    const line = nextLine(null);
+    flushSync(() => setLines((items) => [...items, line]));
+    focusField(line.key, ownOnly ? "process" : "assignee");
+  };
+
+  /**
+   * PD-080 "Gợi ý" tile: the person goes on the first work task without a person; with none, a new task for them (as
+   * "Thêm task"). Its Quy trình takes the focus.
+   */
+  const assignTo = (personId: string) => {
+    const empty = lines.find(
+      (line) => line.assigneeId === null && !(line.processId !== null && qcProcessIds.has(line.processId))
+    );
+    if (empty) {
+      flushSync(() => update(empty.key, { assigneeId: personId, ...(empty.qcId === personId ? { qcId: null } : {}) }));
+      focusField(empty.key, "process");
+      return;
+    }
+    if (lines.length >= 50) return;
+    const line = nextLine(personId);
+    flushSync(() => setLines((items) => [...items, line]));
+    focusField(line.key, "process");
   };
 
   const submit = () => {
@@ -371,6 +460,15 @@ export const SplitTasksDialog = ({
           </DialogHeader>
 
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4">
+            {header}
+            {teamMembers && !ownOnly ? (
+              <TeamSuggestions
+                members={teamMembers}
+                project={job.project}
+                eligibleIds={workerIds}
+                onPick={assignTo}
+              />
+            ) : null}
             <ol ref={listRef} className="flex flex-col gap-4" aria-label="Các task">
               {lines.map((line, index) => {
                 const shift = shiftList.find((item) => item.id === line.shiftId) ?? null;
@@ -387,7 +485,9 @@ export const SplitTasksDialog = ({
                     ownOnly={ownOnly}
                     myself={myself}
                     people={{ workers, checkers, checkingPeople, nameOf: people.nameOf }}
-                    processOptions={processOptions}
+                    infoOf={infoOf}
+                    processOptions={pricedOptions(processOptions, priced.on(lineDay(line)))}
+                    noPrice={projectUnpriced(priced.on(lineDay(line)))}
                     isQcProcess={(processId) => qcProcessIds.has(processId)}
                     shiftOptions={shiftOptions}
                     shift={shift}
@@ -531,7 +631,9 @@ const LineCard = ({
   ownOnly,
   myself,
   people,
+  infoOf,
   processOptions,
+  noPrice,
   isQcProcess,
   shiftOptions,
   shift,
@@ -561,7 +663,11 @@ const LineCard = ({
     checkingPeople: Person[];
     nameOf: (id: string) => string | undefined;
   };
+  /** PD-080: each person's load / leave for the "Nhân viên thực hiện" picker (absent: names only). */
+  infoOf: ((personId: string) => PersonLoadInfo | null) | undefined;
   processOptions: { id: string; label: string; hint: string | null }[];
+  /** PD-080b: the project has no price on this card's Ngày nhận — no process can be picked. */
+  noPrice: boolean;
   /** The QC process ("Checking", PD-037). */
   isQcProcess: (processId: string) => boolean;
   shiftOptions: { id: string; label: string; hint: string | null }[];
@@ -681,9 +787,11 @@ const LineCard = ({
                 <span className="ml-auto shrink-0 text-xs text-foreground-subtle">Bạn</span>
               </div>
             ) : (
-              <PersonSelect
+              // PD-080: searchable, with each person's load; people on leave cannot be picked.
+              <PersonLoadPicker
                 id={id("assignee")}
                 people={checking ? people.checkingPeople : people.workers}
+                infoOf={infoOf}
                 value={line.assigneeId}
                 onChange={(assigneeId) =>
                   onChange({
@@ -707,15 +815,27 @@ const LineCard = ({
               onChange={(processId) =>
                 onChange({
                   processId,
+                  // (The select also reports a cleared value: keep the PD-080b hint then.)
+                  ...(processId ? { processHint: null } : {}),
                   // A Checking line has no QC of its own (PD-037).
                   ...(processId && isQcProcess(processId) ? { qcId: null } : {})
                 })
               }
-              placeholder="Chọn quy trình"
+              placeholder={noPrice ? "Chưa có đơn giá" : "Chọn quy trình"}
+              disabled={noPrice}
               invalid={Boolean(problems.process)}
             />
-            {problems.process ? (
+            {noPrice ? (
+              <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                {noPriceMessage}
+              </p>
+            ) : problems.process ? (
               <FieldError className="text-xs">{problems.process}</FieldError>
+            ) : line.processHint ? (
+              <p role="status" className="text-xs text-warning">
+                {line.processHint}
+              </p>
             ) : null}
           </Field>
           <Field data-invalid={Boolean(problems.shift)}>

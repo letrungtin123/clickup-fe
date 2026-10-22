@@ -36,11 +36,12 @@ const status = (
   ...overrides
 });
 
+// PD-080 kinds; "Chờ QC" has none (an older answer): it counts as IN_PROGRESS.
 const catalog: JobStatus[] = [
-  status(1, "Mới nhận", { color: "slate", jobCount: 3 }),
-  status(2, "Đang làm", { jobCount: 12, updatedBy: admin }),
+  status(1, "Mới nhận", { color: "slate", jobCount: 3, kind: "NEW" }),
+  status(2, "Đang làm", { jobCount: 12, updatedBy: admin, kind: "IN_PROGRESS" }),
   status(3, "Chờ QC", { color: "amber" }),
-  status(4, "Đã giao khách", { color: "green", isClosed: true, jobCount: 40 })
+  status(4, "Đã giao khách", { color: "green", isClosed: true, jobCount: 40, kind: "DELIVERED" })
 ];
 
 /** PD-050: only the organization superadmin edits; a production Admin reads the page. */
@@ -142,7 +143,8 @@ describe("Cấu hình → Trạng thái job (PD-038 / PD-045)", () => {
       name: "Chờ duyệt",
       color: "violet",
       isClosed: true,
-      requiresAllChecked: false
+      requiresAllChecked: false,
+      kind: "IN_PROGRESS"
     });
     await waitFor(() =>
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Đã thêm trạng thái Chờ duyệt")
@@ -173,7 +175,8 @@ describe("Cấu hình → Trạng thái job (PD-038 / PD-045)", () => {
       .spyOn(productionApi, "updateJobStatus")
       .mockResolvedValue({ items: catalog });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Đang làm" }));
+    // The rename button reads the chip, then its badges (PD-080: "Loại: …").
+    fireEvent.click(await screen.findByRole("button", { name: /^Đang làm\s*Loại:\s*Đang làm$/ }));
     const field = screen.getByRole("textbox", { name: "Tên mới cho trạng thái Đang làm" });
     fireEvent.change(field, { target: { value: "MỚI NHẬN" } });
     fireEvent.keyDown(field, { key: "Enter" });
@@ -387,5 +390,98 @@ describe("Cấu hình → Trạng thái job (PD-038 / PD-045)", () => {
       "true"
     );
     expect(screen.getByText("Phải còn ít nhất một trạng thái.")).toBeTruthy();
+  });
+});
+
+describe("Cấu hình → Trạng thái job — Loại (Overview) (PD-080)", () => {
+  const rowTexts = (list: HTMLElement) =>
+    Array.from(list.querySelectorAll("li")).map((row) => row.textContent ?? "");
+
+  it("shows each status's kind (no kind = Đang làm) and explains the kinds", async () => {
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: catalog });
+    renderPage();
+    await screen.findByRole("button", { name: /^Mới nhận/ });
+    const rows = rowTexts(screen.getByRole("list", { name: "Trạng thái job" }));
+    expect(rows[0]).toContain("Loại: Mới");
+    expect(rows[1]).toContain("Loại: Đang làm");
+    expect(rows[2]).toContain("Loại: Đang làm");
+    expect(rows[3]).toContain("Loại: Đã giao");
+    // The full meaning is in the title.
+    expect(
+      screen.getAllByTitle(/^Loại \(Overview\): Đã giao khách — /).length
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/cho Tổng quan biết ý nghĩa cố định của trạng thái/)).toBeTruthy();
+    expect(screen.getByText(/Đổi loại trong menu ⋯ của từng trạng thái/)).toBeTruthy();
+  });
+
+  it("creates a status with the chosen kind", async () => {
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: catalog });
+    const create = vi
+      .spyOn(productionApi, "createJobStatus")
+      .mockResolvedValue({ items: [...catalog, status(5, "Sẵn sàng giao", { kind: "COMPLETE" })] });
+    renderPage();
+    await screen.findByRole("button", { name: /^Mới nhận/ });
+    const picker = screen.getByRole("combobox", { name: "Loại (Overview) của trạng thái mới" });
+    expect(picker.textContent).toContain("Đang làm");
+    await act(async () => {
+      fireEvent.click(picker);
+      await Promise.resolve();
+    });
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Mới (New)",
+      "Đang làm (In progress)",
+      "Feedback của khách",
+      "Complete (xong, chờ giao)",
+      "Đang giao client",
+      "Đã giao khách"
+    ]);
+    await act(async () => {
+      const option = screen.getByRole("option", { name: "Complete (xong, chờ giao)" });
+      fireEvent.pointerDown(option);
+      fireEvent.click(option);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(picker.textContent).toContain("Complete"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Tên trạng thái mới" }), {
+      target: { value: "Sẵn sàng giao" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Thêm trạng thái" }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Sẵn sàng giao", kind: "COMPLETE" })
+      )
+    );
+    // The picker goes back to the default for the next status.
+    await waitFor(() => expect(picker.textContent).toContain("Đang làm"));
+  });
+
+  it("changes a status's kind from the row menu (PATCH kind only)", async () => {
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: catalog });
+    const update = vi.spyOn(productionApi, "updateJobStatus").mockResolvedValue({ items: catalog });
+    renderPage();
+    await screen.findByRole("button", { name: /^Mới nhận/ });
+    await openRowMenu("Chờ QC");
+    const current = await screen.findByRole("menuitemradio", { name: "Đang làm (In progress)" });
+    expect(current.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(6);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Feedback của khách" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(update).toHaveBeenCalledWith(id(3), { kind: "FEEDBACK" }));
+    await waitFor(() =>
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Chờ QC: loại Feedback của khách")
+    );
+  });
+
+  it("a production Admin reads the kinds too, without the picker or the menu hint", async () => {
+    vi.spyOn(productionApi, "jobStatuses").mockResolvedValue({ items: catalog });
+    renderPage({ superadmin: false });
+    const list = await screen.findByRole("list", { name: "Trạng thái job" });
+    expect(rowTexts(list)[0]).toContain("Loại: Mới");
+    expect(rowTexts(list)[3]).toContain("Loại: Đã giao");
+    expect(screen.queryByRole("combobox", { name: /Loại \(Overview\)/ })).toBeNull();
+    expect(screen.queryByText(/Đổi loại trong menu/)).toBeNull();
   });
 });

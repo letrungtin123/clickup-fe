@@ -88,3 +88,21 @@ describe("Cấu hình → Quy trình (PD-050)", () => {
     expect(screen.queryByText(configReadOnlyMessage)).toBeNull();
   });
 });
+
+describe("Cấu hình → Quy trình — several QC-type processes (PD-080b)", () => {
+  it("flagging a second process QC sends just that change (no “move the QC flag” confirmation)", async () => {
+    vi.spyOn(productionApi, "processes").mockResolvedValue(processes);
+    const update = vi.spyOn(productionApi, "updateProcess").mockResolvedValue({
+      items: processes.items.map((item) => (item.id === id(1) ? { ...item, isQc: true } : item))
+    });
+    renderPage(true);
+    // The rows in order: "Retouch thường" first; its QC switch is off, Checking's on.
+    const [toggle, checking] = await screen.findAllByRole("switch");
+    expect(checking?.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle!);
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0]?.slice(0, 2)).toEqual([id(1), { isQc: true }]);
+    expect(screen.queryByText(/Chuyển QC sang/)).toBeNull();
+    expect(screen.queryByText(/Chỉ một quy trình được là QC/)).toBeNull();
+  });
+});

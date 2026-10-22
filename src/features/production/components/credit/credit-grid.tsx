@@ -1,16 +1,25 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import { BadgeCheck, Plus } from "lucide-react";
-import { useCallback, useState, type KeyboardEvent } from "react";
+import { useCallback, useLayoutEffect, useState, type KeyboardEvent } from "react";
 
 import type { CreditRule, Process, ProductionProject } from "@/contracts/production-catalog";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 
-import { lookupRule, type MatrixView, type RuleIndex } from "../../credit-matrix";
+import {
+  formatHours,
+  hoursLabel,
+  lookupRule,
+  ruleHours,
+  type MatrixView,
+  type RuleIndex
+} from "../../credit-matrix";
 import { formatCredit, formatDay, formatMoney } from "../../format";
 import { cellSelector, type CellRef } from "./cells";
 
 const ROW_HEIGHT = 52;
+/** PD-080 "Hiện giờ/tấm": a third line per cell. */
+const ROW_HEIGHT_WITH_HOURS = 66;
 const HEADER_HEIGHT = 48;
 
 type CreditGridProps = {
@@ -21,6 +30,8 @@ type CreditGridProps = {
   canEdit: boolean;
   /** Cell whose editor is open (highlighted). */
   activeCell: CellRef | null;
+  /** PD-080: show "Giờ/tấm" as a third line in every cell ("≈" when derived from credit ÷ 11). */
+  showHours?: boolean;
   onOpenCell: (cell: CellRef, element: HTMLElement) => void;
   /** Exposes the scroll container so the editor can anchor to (virtualized) cells. */
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -37,9 +48,11 @@ export const CreditGrid = ({
   at,
   canEdit,
   activeCell,
+  showHours = false,
   onOpenCell,
   scrollRef
 }: CreditGridProps) => {
+  const rowHeight = showHours ? ROW_HEIGHT_WITH_HOURS : ROW_HEIGHT;
   const breakpoint = useBreakpoint();
   const compact = breakpoint === "mobile";
   const firstWidth = compact ? 136 : 224;
@@ -51,10 +64,14 @@ export const CreditGrid = ({
   const virtualizer = useVirtualizer({
     count: view.projects.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 8,
     getItemKey: (rowIndex) => view.projects[rowIndex]?.id ?? rowIndex
   });
+  // PD-080: rows grow with "Hiện giờ/tấm"; the virtualizer keeps its sizes until asked to re-measure.
+  useLayoutEffect(() => {
+    virtualizer.measure();
+  }, [rowHeight, virtualizer]);
 
   const focusCell = useCallback(
     (row: number, col: number) => {
@@ -97,7 +114,7 @@ export const CreditGrid = ({
     focusCell(next[0], next[1]);
   };
 
-  const totalHeight = HEADER_HEIGHT + view.projects.length * ROW_HEIGHT;
+  const totalHeight = HEADER_HEIGHT + view.projects.length * rowHeight;
   const virtualItems = virtualizer.getVirtualItems();
   // Keep one tab stop even when the focused row was virtualized away.
   const tabRow = virtualItems.some((item) => item.index === focus.row)
@@ -147,7 +164,7 @@ export const CreditGrid = ({
               className="group/row absolute inset-x-0 grid border-b border-border/70"
               style={{
                 top: HEADER_HEIGHT,
-                height: ROW_HEIGHT,
+                height: rowHeight,
                 transform: `translateY(${virtualRow.start}px)`,
                 gridTemplateColumns: template
               }}
@@ -169,6 +186,7 @@ export const CreditGrid = ({
                     tabbable={tabRow === virtualRow.index && tabCol === col}
                     active={active}
                     canEdit={canEdit}
+                    showHours={showHours}
                     onFocus={() => setFocus({ row: virtualRow.index, col })}
                     onOpen={(element) =>
                       onOpenCell({ projectId: project.id, processId: process.id }, element)
@@ -237,6 +255,7 @@ type CreditCellProps = {
   tabbable: boolean;
   active: boolean;
   canEdit: boolean;
+  showHours: boolean;
   onFocus: () => void;
   onOpen: (element: HTMLElement) => void;
 };
@@ -251,13 +270,19 @@ const CreditCell = ({
   tabbable,
   active,
   canEdit,
+  showHours,
   onFocus,
   onOpen
 }: CreditCellProps) => {
   const startsToday = rule?.effectiveFrom === at;
+  const hours = ruleHours(rule);
   const label = rule
     ? `${project.code} × ${process.name}: ${formatCredit(rule.creditPerImage)} điểm, ${
         rule.moneyPerImage === null ? "không có tiền" : formatMoney(rule.moneyPerImage)
+      }${
+        hours
+          ? `, ${hours.derived ? "khoảng " : ""}${formatHours(hours.value)} giờ/tấm${hours.derived ? " (credit ÷ 11)" : ""}`
+          : ""
       }, áp dụng từ ${formatDay(rule.effectiveFrom)}`
     : `${project.code} × ${process.name}: chưa có đơn giá`;
   return (
@@ -303,6 +328,16 @@ const CreditCell = ({
             >
               {formatMoney(rule.moneyPerImage)}
             </span>
+            {showHours && hours ? (
+              <span
+                className={cn(
+                  "text-[11px] leading-tight tabular-nums",
+                  hours.derived ? "text-foreground-subtle italic" : "text-brand-text"
+                )}
+              >
+                {hoursLabel(hours)}
+              </span>
+            ) : null}
           </>
         ) : canEdit ? (
           <span className="flex items-center gap-1 text-xs text-foreground-subtle/70 group-hover/cell:text-foreground-muted">

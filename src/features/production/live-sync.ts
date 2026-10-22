@@ -158,6 +158,11 @@ export const planChangeInvalidations = (client: QueryClient, change: PendingChan
     add(key, true, false);
     speculative.push(key);
   }
+  // "Tổng quan của tôi" (PD-081) the same way.
+  for (const [key] of client.getQueriesData({ queryKey: ["production", "jobs", "my-overview"] })) {
+    add(key, true, false);
+    speculative.push(key);
+  }
   // The "Nhập công việc" job picker shows each job's manual status (PD-038) and lists new jobs.
   if (change.kinds.has("job") && isCached(client, productionKeys.jobOptions(), false)) {
     add(productionKeys.jobOptions(), false);

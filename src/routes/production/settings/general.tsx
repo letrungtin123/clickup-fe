@@ -3,7 +3,14 @@ import { cn } from "cn";
 import { AnimatePresence, motion } from "motion/react";
 import { Globe2, Info, Save, Undo2 } from "lucide-react";
 import { Fragment, useId, type ReactNode } from "react";
-import { Controller, useForm, useWatch, type Control, type FieldPath } from "react-hook-form";
+import {
+  Controller,
+  useForm,
+  useWatch,
+  type Control,
+  type FieldPath,
+  type UseFormRegisterReturn
+} from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -22,6 +29,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
+  CoreTimeSchema,
+  defaultAlertAfterHours,
+  defaultCoreWindow,
   isKpiCloseDay,
   kpiCloseDayEndOfMonth,
   type ProductionSettings
@@ -44,6 +54,7 @@ import {
 } from "@/features/production/format";
 import { useProductionSettings, useUpdateSettings } from "@/features/production/hooks";
 import { khoanPolicyMeta, topUpRule } from "@/features/production/kpi/khoan-policy";
+import { isApiError } from "@/lib/api/errors";
 
 /** Close days offered: 1–28 (every month has them), then 31 = "Cuối tháng" (PD-032). */
 const closeDayItems = [
@@ -76,19 +87,38 @@ const decimalIn = (min: number, max: number, message: string) =>
 const kpiMessage =
   "Nhập số điểm từ 0 đến 1.000.000, không dấu chấm ngăn cách (vd 2610 hoặc 2610,5).";
 
-const formSchema = z.object({
-  kpiCloseDay: z
-    .string()
-    .refine((value) => isKpiCloseDay(Number(value)), "Chọn ngày từ 1 đến 28 hoặc Cuối tháng."),
-  kpiDefaultMember: decimalIn(0, 1_000_000, kpiMessage),
-  kpiDefaultLeader: decimalIn(0, 1_000_000, kpiMessage),
-  kpiProrateLeave: z.boolean(),
-  /** Retired (PD-052): no control; the stored value is sent back unchanged so the PATCH stays complete. */
-  scoresPublic: z.boolean(),
-  dueSoonHours: intIn(1, 72, "Từ 1 đến 72 giờ."),
-  anomalyFailPercent: decimalIn(0, 100, "Từ 0 đến 100%."),
-  chatAttachmentsEnabled: z.boolean()
-});
+const toNumber = (value: string) => Number(value.replace(",", "."));
+
+/** PD-080: the same wording as the API (request refine / 400 CORE_WINDOW_INVALID). */
+const coreWindowMessage = "Giờ bắt đầu khung lõi phải trước giờ kết thúc.";
+const alertMessage = "Từ 0,25 đến 24 giờ, bước 0,25 (vd 2 hoặc 1,5).";
+
+const formSchema = z
+  .object({
+    kpiCloseDay: z
+      .string()
+      .refine((value) => isKpiCloseDay(Number(value)), "Chọn ngày từ 1 đến 28 hoặc Cuối tháng."),
+    kpiDefaultMember: decimalIn(0, 1_000_000, kpiMessage),
+    kpiDefaultLeader: decimalIn(0, 1_000_000, kpiMessage),
+    kpiProrateLeave: z.boolean(),
+    /** Retired (PD-052): no control; the stored value is sent back unchanged so the PATCH stays complete. */
+    scoresPublic: z.boolean(),
+    dueSoonHours: intIn(1, 72, "Từ 1 đến 72 giờ."),
+    anomalyFailPercent: decimalIn(0, 100, "Từ 0 đến 100%."),
+    chatAttachmentsEnabled: z.boolean(),
+    /** PD-080 "Khung giờ lõi" of the Overview clocks (HH:MM, organization time). */
+    coreWindowStart: CoreTimeSchema,
+    coreWindowEnd: CoreTimeSchema,
+    /** PD-080 "Cảnh báo sau": core-time hours, in steps of 0,25 (15 minutes). */
+    alertAfterHours: decimalIn(0.25, 24, alertMessage).refine(
+      (value) => Number.isInteger(toNumber(value) * 4),
+      alertMessage
+    )
+  })
+  .refine((value) => value.coreWindowStart < value.coreWindowEnd, {
+    message: coreWindowMessage,
+    path: ["coreWindowEnd"]
+  });
 type FormValues = z.infer<typeof formSchema>;
 
 const toForm = (settings: ProductionSettings): FormValues => ({
@@ -99,10 +129,41 @@ const toForm = (settings: ProductionSettings): FormValues => ({
   scoresPublic: settings.scoresPublic,
   dueSoonHours: String(settings.dueSoonHours),
   anomalyFailPercent: String(Math.round(settings.anomalyFailRate * 10_000) / 100),
-  chatAttachmentsEnabled: settings.chatAttachmentsEnabled
+  chatAttachmentsEnabled: settings.chatAttachmentsEnabled,
+  coreWindowStart: settings.coreWindowStart,
+  coreWindowEnd: settings.coreWindowEnd,
+  alertAfterHours: String(settings.alertAfterHours)
 });
 
-const toNumber = (value: string) => Number(value.replace(",", "."));
+const toMinutes = (time: string) => {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+};
+const toTime = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+const hoursLabel = (hours: number) => String(hours).replace(".", ",");
+
+/**
+ * The worked example of the core-window clocks for the given values: a job entering "Chờ QC" 30 minutes before the
+ * window closes counts 30 minutes that day, resumes when the window opens on the next working day and alerts once the
+ * threshold is reached (09:30 – 16:30, 2 h: 16:00 → 11:00). Null when the values do not tell that story (window under
+ * an hour, threshold of 30 minutes or less, or longer than the next day's window).
+ */
+const coreExample = (start: string, end: string, hours: number) => {
+  const from = toMinutes(start);
+  const to = toMinutes(end);
+  const threshold = Math.round(hours * 60);
+  const before = 30;
+  if (from === null || to === null || !Number.isFinite(threshold)) return null;
+  if (to - from < 60 || threshold <= before || threshold - before > to - from) return null;
+  return {
+    start,
+    end,
+    hours,
+    enter: toTime(to - before),
+    alert: toTime(from + threshold - before)
+  };
+};
 
 /**
  * Organization-wide production settings (Admin). Timezone is fixed server-side. PD-050: only the organization
@@ -163,6 +224,16 @@ const SettingsForm = ({
     ? closeDayChange(todayIn(settings.timezone), settings.kpiCloseDays, closeDay)
     : null;
   const dirty = formState.isDirty;
+  // PD-080: the worked example follows the values being typed (the defaults' while they do not make one).
+  const [coreStart, coreEnd, alertHours] = useWatch({
+    control,
+    name: ["coreWindowStart", "coreWindowEnd", "alertAfterHours"]
+  });
+  const example =
+    coreExample(coreStart, coreEnd, toNumber(alertHours)) ??
+    coreExample(defaultCoreWindow.start, defaultCoreWindow.end, defaultAlertAfterHours);
+  const coreError =
+    formState.errors.coreWindowStart?.message ?? formState.errors.coreWindowEnd?.message;
 
   const onSubmit = handleSubmit((values) =>
     update.mutate(
@@ -174,7 +245,10 @@ const SettingsForm = ({
         scoresPublic: values.scoresPublic,
         dueSoonHours: Number(values.dueSoonHours),
         anomalyFailRate: Math.round(toNumber(values.anomalyFailPercent) * 100) / 10_000,
-        chatAttachmentsEnabled: values.chatAttachmentsEnabled
+        chatAttachmentsEnabled: values.chatAttachmentsEnabled,
+        coreWindowStart: values.coreWindowStart,
+        coreWindowEnd: values.coreWindowEnd,
+        alertAfterHours: toNumber(values.alertAfterHours)
       },
       {
         onSuccess: (saved) => {
@@ -189,13 +263,22 @@ const SettingsForm = ({
             notes.length > 0 ? { description: notes.join(" ") } : undefined
           );
         },
-        onError: (error) => setError("root", { message: productionErrorMessage(error) })
+        onError: (error) =>
+          // PD-080: the API checks the core window too (one end against the stored other one).
+          isApiError(error) && error.code === "CORE_WINDOW_INVALID"
+            ? setError("coreWindowEnd", { message: coreWindowMessage })
+            : setError("root", { message: productionErrorMessage(error) })
       }
     )
   );
 
   const numberField = (
-    name: "kpiDefaultMember" | "kpiDefaultLeader" | "dueSoonHours" | "anomalyFailPercent",
+    name:
+      | "kpiDefaultMember"
+      | "kpiDefaultLeader"
+      | "dueSoonHours"
+      | "anomalyFailPercent"
+      | "alertAfterHours",
     label: string,
     hint: ReactNode,
     suffix: string
@@ -375,6 +458,56 @@ const SettingsForm = ({
         </div>
       </SettingsSection>
 
+      <SettingsSection
+        title="Tổng quan"
+        description="Đồng hồ cảnh báo và sức chứa At risk của trang Tổng quan (Overview)."
+      >
+        <div className="divide-y">
+          <SettingRow
+            labelId={`${ids}-coreWindow`}
+            label="Khung giờ lõi"
+            hint={<CoreWindowHint example={example} />}
+            error={coreError}
+            control={
+              readOnly ? (
+                <ReadOnlyValue>
+                  {settings.coreWindowStart} – {settings.coreWindowEnd}
+                  <span className="ml-1.5 font-normal text-foreground-muted">thứ 2 – thứ 7</span>
+                </ReadOnlyValue>
+              ) : (
+                <div
+                  role="group"
+                  aria-labelledby={`${ids}-coreWindow`}
+                  className="flex items-end gap-2"
+                >
+                  <TimeInput
+                    caption="Bắt đầu"
+                    label="Bắt đầu khung lõi"
+                    invalid={Boolean(coreError)}
+                    {...register("coreWindowStart")}
+                  />
+                  <span aria-hidden="true" className="pb-1.5 text-foreground-subtle">
+                    –
+                  </span>
+                  <TimeInput
+                    caption="Kết thúc"
+                    label="Kết thúc khung lõi"
+                    invalid={Boolean(coreError)}
+                    {...register("coreWindowEnd")}
+                  />
+                </div>
+              )
+            }
+          />
+          {numberField(
+            "alertAfterHours",
+            "Cảnh báo sau (giờ)",
+            "Số giờ lõi (chỉ tính trong khung) trước khi “Chờ QC”, “Không cập nhật” hay job mới “chưa chia” của Account chuyển sang cảnh báo. Từ 0,25 đến 24, bước 0,25 (15 phút).",
+            "giờ lõi"
+          )}
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Chat">
         <div className="divide-y">
           <SwitchRow
@@ -474,6 +607,49 @@ const CloseDayHint = ({
     </>
   );
 };
+
+/**
+ * PD-080 "Khung giờ lõi": what the core window does, with the worked example for the current values (16:00 → 11:00
+ * with the defaults).
+ */
+const CoreWindowHint = ({ example }: { example: ReturnType<typeof coreExample> }) => (
+  <>
+    Đồng hồ “Chờ QC”, “Không cập nhật” và job mới “chưa chia” của Account chỉ chạy trong khung này,
+    thứ 2 – thứ 7 (giờ tổ chức); ngoài khung và Chủ nhật thì tạm dừng.
+    {example ? (
+      <>
+        {" "}
+        Ví dụ ({example.start} – {example.end}, cảnh báo sau {hoursLabel(example.hours)} giờ): vào
+        Chờ QC lúc <span className="font-medium text-foreground">{example.enter}</span> → hôm đó
+        tính 30 phút, chạy tiếp từ {example.start} ngày làm việc sau → cảnh báo lúc{" "}
+        <span className="font-medium text-foreground">{example.alert}</span>.
+      </>
+    ) : null}{" "}
+    Sức chứa At risk cũng chỉ tính giờ trong khung.
+  </>
+);
+
+/** One end of the core window: a 24 h time input with its caption above. */
+const TimeInput = ({
+  caption,
+  label,
+  invalid,
+  ...field
+}: UseFormRegisterReturn & { caption: string; label: string; invalid: boolean }) => (
+  <label className="flex flex-col gap-1">
+    <span aria-hidden="true" className="text-[11px] leading-none text-foreground-muted">
+      {caption}
+    </span>
+    <Input
+      type="time"
+      aria-label={label}
+      aria-invalid={invalid}
+      // Wide enough for a 12-hour browser locale ("04:30 CH") as well as 24-hour "16:30".
+      className="w-32 tabular-nums"
+      {...field}
+    />
+  </label>
+);
 
 const SettingRow = ({
   htmlFor,

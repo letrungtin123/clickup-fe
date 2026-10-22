@@ -30,7 +30,7 @@ const NONE = "__none__";
 export const SEARCHABLE_FROM = 10;
 
 /** The select trigger look, shared by the searchable pickers (same height / border / dark mode as SelectTrigger). */
-const triggerClass =
+export const triggerClass =
   "flex w-full min-w-0 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 pointer-coarse:h-10 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40";
 
 /** Person select (avatars) for assignee / QC / leader pickers. */

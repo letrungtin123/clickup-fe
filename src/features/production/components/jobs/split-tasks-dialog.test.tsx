@@ -1,21 +1,36 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { JobDetail, ProductionTask } from "@/contracts/production-jobs";
+import type { TeamLoad, TeamMemberLoad } from "@/contracts/production-overview";
 import { SessionValueContext } from "@/features/auth/session-context";
 import type { SessionContext } from "@/lib/api/schemas";
 
 import { todayIn } from "../../format";
 import { jobsApi } from "../../jobs-api";
 import { productionKeys } from "../../keys";
+import { teamLoadApi } from "../../team-load";
 import { SplitTasksDialog } from "./split-tasks-dialog";
 
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), warning: vi.fn() })
 }));
+
+beforeAll(() => {
+  // cmdk (the searchable "Nhân viên thực hiện", PD-080) measures its list and scrolls the active option; jsdom has neither.
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  if (!("scrollIntoView" in Element.prototype)) {
+    Object.defineProperty(Element.prototype, "scrollIntoView", { value: () => undefined });
+  }
+});
 
 // "Chia task" line cards (PD-035 / PD-040). Obviously fake ids, names and links (the repository is public).
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -82,22 +97,43 @@ const session = {
   productionRoles: ["LEADER"]
 } as unknown as SessionContext;
 
-const renderDialog = () => {
+type RenderOptions = {
+  /** PD-080 GET /production/team-load answer (none: not loaded). */
+  teamLoad?: TeamLoad;
+  roles?: string[];
+  ownOnly?: boolean;
+  header?: ReactNode;
+  extraMembers?: ReturnType<typeof member>[];
+  /** PD-080b: more processes, the rules in force today (default: Retouch priced), and access to the cache. */
+  extraProcesses?: { id: string; name: string; isQc: boolean; sortOrder: number; active: boolean }[];
+  rules?: Record<string, unknown>[];
+  onClient?: (client: QueryClient) => void;
+};
+
+const renderDialog = (options: RenderOptions = {}) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } }
   });
+  if (options.teamLoad) client.setQueryData(productionKeys.teamLoad(), options.teamLoad);
+  // Not seeded: the load never arrives (no request leaves the test).
+  else vi.spyOn(teamLoadApi, "get").mockReturnValue(new Promise(() => undefined));
   client.setQueryData(productionKeys.me(), {
-    roles: ["LEADER"],
+    roles: options.roles ?? ["LEADER"],
     isAdmin: false,
     teamId: null,
     jobPermissions: { view: "all", create: "all", update: "all", delete: "all" },
     settings: { timezone: TZ }
   });
   client.setQueryData(productionKeys.members(), {
-    items: [member(ME, ["LEADER"]), member(WORKER, ["STAFF"]), member(CHECKER, ["QC"])]
+    items: [
+      member(ME, ["LEADER"]),
+      member(WORKER, ["STAFF"]),
+      member(CHECKER, ["QC"]),
+      ...(options.extraMembers ?? [])
+    ]
   });
   client.setQueryData(productionKeys.processes(), {
-    items: [{ id: RETOUCH, name: "Retouch", isQc: false, sortOrder: 1, active: true }]
+    items: [{ id: RETOUCH, name: "Retouch", isQc: false, sortOrder: 1, active: true }, ...(options.extraProcesses ?? [])]
   });
   client.setQueryData(productionKeys.shifts(), {
     items: [
@@ -117,7 +153,7 @@ const renderDialog = () => {
     at: today,
     projects: [],
     processes: [],
-    rules: [
+    rules: options.rules ?? [
       {
         id: id(90),
         projectId: PROJECT.id,
@@ -129,11 +165,21 @@ const renderDialog = () => {
       }
     ]
   });
+  options.onClient?.(client);
   return render(
     <QueryClientProvider client={client}>
       <SessionValueContext value={session}>
         <TooltipProvider>
-          <SplitTasksDialog open job={job} onClose={() => undefined} />
+          <SplitTasksDialog
+            open
+            job={
+              options.ownOnly
+                ? ({ ...job, capabilities: { splitOwnOnly: true } } as unknown as JobDetail)
+                : job
+            }
+            onClose={() => undefined}
+            header={options.header}
+          />
         </TooltipProvider>
       </SessionValueContext>
     </QueryClientProvider>
@@ -383,5 +429,229 @@ describe("SplitTasksDialog — optional quantity (PD-058)", () => {
     });
     await waitFor(() => expect(createTasks).toHaveBeenCalledTimes(1));
     expect(createTasks.mock.calls[0]![1][0]).toMatchObject({ qtyAssigned: 12 });
+  });
+});
+
+// PD-080 — team load in "Chia task": suggestions, the whole team, load and leave in the picker.
+const WORKER_BUSY = user(4, "Worker Three");
+const WORKER_AWAY = user(5, "Worker Away");
+const OTHER = { id: id(41), code: "BRX" };
+
+const load = (
+  person: ReturnType<typeof user>,
+  byProject: { project: { id: string; code: string }; images: number }[],
+  extra: Partial<TeamMemberLoad> = {}
+): TeamMemberLoad => ({
+  user: person,
+  roles: ["STAFF"],
+  leave: null,
+  openTasks: byProject.length,
+  images: byProject.reduce((sum, entry) => sum + entry.images, 0),
+  tasksWithoutQty: 0,
+  byProject: byProject.map((entry) => ({ ...entry, tasks: 1 })),
+  ...extra
+});
+
+const TEAM: TeamLoad = {
+  today,
+  generatedAt: new Date().toISOString(),
+  members: [
+    load(ME, [{ project: OTHER, images: 4 }], { roles: ["LEADER"] }),
+    load(WORKER, []),
+    load(WORKER_BUSY, [{ project: PROJECT, images: 10 }]),
+    load(WORKER_AWAY, [], { leave: { part: "FULL_DAY", now: true } }),
+    load(CHECKER, [], { roles: ["QC"] })
+  ]
+};
+const teamMembers = [member(WORKER_BUSY, ["STAFF"]), member(WORKER_AWAY, ["STAFF"])];
+
+const renderWithTeam = (options: RenderOptions = {}) =>
+  renderDialog({ teamLoad: TEAM, extraMembers: teamMembers, ...options });
+
+const suggestionTiles = () =>
+  within(screen.getByRole("list", { name: "Người được gợi ý" })).getAllByRole("button");
+
+describe("SplitTasksDialog — team load (PD-080)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("suggests Rảnh first, then people on the project, then the lightest; not the QC-only nor the one on leave", () => {
+    renderWithTeam();
+    expect(screen.getByRole("heading", { name: "Gợi ý cho P-T" })).toBeTruthy();
+    expect(suggestionTiles().map((tile) => tile.getAttribute("aria-label"))).toEqual([
+      "Worker One · Rảnh",
+      "Worker Three · 10 P-T · Đang làm P-T",
+      "Leader Test · 4 BRX"
+    ]);
+  });
+
+  it("a tile fills the first task without a person, then adds a task for the next one (copying task 1) and focuses its Quy trình", async () => {
+    renderWithTeam();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    await act(async () => {
+      fireEvent.click(suggestionTiles()[0]!);
+      await Promise.resolve();
+    });
+    expect(cards()).toHaveLength(1);
+    expect(within(cards()[0]!).getByRole("combobox", { name: "Nhân viên thực hiện" }).textContent).toContain(
+      "Worker One"
+    );
+    fireEvent.change(within(cards()[0]!).getByPlaceholderText("Số tấm"), { target: { value: "12" } });
+    await act(async () => {
+      fireEvent.click(suggestionTiles()[1]!);
+      await Promise.resolve();
+    });
+    const [, second] = cards();
+    expect(cards()).toHaveLength(2);
+    expect(within(second!).getByRole("combobox", { name: "Nhân viên thực hiện" }).textContent).toContain(
+      "Worker Three"
+    );
+    // Same copy rules as "Thêm task": the quantity of task 1 comes along.
+    expect(within(second!).getByPlaceholderText("Số tấm")).toHaveProperty("value", "12");
+    expect(document.activeElement?.id).toMatch(/-process$/);
+    expect(second!.contains(document.activeElement)).toBe(true);
+  });
+
+  it("the picker shows each person's load; someone on leave is greyed with the leave and cannot be picked", async () => {
+    renderWithTeam();
+    const card = cards()[0]!;
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("combobox", { name: "Nhân viên thực hiện" }));
+      await Promise.resolve();
+    });
+    const free = await screen.findByRole("option", { name: /Worker One/ });
+    expect(free.textContent).toContain("Worker One · Rảnh");
+    expect(screen.getByRole("option", { name: /Worker Three/ }).textContent).toContain("· 10 P-T");
+    const away = screen.getByRole("option", { name: /Worker Away/ });
+    expect(away.textContent).toContain("Nghỉ cả ngày");
+    expect(away.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      fireEvent.pointerDown(away);
+      fireEvent.click(away);
+      await Promise.resolve();
+    });
+    expect(within(card).getByRole("combobox", { name: "Nhân viên thực hiện" }).textContent).not.toContain(
+      "Worker Away"
+    );
+    // Typing narrows the list (accents and case ignored).
+    fireEvent.change(screen.getByLabelText("Tìm nhân viên"), { target: { value: "three" } });
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      expect.stringContaining("Worker Three")
+    ]);
+    await act(async () => {
+      const option = screen.getByRole("option", { name: /Worker Three/ });
+      fireEvent.pointerDown(option);
+      fireEvent.click(option);
+      await Promise.resolve();
+    });
+    expect(within(card).getByRole("combobox", { name: "Nhân viên thực hiện" }).textContent).toContain(
+      "Worker Three"
+    );
+  });
+
+  it("“Xem cả team” shows everyone as tiles grouped Rảnh · Đang làm <code> · Khác · Đang nghỉ; the one on leave is not clickable", async () => {
+    renderWithTeam();
+    const toggle = screen.getByRole("button", { name: "Xem cả team (1 rảnh · 1 đang nghỉ)" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      fireEvent.click(toggle);
+      await Promise.resolve();
+    });
+    const group = (name: string) =>
+      within(screen.getByRole("list", { name })).getAllByRole("button").map((tile) => tile.getAttribute("aria-label"));
+    expect(group("Rảnh")).toEqual(["Worker One · Rảnh"]);
+    expect(group("Đang làm P-T")).toEqual(["Worker Three · 10 P-T · Đang làm P-T"]);
+    expect(group("Khác")).toEqual(["Leader Test · 4 BRX"]);
+    expect(group("Đang nghỉ")).toEqual(["Worker Away · Nghỉ cả ngày"]);
+    expect(within(screen.getByRole("list", { name: "Đang nghỉ" })).getByRole("button")).toHaveProperty(
+      "disabled",
+      true
+    );
+    expect(screen.getByRole("button", { name: "Ẩn cả team" })).toBeTruthy();
+  });
+
+  it("renders the header above the tasks (the Overview's Job Code picker)", () => {
+    renderWithTeam({ header: <p>Chọn Job Code chưa chia</p> });
+    expect(screen.getByText("Chọn Job Code chưa chia")).toBeTruthy();
+  });
+
+  it("no suggestions when the tasks are fixed to me (create: own) or for a caller without LEADER / ADMIN", () => {
+    renderWithTeam({ ownOnly: true });
+    expect(screen.queryByText(/Gợi ý cho/)).toBeNull();
+    cleanup();
+    renderWithTeam({ roles: ["STAFF"] });
+    expect(screen.queryByText(/Gợi ý cho/)).toBeNull();
+  });
+
+  it("without team load the dialog still works (names only, no suggestions)", async () => {
+    renderDialog();
+    expect(screen.queryByText(/Gợi ý cho/)).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const card = cards()[0]!;
+    await pick(card, "Nhân viên thực hiện", /Worker One/);
+    expect(within(card).getByRole("combobox", { name: "Nhân viên thực hiện" }).textContent).toContain(
+      "Worker One"
+    );
+  });
+});
+
+// PD-080b — only priced processes --------------------------------------------------------------------------------------
+
+describe("SplitTasksDialog — only priced processes (PD-080b)", () => {
+  const BLEND = id(81);
+  const blend = { id: BLEND, name: "Blend", isQc: false, sortOrder: 2, active: true };
+  const rule = (processId: string, projectId = PROJECT.id) => ({
+    id: `${processId.slice(0, 30)}99`,
+    projectId,
+    processId,
+    creditPerImage: 2,
+    moneyPerImage: null,
+    effectiveFrom: today,
+    effectiveTo: null
+  });
+  const openProcesses = async (card: HTMLElement) => {
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("combobox", { name: "Quy trình" }));
+      await Promise.resolve();
+    });
+    return (await screen.findAllByRole("option")).map((option) => option.textContent ?? "");
+  };
+
+  it("the card's list offers only the processes priced for the job's project on its Ngày nhận", async () => {
+    renderDialog({ extraProcesses: [blend], rules: [rule(RETOUCH), rule(BLEND, id(42))] });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const names = await openProcesses(cards()[0]!);
+    expect(names.some((name) => name.includes("Retouch"))).toBe(true);
+    // Blend is priced for another project only.
+    expect(names.some((name) => name.includes("Blend"))).toBe(false);
+  });
+
+  it("a project without any price that day: the picker is disabled with “Project chưa có đơn giá — liên hệ Quản trị”", () => {
+    renderDialog({ extraProcesses: [blend], rules: [rule(BLEND, id(42))] });
+    const card = within(cards()[0]!);
+    expect(card.getByText("Project chưa có đơn giá — liên hệ Quản trị")).toBeTruthy();
+    expect(card.getByRole("combobox", { name: "Quy trình" })).toHaveProperty("disabled", true);
+  });
+
+  it("a chosen process that loses its price on the card's day is cleared, with a hint", async () => {
+    let cache: QueryClient | null = null;
+    renderDialog({
+      extraProcesses: [blend],
+      rules: [rule(RETOUCH), rule(BLEND)],
+      onClient: (client) => {
+        cache = client;
+      }
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const card = cards()[0]!;
+    await pick(card, "Quy trình", /Retouch/);
+    expect(within(card).getByRole("combobox", { name: "Quy trình" }).textContent).toContain("Retouch");
+    await act(async () => {
+      cache!.setQueryData(productionKeys.creditMatrix(today), { at: today, projects: [], processes: [], rules: [rule(BLEND)] });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(within(cards()[0]!).getByText(/“Retouch” chưa có đơn giá ngày .* — chọn lại quy trình\./)).toBeTruthy()
+    );
+    expect(within(cards()[0]!).getByRole("combobox", { name: "Quy trình" }).textContent).toContain("Chọn quy trình");
   });
 });

@@ -5,14 +5,20 @@ import type { CreditRule, Process, ProductionProject } from "@/contracts/product
 import {
   countDataRows,
   CREDIT_CSV_HEADER,
+  derivedHours,
   filterMatrix,
+  formatHours,
   hasCreditHeader,
+  hoursLabel,
+  importSourceName,
   indexRules,
   lookupRule,
   matrixCoverage,
   matrixToCsv,
   nextFreeVersionDay,
   normalizeCreditCsv,
+  parseHoursInput,
+  ruleHours,
   sourceLine,
   versionAt
 } from "./credit-matrix";
@@ -108,18 +114,21 @@ describe("filterMatrix", () => {
 });
 
 describe("CSV", () => {
-  it("exports the visible matrix in the import format", () => {
+  it("exports the visible matrix in the import format (PD-080: own hours, empty when derived)", () => {
     const view = {
       projects: [projects[0]!, project("p4", 'A,"B"')],
       processes: [processes[0]!, processes[1]!]
     };
-    const index = indexRules([...rules, rule("r4", "p4", "x1", 1, 5000)]);
+    const index = indexRules([
+      ...rules,
+      { ...rule("r4", "p4", "x1", 1, 5000), hoursPerImage: 0.41666 }
+    ]);
     expect(matrixToCsv(view, index)).toBe(
       [
-        CREDIT_CSV_HEADER,
-        "FAKE-A,Chỉnh sửa,1.50,7000",
-        "FAKE-A,Kiểm tra,0.10,",
-        '"A,""B""",Chỉnh sửa,1.00,5000',
+        `${CREDIT_CSV_HEADER},hours`,
+        "FAKE-A,Chỉnh sửa,1.50,7000,",
+        "FAKE-A,Kiểm tra,0.10,,",
+        '"A,""B""",Chỉnh sửa,1.00,5000,0.4167',
         ""
       ].join("\r\n")
     );
@@ -165,5 +174,40 @@ describe("nextFreeVersionDay", () => {
     expect(nextFreeVersionDay(message, "2026-10-01", "2026-10-20")).toBe("2026-10-20");
     expect(nextFreeVersionDay("Không sửa được.", "2026-10-11", "2026-10-10")).toBe("2026-10-12");
     expect(nextFreeVersionDay("Không sửa được.", "2026-12-31", "2026-10-10")).toBe("2027-01-01");
+  });
+});
+
+describe("Giờ/tấm (PD-080)", () => {
+  it("is the price's own hours, else credit ÷ 11 marked as derived", () => {
+    expect(ruleHours({ creditPerImage: 1.5, hoursPerImage: 0.25 })).toEqual({ value: 0.25, derived: false });
+    expect(ruleHours({ creditPerImage: 1.5, hoursPerImage: null })).toEqual({ value: 0.1364, derived: true });
+    expect(ruleHours({ creditPerImage: 1.5 })).toEqual({ value: 0.1364, derived: true });
+    expect(ruleHours(null)).toBeNull();
+    expect(derivedHours(4.4)).toBe(0.4);
+  });
+
+  it("formats with Vietnamese decimals (up to 4) and marks derived values with ≈", () => {
+    expect(formatHours(0.41666)).toBe("0,4167");
+    expect(formatHours(2)).toBe("2");
+    expect(formatHours(null)).toBe("—");
+    expect(hoursLabel({ value: 0.25, derived: false })).toBe("0,25 h");
+    expect(hoursLabel({ value: 0.1364, derived: true })).toBe("≈ 0,1364 h");
+  });
+
+  it("parses typed hours: comma or dot, up to 4 decimals, 0 – 1000, empty = null", () => {
+    expect(parseHoursInput("")).toEqual({ ok: true, value: null });
+    expect(parseHoursInput(" 0,5 ")).toEqual({ ok: true, value: 0.5 });
+    expect(parseHoursInput("1.25")).toEqual({ ok: true, value: 1.25 });
+    expect(parseHoursInput("1000")).toEqual({ ok: true, value: 1000 });
+    expect(parseHoursInput("0,12345")).toEqual({ ok: false, error: "Tối đa 4 chữ số thập phân." });
+    expect(parseHoursInput("1001")).toEqual({ ok: false, error: "Tối đa 1.000 giờ." });
+    expect(parseHoursInput("-1")).toEqual({ ok: false, error: "Nhập số giờ ≥ 0, ví dụ 0,5." });
+    expect(parseHoursInput("abc")).toEqual({ ok: false, error: "Nhập số giờ ≥ 0, ví dụ 0,5." });
+  });
+
+  it("uses the uploaded file's name without its extension as the import source", () => {
+    expect(importSourceName("VD_Don_Gia_202610.csv")).toBe("VD_Don_Gia_202610");
+    expect(importSourceName("don.gia.thang.10.tsv")).toBe("don.gia.thang.10");
+    expect(importSourceName("khong-duoi")).toBe("khong-duoi");
   });
 });

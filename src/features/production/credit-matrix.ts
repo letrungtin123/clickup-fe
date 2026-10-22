@@ -1,16 +1,75 @@
-import type {
-  CreditMatrix,
-  CreditRule,
-  Process,
-  ProductionProject
+import {
+  creditPerHour,
+  hoursPerImageOf,
+  type CreditMatrix,
+  type CreditRule,
+  type Process,
+  type ProductionProject
 } from "@/contracts/production-catalog";
 
-import { addDays, dayInRange } from "./format";
+import { addDays, dayInRange, formatNumber } from "./format";
 
 /**
  * Pure helpers for the credit-rule matrix (projects × processes) and the CSV import/export
- * (header: project_code,process_name,credit,money). Unit tested in credit-matrix.test.ts.
+ * (header: project_code,process_name,credit,money + PD-080 optional hours). Unit tested in credit-matrix.test.ts.
  */
+
+// "Giờ/tấm" (PD-080) ------------------------------------------------------------------------------
+
+/** Hours keep up to 4 decimals (0,4167 h = 25 minutes); "Giờ/tấm" accepts 0 – 1000. */
+const HOURS_DECIMALS = 4;
+export const HOURS_MAX = 1000;
+
+/** "0,4167" (Vietnamese decimals, up to 4); "—" for null. */
+export const formatHours = (value: number | null | undefined) =>
+  formatNumber(value, HOURS_DECIMALS);
+
+/**
+ * The hours of a price for display: its own (`derived` false) or credit ÷ 11 (`derived` true, shown with "≈").
+ * Null without a price.
+ */
+export const ruleHours = (
+  rule: Pick<CreditRule, "creditPerImage" | "hoursPerImage"> | null | undefined
+) => {
+  const value = hoursPerImageOf(rule);
+  if (!rule || value === null) return null;
+  return { value, derived: rule.hoursPerImage === null || rule.hoursPerImage === undefined };
+};
+
+/** "0,4167 h" or "≈ 0,1364 h" (derived from the credit). */
+export const hoursLabel = (hours: { value: number; derived: boolean }) =>
+  `${hours.derived ? "≈ " : ""}${formatHours(hours.value)} h`;
+
+/** Credit ÷ 11 rounded like the API (`hoursPerImageOf`), for a credit being typed. */
+export const derivedHours = (creditPerImage: number) =>
+  Math.round((creditPerImage / creditPerHour) * 10_000) / 10_000;
+
+type HoursParse = { ok: true; value: number | null } | { ok: false; error: string };
+
+/** "Giờ/tấm" typed by a person: "0,5" or "0.5", up to 4 decimals, 0 – 1000. Empty → null (credit ÷ 11). */
+export const parseHoursInput = (text: string): HoursParse => {
+  const raw = text.replace(/\s/g, "");
+  if (raw === "") return { ok: true, value: null };
+  const normalized = raw.replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    return { ok: false, error: "Nhập số giờ ≥ 0, ví dụ 0,5." };
+  }
+  const [, fraction = ""] = normalized.split(".");
+  if (fraction.length > HOURS_DECIMALS) {
+    return { ok: false, error: "Tối đa 4 chữ số thập phân." };
+  }
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value > HOURS_MAX) {
+    return { ok: false, error: "Tối đa 1.000 giờ." };
+  }
+  return { ok: true, value };
+};
+
+/** A file name without its extension ("Bang_gia_202610.csv" → "Bang_gia_202610"): the import `source`. */
+export const importSourceName = (fileName: string) => {
+  const base = fileName.trim().replace(/\.[^./\\]+$/, "");
+  return base.trim() || fileName.trim();
+};
 
 export const ruleKey = (projectId: string, processId: string) => `${projectId}:${processId}`;
 
@@ -67,14 +126,20 @@ export const matrixCoverage = (view: MatrixView, index: RuleIndex) => {
 
 // CSV ---------------------------------------------------------------------------------------------
 
+/** The required columns of the import. */
 export const CREDIT_CSV_HEADER = "project_code,process_name,credit,money";
+/** PD-080: the optional "Giờ/tấm" column (aliases hours_per_image, gio_tam; empty = credit ÷ 11). */
+export const CREDIT_CSV_HOURS_COLUMN = "hours";
 
 const csvCell = (value: string) =>
   /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
-/** The current matrix in the import format (money empty when there is no price). */
+/**
+ * The current matrix in the import format (money empty when there is no price; PD-080: `hours` = the price's own
+ * "Giờ/tấm", empty when it is derived from the credit, so a re-import keeps it derived).
+ */
 export const matrixToCsv = (view: MatrixView, index: RuleIndex) => {
-  const lines = [CREDIT_CSV_HEADER];
+  const lines = [`${CREDIT_CSV_HEADER},${CREDIT_CSV_HOURS_COLUMN}`];
   for (const project of view.projects) {
     for (const process of view.processes) {
       const rule = lookupRule(index, project.id, process.id);
@@ -84,7 +149,10 @@ export const matrixToCsv = (view: MatrixView, index: RuleIndex) => {
           csvCell(project.code),
           csvCell(process.name),
           rule.creditPerImage.toFixed(2),
-          rule.moneyPerImage === null ? "" : String(rule.moneyPerImage)
+          rule.moneyPerImage === null ? "" : String(rule.moneyPerImage),
+          rule.hoursPerImage === null || rule.hoursPerImage === undefined
+            ? ""
+            : String(Math.round(rule.hoursPerImage * 10_000) / 10_000)
         ].join(",")
       );
     }

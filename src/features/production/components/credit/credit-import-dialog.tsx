@@ -22,6 +22,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,7 +31,9 @@ import type { CreditImportResult } from "@/contracts/production-catalog";
 import {
   countDataRows,
   CREDIT_CSV_HEADER,
+  CREDIT_CSV_HOURS_COLUMN,
   hasCreditHeader,
+  importSourceName,
   normalizeCreditCsv,
   sourceLine
 } from "../../credit-matrix";
@@ -43,8 +46,12 @@ import { downloadText } from "./download";
 import { phoneSheetColumn, sheetOnPhone } from "../../ui";
 
 const MAX_CSV_CHARS = 2_000_000;
-// Obviously fake sample rows: the template must never carry real client codes or prices.
-const TEMPLATE = `${CREDIT_CSV_HEADER}\r\nVD-A,Retouch thường,1.00,5000\r\nVD-A,Kiểm tra,0.10,\r\n`;
+/** PD-080: the API's limits for the version name and the source file name. */
+const VERSION_NAME_MAX = 120;
+const SOURCE_MAX = 200;
+// Obviously fake sample rows: the template must never carry real client codes or prices. PD-080: the optional
+// `hours` column ("Giờ/tấm"); left empty on the second row = credit ÷ 11.
+const TEMPLATE = `${CREDIT_CSV_HEADER},${CREDIT_CSV_HOURS_COLUMN}\r\nVD-A,Retouch thường,1.10,5000,0.1\r\nVD-A,Kiểm tra,0.10,,\r\n`;
 
 type Source = "file" | "paste";
 
@@ -72,16 +79,22 @@ export const CreditImportDialog = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [effectiveFrom, setEffectiveFrom] = useState(today);
   const [createMissing, setCreateMissing] = useState(false);
+  const [versionName, setVersionName] = useState("");
   const [result, setResult] = useState<{
     value: CreditImportResult;
     csv: string;
     effectiveFrom: string;
+    source: string | null;
+    versionName: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const csv = normalizeCreditCsv(text);
   const rows = countDataRows(csv);
   const headerOk = text.trim() === "" || hasCreditHeader(csv);
+  /** PD-080: the uploaded file's name without its extension (pasted content has none). */
+  const sourceName =
+    source === "file" && fileName ? importSourceName(fileName).slice(0, SOURCE_MAX) : null;
 
   const reset = () => {
     setText("");
@@ -96,6 +109,7 @@ export const CreditImportDialog = ({
       reset();
       setEffectiveFrom(today);
       setCreateMissing(false);
+      setVersionName("");
     }
     onOpenChange(next);
   };
@@ -126,10 +140,18 @@ export const CreditImportDialog = ({
       setError("Nội dung quá lớn (tối đa 2 triệu ký tự). Hãy chia nhỏ tệp.");
       return;
     }
+    const name = versionName.trim() || null;
     importCredits.mutate(
-      { csv, effectiveFrom, createMissing },
       {
-        onSuccess: (value) => setResult({ value, csv, effectiveFrom }),
+        csv,
+        effectiveFrom,
+        createMissing,
+        ...(sourceName ? { source: sourceName } : {}),
+        ...(name ? { versionName: name } : {})
+      },
+      {
+        onSuccess: (value) =>
+          setResult({ value, csv, effectiveFrom, source: sourceName, versionName: name }),
         onError: (failure) => setError(productionErrorMessage(failure))
       }
     );
@@ -155,9 +177,17 @@ export const CreditImportDialog = ({
             <DialogTitle>Nhập bảng đơn giá từ CSV</DialogTitle>
             <DialogDescription>
               Cột:{" "}
-              <code className="rounded bg-muted px-1 font-mono text-xs">{CREDIT_CSV_HEADER}</code>.
-              Tiền để trống hoặc 0 nghĩa là không có tiền. Lỗi ở bất kỳ dòng nào thì không dòng nào
-              được ghi.
+              <code className="rounded bg-muted px-1 font-mono text-xs wrap-anywhere">
+                {CREDIT_CSV_HEADER}
+              </code>{" "}
+              và (tùy chọn){" "}
+              <code className="rounded bg-muted px-1 font-mono text-xs">
+                {CREDIT_CSV_HOURS_COLUMN}
+              </code>{" "}
+              = Giờ/tấm (số thập phân “,” hoặc “.”; để trống = credit ÷ 11; cũng nhận tên
+              hours_per_image, gio_tam). Tiền để trống hoặc 0 nghĩa là không có tiền. Lỗi ở bất kỳ
+              dòng nào thì không dòng nào được ghi. Mỗi lần nhập tạo một phiên bản mới từ ngày áp
+              dụng; phiên bản cũ giữ nguyên.
             </DialogDescription>
           </DialogHeader>
 
@@ -169,7 +199,12 @@ export const CreditImportDialog = ({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18 }}
               >
-                <SuccessSummary result={result.value} effectiveFrom={result.effectiveFrom} />
+                <SuccessSummary
+                  result={result.value}
+                  effectiveFrom={result.effectiveFrom}
+                  source={result.source}
+                  versionName={result.versionName}
+                />
               </motion.div>
             ) : (
               <div key="form" className="flex flex-col gap-4">
@@ -212,8 +247,10 @@ export const CreditImportDialog = ({
                       <span className="text-[13px] font-medium">
                         {fileName ?? "Bấm để chọn tệp CSV hoặc kéo thả vào đây"}
                       </span>
-                      <span className="text-xs text-foreground-muted">
-                        {fileName ? `${rows} dòng dữ liệu` : "UTF-8, phân tách bằng dấu phẩy"}
+                      <span className="text-xs text-foreground-muted wrap-anywhere">
+                        {fileName
+                          ? `${rows} dòng dữ liệu${sourceName ? ` · Nguồn: ${sourceName}` : ""}`
+                          : "UTF-8, phân tách bằng dấu phẩy"}
                       </span>
                     </label>
                   </div>
@@ -224,7 +261,7 @@ export const CreditImportDialog = ({
                       id={`${ids}-paste`}
                       rows={7}
                       value={text}
-                      placeholder={`${CREDIT_CSV_HEADER}\nVD-A,Retouch thường,1.00,5000`}
+                      placeholder={`${CREDIT_CSV_HEADER},${CREDIT_CSV_HOURS_COLUMN}\nVD-A,Retouch thường,1.10,5000,0.1`}
                       onChange={(event) => {
                         setText(event.target.value);
                         setResult(null);
@@ -254,7 +291,20 @@ export const CreditImportDialog = ({
                       today={today}
                     />
                   </Field>
-                  <label className="flex items-start gap-3 self-end rounded-lg border p-3">
+                  <Field>
+                    <FieldLabel htmlFor={`${ids}-version-name`}>
+                      Tên phiên bản{" "}
+                      <span className="font-normal text-foreground-muted">(tùy chọn)</span>
+                    </FieldLabel>
+                    <Input
+                      id={`${ids}-version-name`}
+                      value={versionName}
+                      maxLength={VERSION_NAME_MAX}
+                      placeholder="VD: Đơn giá 10/2026"
+                      onChange={(event) => setVersionName(event.target.value)}
+                    />
+                  </Field>
+                  <label className="flex items-start gap-3 rounded-lg border p-3 sm:col-span-2">
                     <Switch
                       checked={createMissing}
                       onCheckedChange={setCreateMissing}
@@ -360,10 +410,14 @@ const ErrorList = ({ result, csv }: { result: CreditImportResult; csv: string })
 
 const SuccessSummary = ({
   result,
-  effectiveFrom
+  effectiveFrom,
+  source,
+  versionName
 }: {
   result: CreditImportResult;
   effectiveFrom: string;
+  source: string | null;
+  versionName: string | null;
 }) => (
   <div role="status" className="flex flex-col items-center gap-4 py-4 text-center">
     <span className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
@@ -371,8 +425,9 @@ const SuccessSummary = ({
     </span>
     <div className="flex flex-col gap-1">
       <p className="text-[15px] font-semibold">Đã nhập {result.imported} đơn giá</p>
-      <p className="text-[13px] text-foreground-muted">
-        Có hiệu lực từ {formatDay(effectiveFrom)}.
+      <p className="text-[13px] text-foreground-muted wrap-anywhere">
+        {versionName ? <>Phiên bản “{versionName}” — có</> : "Có"} hiệu lực từ{" "}
+        {formatDay(effectiveFrom)}.{source ? <> Nguồn: {source}.</> : null}
       </p>
     </div>
     {result.createdProjects.length > 0 || result.createdProcesses.length > 0 ? (

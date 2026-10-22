@@ -79,6 +79,16 @@ export const productionKeys = {
     query === undefined
       ? (["production", "jobs", "overview"] as const)
       : (["production", "jobs", "overview", query] as const),
+  /**
+   * PD-080 "ảnh đang ôm" of the team (GET /production/team-load), for the Chia task suggestions and the assignee picker.
+   * Under the job lists' prefix: every task write that refreshes the lists refreshes it.
+   */
+  teamLoad: () => ["production", "jobs", "team-load"] as const,
+  /** PD-080 At risk history (GET /production/overview/risk-history), superadmin / Director. */
+  riskHistory: (query?: Record<string, unknown>) =>
+    query === undefined
+      ? (["production", "risk-history"] as const)
+      : (["production", "risk-history", query] as const),
   job: (jobId: string) => ["production", "job", jobId] as const,
   jobAll: () => ["production", "job"] as const,
   task: (taskId: string) => ["production", "task", taskId] as const,

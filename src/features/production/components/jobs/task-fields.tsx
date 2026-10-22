@@ -28,6 +28,7 @@ import {
   workLinkValue
 } from "../../jobs-model";
 import { useProductionPeople, type Person as PersonOption } from "../../people";
+import { noPriceMessage, pricedOptions, projectUnpriced, useTaskPricedProcesses } from "../../priced-processes";
 import {
   customFieldPayload,
   customFieldProblem,
@@ -82,9 +83,15 @@ export const TaskProcessTitle = ({ task, rights }: Omit<FieldProps, "timeZone">)
   // A subtask may not take its line's process: the line tells which one.
   const parent = useProductionTask(task.isSubtask && rights.process ? task.parentTaskId : null);
   const items = processes.data?.items ?? [];
-  const options = task.isSubtask
-    ? subtaskProcessOptions(items, parent.data?.process.id ?? null, task.process.id)
-    : lineProcessOptions(items, task.process.id);
+  // PD-080b: only processes priced for the job's project on the task's Ngày nhận (the current one stays listed).
+  const priced = useTaskPricedProcesses(task, rights.process);
+  const options = pricedOptions(
+    task.isSubtask
+      ? subtaskProcessOptions(items, parent.data?.process.id ?? null, task.process.id)
+      : lineProcessOptions(items, task.process.id),
+    priced,
+    task.process.id
+  );
   return (
     <InlineField
       variant="inline"
@@ -117,9 +124,11 @@ export const TaskProcessTitle = ({ task, rights }: Omit<FieldProps, "timeZone">)
         `Đã đổi công đoạn của #${task.code} sang ${options.find((option) => option.id === value)?.label ?? "công đoạn mới"}`
       }
       hint={
-        task.isSubtask
-          ? "Subtask làm công đoạn khác task gốc (không phải QC)."
-          : lineProcessHint(task.subtasks.length > 0)
+        projectUnpriced(priced)
+          ? noPriceMessage
+          : task.isSubtask
+            ? "Subtask làm công đoạn khác task gốc (không phải QC)."
+            : lineProcessHint(task.subtasks.length > 0)
       }
     >
       <h2 className="text-lg font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]">
